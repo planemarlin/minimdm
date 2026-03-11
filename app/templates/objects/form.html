@@ -34,7 +34,7 @@
 loadRecordForm(
   "{{ schema }}",
   "{{ obj }}",
-  {{ ('\"' + record_id + '\"') if record_id else 'null' }},
+  {{ record_id | tojson }},
   {{ obj_config | tojson }}
 );
 </script>

@@ -115,17 +115,18 @@ class RecordList {
     }
 
     const attrs = this.userAttributes;
+    const schema = this.schema;
+    const obj = this.obj;
     this.tbody.innerHTML = records
       .map((r) => {
         const cells = attrs
           .slice(0, 6)
           .map(([k]) => `<td>${escHtml(r[k] ?? "")}</td>`)
           .join("");
-        return `<tr>
+        return `<tr style="cursor:pointer" onclick="window.location='/${schema}/${obj}/${r._id}'">
           ${cells}
-          <td class="td-actions">
-            <a class="btn btn-ghost btn-sm" href="/${this.schema}/${this.obj}/${r._id}">View</a>
-            <a class="btn btn-ghost btn-sm" href="/${this.schema}/${this.obj}/${r._id}/edit">Edit</a>
+          <td class="td-actions" onclick="event.stopPropagation()">
+            <a class="btn btn-ghost btn-sm" href="/${schema}/${obj}/${r._id}/edit">Edit</a>
             <button class="btn btn-ghost btn-sm" style="color:var(--danger)"
               onclick="recordList.confirmDelete('${r._id}')">Delete</button>
           </td>
@@ -189,6 +190,34 @@ async function loadRecordDetail(schema, obj, recordId, objConfig) {
   }
   const record = await res.json();
 
+  // Show parent record with a link if configured
+  let parentHtml = "";
+  if (objConfig.parent) {
+    const parentId = record[`_${objConfig.parent}_id`];
+    if (parentId) {
+      let parentLabel = parentId;
+      try {
+        const [prRes, pcRes] = await Promise.all([
+          fetch(`/api/records/${schema}/${objConfig.parent}/${parentId}`),
+          fetch(`/api/schemas/${schema}/objects/${objConfig.parent}`),
+        ]);
+        if (prRes.ok && pcRes.ok) {
+          const pr = await prRes.json();
+          const pc = await pcRes.json();
+          const dispKeys = Object.entries(pc.attributes || {})
+            .filter(([, v]) => !v.reference).slice(0, 2).map(([k]) => k);
+          parentLabel = dispKeys.map(k => pr[k]).filter(Boolean).join(" – ") || parentId;
+        }
+      } catch (_) {}
+      parentHtml = `<div class="detail-field">
+        <div class="detail-field__label">${escHtml(objConfig.parent)} (parent)</div>
+        <div class="detail-field__value">
+          <a href="/${schema}/${objConfig.parent}/${parentId}">${escHtml(parentLabel)}</a>
+        </div>
+      </div>`;
+    }
+  }
+
   const attrs = Object.entries(objConfig.attributes || {});
   const fields = attrs
     .map(([k, v]) => {
@@ -209,7 +238,7 @@ async function loadRecordDetail(schema, obj, recordId, objConfig) {
     ${record._created_by ? `<span>By: ${escHtml(record._created_by)}</span>` : ""}
   </div>`;
 
-  container.innerHTML = `<div class="detail-grid">${fields}</div>${sysMeta}`;
+  container.innerHTML = `<div class="detail-grid">${parentHtml}${fields}</div>${sysMeta}`;
 }
 
 // ── Record form page ─────────────────────────────────────────────────────────
@@ -312,16 +341,22 @@ async function populateRefSelects(schema, objConfig, record) {
   const selects = document.querySelectorAll("[data-reference]");
   for (const sel of selects) {
     const refObj = sel.dataset.reference;
-    const res = await fetch(`/api/records/${schema}/${refObj}?page_size=500`);
-    if (!res.ok) continue;
-    const data = await res.json();
-    const refConfig = await (await fetch(`/api/schemas/${schema}/objects/${refObj}`)).json();
-    const nameAttr = Object.keys(refConfig.attributes || {})[0] || "_id";
+    const [recsRes, cfgRes] = await Promise.all([
+      fetch(`/api/records/${schema}/${refObj}?page_size=500`),
+      fetch(`/api/schemas/${schema}/objects/${refObj}`),
+    ]);
+    if (!recsRes.ok || !cfgRes.ok) continue;
+    const data = await recsRes.json();
+    const refConfig = await cfgRes.json();
+
+    // Show first two non-reference attributes as "code – name" style label
+    const dispKeys = Object.entries(refConfig.attributes || {})
+      .filter(([, v]) => !v.reference).slice(0, 2).map(([k]) => k);
 
     for (const r of data.records) {
       const opt = document.createElement("option");
       opt.value = r._id;
-      opt.textContent = r[nameAttr] || r._id;
+      opt.textContent = dispKeys.map(k => r[k]).filter(Boolean).join(" – ") || r._id;
       if (record[sel.name] === r._id) opt.selected = true;
       sel.appendChild(opt);
     }

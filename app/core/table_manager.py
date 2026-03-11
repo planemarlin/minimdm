@@ -12,6 +12,7 @@ from sqlalchemy import (
     Text,
     Boolean,
     JSON,
+    inspect as sa_inspect,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -41,9 +42,17 @@ class TableManager:
     # ------------------------------------------------------------------
 
     def sync_schema(self, config: dict) -> None:
-        """Create or update all PostgreSQL schemas and tables from config."""
+        """Create or update all PostgreSQL schemas and tables from config.
+
+        Safe to call multiple times (e.g. on config hot-reload): existing tables
+        are inspected and any new columns are added via ALTER TABLE.
+        """
         self._config = config
         schemas = config.get("schemas", {})
+
+        # Reset in-memory state so redefined tables pick up new columns.
+        self._tables = {}
+        self.metadata = MetaData()
 
         with self.engine.connect() as conn:
             conn.execute(text("CREATE SCHEMA IF NOT EXISTS _system"))
@@ -51,7 +60,7 @@ class TableManager:
                 conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
             conn.commit()
 
-        # Define tables (order matters: parents before children)
+        # Define tables in Python (order matters: parents before children)
         for schema_name, schema_body in schemas.items():
             objects = schema_body.get("objects", {})
             ordered = _topological_sort(objects)
@@ -61,6 +70,11 @@ class TableManager:
                 self._define_history_table(schema_name, obj_key, obj_body)
 
         self._ensure_audit_log_table()
+
+        # Add any new columns to existing tables before create_all runs.
+        self._alter_existing_tables()
+
+        # Create tables that don't exist yet (existing ones are left intact).
         self.metadata.create_all(self.engine)
 
     def get_table(self, schema: str, obj: str) -> Table:
@@ -201,6 +215,28 @@ class TableManager:
         table = Table("audit_log", self.metadata, *columns, schema="_system")
         self._tables[table_key] = table
         return table
+
+    def _alter_existing_tables(self) -> None:
+        """Add columns that are in the Python metadata but missing from the database."""
+        insp = sa_inspect(self.engine)
+        with self.engine.connect() as conn:
+            for key, table in self._tables.items():
+                if table.schema is None:
+                    continue
+                schema = table.schema
+                tbl_name = table.name
+                try:
+                    existing = {c["name"] for c in insp.get_columns(tbl_name, schema=schema)}
+                except Exception:
+                    continue  # Table not in DB yet — create_all will handle it
+                for col in table.c:
+                    if col.name not in existing:
+                        col_type = col.type.compile(dialect=self.engine.dialect)
+                        conn.execute(text(
+                            f'ALTER TABLE "{schema}"."{tbl_name}" '
+                            f'ADD COLUMN IF NOT EXISTS "{col.name}" {col_type}'
+                        ))
+            conn.commit()
 
     @staticmethod
     def _make_column(attr_key: str, attr_body: dict) -> Optional[Column]:

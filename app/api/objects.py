@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func, or_, select
+from sqlalchemy import String, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core import audit as audit_svc
@@ -52,8 +52,8 @@ def list_records(
 
     if search:
         text_cols = [
-            c for c in table.c if hasattr(c.type, "length") or c.type.__class__.__name__ in ("Text", "String")
-            and not c.name.startswith("_")
+            c for c in table.c
+            if isinstance(c.type, String) and not c.name.startswith("_")
         ]
         if text_cols:
             q = q.where(or_(*[c.ilike(f"%{search}%") for c in text_cols]))

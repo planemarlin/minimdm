@@ -9,6 +9,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Planned
 - Upsert support for bulk import: match incoming rows against an existing record by a configurable key attribute and update in place instead of always inserting
 
+## [0.1.1] – 2026-03-11
+
+### Fixed
+- Edit form never loaded (spinning circle): Jinja2 template produced `\"uuid\"` (invalid JS) instead of `"uuid"` for the record ID argument
+- Export and import URLs returned "Invalid record ID": FastAPI matched `/export` against the `/{record_id}` wildcard because the import/export router was registered after the objects router
+- Search field always returned "Failed to load records": Python operator-precedence bug caused wrong columns to be passed to SQLAlchemy's `ilike()`
+- Config reload did not apply new attributes to the database: `sync_schema` now resets its in-memory table cache on each call and issues `ALTER TABLE … ADD COLUMN IF NOT EXISTS` for any new columns found in the config
+
+### Changed
+- Clicking a row in the record list now navigates directly to the record detail page
+- Parent record is shown with a clickable link in the detail view
+- Reference and parent dropdowns show the first two non-reference attributes (e.g. "S001 – Acme Ltd") instead of just the first
+
 ## [0.1.0] – 2026-03-11
 
 ### Added

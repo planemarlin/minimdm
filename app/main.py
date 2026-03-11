@@ -72,9 +72,11 @@ templates = Jinja2Templates(directory="app/templates")
 # -----------------------------------------------------------------
 from app.api import audit_api, import_export, objects, schemas_api  # noqa: E402
 
+# Import/export must be registered before objects to avoid /export being
+# matched by the /{record_id} wildcard route.
+app.include_router(import_export.router, prefix="/api", tags=["Import / Export"])
 app.include_router(objects.router, prefix="/api", tags=["Records"])
 app.include_router(schemas_api.router, prefix="/api", tags=["Schemas"])
-app.include_router(import_export.router, prefix="/api", tags=["Import / Export"])
 app.include_router(audit_api.router, prefix="/api", tags=["Audit"])
 
 
