@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ obj_config.name }} – {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/">Home</a> / {{ schema }} / {{ obj_config.name }}
+</div>
+
+<div class="page-header">
+  <h1 class="page-title">{{ obj_config.name }}</h1>
+  <div class="import-export">
+    <button class="btn btn-secondary btn-sm" onclick="exportRecords('{{ schema }}','{{ obj }}','csv')">Export CSV</button>
+    <button class="btn btn-secondary btn-sm" onclick="exportRecords('{{ schema }}','{{ obj }}','tsv')">Export TSV</button>
+    <button class="btn btn-secondary btn-sm" onclick="exportRecords('{{ schema }}','{{ obj }}','json')">Export JSON</button>
+    <label class="btn btn-secondary btn-sm" style="cursor:pointer">
+      Import
+      <input type="file" id="import-file" style="display:none" accept=".csv,.tsv,.json" onchange="importFile(this)" />
+    </label>
+  </div>
+  <a class="btn btn-primary" href="/{{ schema }}/{{ obj }}/new">+ New record</a>
+</div>
+
+{% if obj_config.description %}
+<p style="font-size:.875rem; color:var(--text-muted); margin-bottom:1rem">{{ obj_config.description }}</p>
+{% endif %}
+
+<div class="toolbar">
+  <div class="search-box">
+    <input type="search" id="search-input" placeholder="Search..." />
+  </div>
+  <span style="font-size:.8rem; color:var(--text-muted)"><span id="total-count">…</span> records</span>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          {% for attr_key, attr in obj_config.attributes.items() %}
+          {% if not attr.reference and loop.index <= 6 %}
+          <th>{{ attr.name }}</th>
+          {% endif %}
+          {% endfor %}
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="record-tbody">
+        <tr><td colspan="20" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="pagination" class="pagination"></div>
+
+<!-- Import status -->
+<div id="import-status"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const recordList = new RecordList({
+  schema: "{{ schema }}",
+  obj: "{{ obj }}",
+  objConfig: {{ obj_config | tojson }},
+});
+
+async function importFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const ext = file.name.split(".").pop().toLowerCase();
+  const format = ext === "json" ? "json" : ext === "tsv" ? "tsv" : "csv";
+  const fd = new FormData();
+  fd.append("file", file);
+  const statusEl = document.getElementById("import-status");
+  statusEl.innerHTML = `<div class="alert alert-info">Importing…</div>`;
+  const res = await fetch(`/api/records/{{ schema }}/{{ obj }}/import?format=${format}`, {
+    method: "POST", body: fd
+  });
+  const data = await res.json();
+  if (res.ok) {
+    const errHtml = data.errors.length
+      ? `<br>Errors: ${data.errors.map(e => `Row ${e.row}: ${e.error}`).join("; ")}`
+      : "";
+    statusEl.innerHTML = `<div class="alert alert-success">Imported ${data.inserted} records.${errHtml}</div>`;
+    recordList.load();
+  } else {
+    statusEl.innerHTML = `<div class="alert alert-error">${data.detail || "Import failed."}</div>`;
+  }
+  input.value = "";
+}
+</script>
+{% endblock %}

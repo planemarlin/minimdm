@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <button class="menu-btn" id="menu-btn" aria-label="Toggle navigation">&#9776;</button>
+    <a class="header__brand" href="/">{{ app_name }}</a>
+    <div class="header__spacer"></div>
+    <nav class="header__nav">
+      <a href="/docs" target="_blank">API Docs</a>
+    </nav>
+  </header>
+
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    {% for schema in schemas %}
+    <div class="sidebar__section">
+      <div class="sidebar__schema">{{ schema.name }}</div>
+      {% for object in schema.objects %}
+      <a class="sidebar__item {% if request.url.path starts with '/' + schema.name + '/' + object.key %}sidebar__item--active{% endif %}"
+         href="/{{ schema.name }}/{{ object.key }}">
+        {{ object.name }}
+      </a>
+      {% endfor %}
+    </div>
+    {% endfor %}
+    {% if not schemas %}
+    <div style="padding:1rem; font-size:.8rem; color:#94a3b8;">
+      No schemas loaded.<br/>Add a config file and reload.
+    </div>
+    {% endif %}
+  </nav>
+
+  <!-- Main -->
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="/static/js/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Record – {{ obj_config.name }} – {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/">Home</a> / <a href="/{{ schema }}/{{ obj }}">{{ obj_config.name }}</a> / Record
+</div>
+
+<div class="page-header">
+  <h1 class="page-title">{{ obj_config.name }}</h1>
+  <a class="btn btn-secondary" href="/{{ schema }}/{{ obj }}/{{ record_id }}/edit">Edit</a>
+  <a class="btn btn-secondary" href="/{{ schema }}/{{ obj }}/{{ record_id }}/history">History</a>
+  <button class="btn btn-danger"
+    onclick="confirmDelete('{{ schema }}','{{ obj }}','{{ record_id }}')">Delete</button>
+</div>
+
+<div class="card">
+  <div class="card__body">
+    <div id="detail-container">
+      <div style="text-align:center;padding:2rem"><span class="spinner"></span></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+loadRecordDetail("{{ schema }}", "{{ obj }}", "{{ record_id }}", {{ obj_config | tojson }});
+
+async function confirmDelete(schema, obj, id) {
+  if (!confirm("Delete this record? This action can be undone via history.")) return;
+  const reason = prompt("Reason for deletion (optional):") || "";
+  const res = await fetch(`/api/records/${schema}/${obj}/${id}?reason=${encodeURIComponent(reason)}`, { method: "DELETE" });
+  if (res.ok || res.status === 204) {
+    window.location.href = `/${schema}/${obj}`;
+  } else {
+    alert("Failed to delete record.");
+  }
+}
+</script>
+{% endblock %}
