@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Planned
+- Upsert support for bulk import: match incoming rows against an existing record by a configurable key attribute and update in place instead of always inserting
+
 ## [0.1.0] – 2026-03-11
 
 ### Added
