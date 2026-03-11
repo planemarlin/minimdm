@@ -24,7 +24,7 @@
     <div class="sidebar__section">
       <div class="sidebar__schema">{{ schema.name }}</div>
       {% for object in schema.objects %}
-      <a class="sidebar__item {% if request.url.path starts with '/' + schema.name + '/' + object.key %}sidebar__item--active{% endif %}"
+      <a class="sidebar__item {% if request.url.path.startswith('/' + schema.name + '/' + object.key) %}sidebar__item--active{% endif %}"
          href="/{{ schema.name }}/{{ object.key }}">
         {{ object.name }}
       </a>
