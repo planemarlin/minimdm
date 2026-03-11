@@ -10,6 +10,8 @@ from fastapi.templating import Jinja2Templates
 from app.config import settings
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
+from sqlalchemy import text
+
 from app.database import engine
 
 logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
@@ -19,7 +21,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     tm = TableManager(engine)
-    # Always ensure the audit log table exists
+
+    # Create _system schema first, then the audit log table
+    with engine.connect() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS _system"))
+        conn.commit()
+
     tm._ensure_audit_log_table()
     tm.metadata.create_all(engine)
 
