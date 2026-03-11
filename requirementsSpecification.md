@@ -9,7 +9,7 @@ miniMDM is a minimal light-weight Master Data Management application featuring a
 - Use open source web server
 - Security first approach
 - Data sent over network should be kept to a minimal
-- Web application should adapt to screen size
+- Web application should adapt to screen size, support for both desktop and mobile
 
 ## Non-technical specification
 
@@ -19,11 +19,14 @@ miniMDM is a minimal light-weight Master Data Management application featuring a
     - Changelog.md
     - docs folder with
         - installation instruction
-        - feature documentation
+        - feature/reference documentation
         - list of software used in application
+        - common errors and their solutions
+        - tutorial and quick start guide
 - API end point documentation should be generated and available in API
 - Feature/function tests should be created and it should be possible to execute them easily
 - Application language should be English but values entered should accept any language (Unicode)
+- Error messages should be common and easy to understand
 
 ## Feature requirements
 
@@ -39,14 +42,15 @@ Implmentation should first focus on the core features and then additional featur
 - Historic values should be saved and versioned
 - It should be possible to view historic values and revert to any previous version
 - In the web application values should be searchable
+- It should be possible to view multiple objects as they reference each other. But only one object at the time should be editable.
 
 ### Additional features
 
 - Security - access should be controlled and only given by admins
-    - Access by token
+    - Access by username and password (not recommended)
+    - Access by token (to API)
     - Access by cloud logins, i.e. Azure Entra Id and similar in AWS and GCP
     - Access by on-prem network logins
-    - Access give to users or groups
 - Save user preferences
 - Use of schema in the database should be a way to group objects to set different access for different users/groups
 
@@ -61,3 +65,96 @@ Implmentation should first focus on the core features and then additional featur
 ## Other notes
 
 Further features may be added in the future. The implementation should allow this.
+
+## Example config file
+
+### Yaml
+
+```Yaml
+minimdm
+    - schemas
+        - dev
+            - objects
+                - company
+                    name: 'Company'
+                    description: 'Legal Entity'
+                    attributes:
+                        - code
+                            name: 'Code'
+                            type: string
+                            required: true
+                        - name
+                            name: 'Name'
+                            type: string
+                            required: false
+                        - country
+                            name: 'Country'
+                            type: string
+                - division
+                    name: 'Division'
+                    parent: company
+                    description: 'Division is a grouping of Cost Centers'
+                    attributes:
+                        - code
+                            name: 'Code'
+                            type: string
+                            required: true
+                        - name
+                            name: 'Division name'
+                            type: string
+                        - external_number
+                            name: External division number'
+                            type: numeric
+                            required: false
+                - cost_center
+                    name: 'Cost Center'
+                    parent: division
+                    description: 'Cost Center is the lowest level'
+                    attributes:
+                        - code
+                            name: 'Cost Center number'
+                            type: string
+                            required: true
+                        - name
+                            name: 'Cost Center name'
+                            type: string
+                        - manager
+                            reference: manager
+                            name: 'Cost Center manager'
+                - manager:
+                    name: 'Manager'
+                    description: 'A manager responsible for one or more levels in the organization'
+                    attributes:
+                        - employee_number
+                            name: 'Employee number'
+                            type: string
+                            required: true
+                        - name
+                            name: 'Manager name'
+                            type: string
+                        - title
+                            name: 'Manager title'
+                            type: string
+                        - email
+                            name: 'E-mail'
+                            type: email
+        - test
+            - objects
+                - test:
+                    name: 'test'
+                    description: 'test'
+                    attributes:
+                        - test
+                            name: 'test'
+                            type: string
+                            required: true
+                        - test2
+                            name: 'test2'
+                            type: string
+                            required: false
+```
+
+### Json
+
+```Json
+````
