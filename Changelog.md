@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Planned
 - Upsert support for bulk import: match incoming rows against an existing record by a configurable key attribute and update in place instead of always inserting
+- Historic values visible on the history page: expand each version entry to show the full attribute snapshot so users can compare versions and make informed revert decisions
 
 ## [0.1.1] – 2026-03-11
 

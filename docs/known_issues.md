@@ -44,6 +44,11 @@ Issues marked **Fixed** are resolved in the current codebase.
 **Description:** The detail view shows a link to the parent record but does not display the parent's full data inline. The requirements specify that multiple related objects should be visible simultaneously (read-only), with only one editable at a time.
 **Planned fix:** Add a collapsible "related objects" panel in the detail view.
 
+### History page does not show historic attribute values
+**Status:** Future work
+**Description:** The history page lists versions with their action, timestamp, and optional reason, but does not display the actual attribute values for each snapshot. Without visible values (or a reason comment) it is difficult to decide which version to revert to.
+**Planned fix:** Expand each version entry on the history page to show the full attribute snapshot for that version.
+
 ### Audit log has no dedicated UI page
 **Status:** Future work
 **Description:** The audit log is accessible via `GET /api/audit` but there is no web page for browsing it.
