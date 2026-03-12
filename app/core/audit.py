@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session
@@ -72,6 +73,8 @@ def _serialize(values: Optional[dict]) -> Optional[dict]:
             result[k] = str(v)
         elif isinstance(v, datetime):
             result[k] = v.isoformat()
+        elif isinstance(v, Decimal):
+            result[k] = float(v)
         else:
             result[k] = v
     return result
