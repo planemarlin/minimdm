@@ -108,8 +108,8 @@ All changes are recorded in `_system.audit_log`:
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/records/{schema}/{obj}/export` | Export (`?format=csv|tsv|json`) |
-| `POST` | `/api/records/{schema}/{obj}/import` | Import (`?format=csv|tsv|json`) |
+| `GET` | `/api/records/{schema}/{obj}/export` | Export (`?format=csv\|tsv\|json`) |
+| `POST` | `/api/records/{schema}/{obj}/import` | Import (`?format=csv\|tsv\|json`; optional `?upsert_key=<attr>`) |
 
 ### Schemas
 
@@ -134,6 +134,15 @@ All changes are recorded in `_system.audit_log`:
 | `page` | 1 | Page number |
 | `page_size` | 50 | Records per page (max 500) |
 | `search` | — | Full-text search across string columns |
+| `include_deleted` | false | Include soft-deleted records in the results |
+
+### Query Parameters (Import)
+
+| Parameter | Default | Description |
+|---|---|---|
+| `format` | `csv` | File format: `csv`, `tsv`, or `json` |
+| `upsert_key` | — | Attribute key to match against existing records. If a non-deleted record with the same value exists, it is updated in place; otherwise a new record is inserted. |
+| `reason` | — | Audit note attached to every inserted or updated record |
 
 ### Record Body Format
 
