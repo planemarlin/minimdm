@@ -36,10 +36,11 @@
     <table>
       <thead>
         <tr>
+          {% set ns = namespace(col=0) %}
           {% for attr_key, attr in obj_config.attributes.items() %}
-          {% if not attr.reference and loop.index <= 6 %}
+          {% if not attr.reference %}{% set ns.col = ns.col + 1 %}{% if ns.col <= 6 %}
           <th>{{ attr.name }}</th>
-          {% endif %}
+          {% endif %}{% endif %}
           {% endfor %}
           <th></th>
         </tr>

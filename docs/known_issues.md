@@ -24,9 +24,8 @@ Issues marked **Fixed** are resolved in the current codebase.
 ## Open Issues
 
 ### Column names do not match values in the record list table
-**Status:** Bug
-**Description:** The table headers are rendered server-side in Jinja2 using `loop.index <= 6` to cap at six columns, where the loop index counts all attributes including references. The JavaScript rows are rendered from `userAttributes` (references already filtered out) sliced to 6. When a reference attribute appears between non-reference attributes, the header count and the cell count diverge, shifting all subsequent values one column to the left under the wrong header.
-**Planned fix:** Align the header rendering logic with the JS logic — skip reference attributes before applying the column cap, so both sides count only non-reference attributes.
+**Status:** Fixed in 0.1.2
+**Root cause:** The Jinja2 header loop used `loop.index <= 6` which counted all attributes (including references) toward the 6-column cap, while the JavaScript filtered out references before slicing. Fixed by using a Jinja2 namespace counter that increments only for non-reference attributes.
 
 ### Deleted records are not browsable from the UI
 **Status:** Design limitation / future work
