@@ -1,7 +1,7 @@
 # Known Issues
 
 This document tracks confirmed bugs and design limitations found during testing.
-Issues marked **Fixed** are resolved in the current codebase.
+Issues marked **Fixed** are resolved in the current codebase. Issues marked **Implemented** are resolved features.
 
 ---
 

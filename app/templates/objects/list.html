@@ -12,6 +12,12 @@
     <button class="btn btn-secondary btn-sm" onclick="exportRecords('{{ schema }}','{{ obj }}','csv')">Export CSV</button>
     <button class="btn btn-secondary btn-sm" onclick="exportRecords('{{ schema }}','{{ obj }}','tsv')">Export TSV</button>
     <button class="btn btn-secondary btn-sm" onclick="exportRecords('{{ schema }}','{{ obj }}','json')">Export JSON</button>
+    <select id="upsert-key" class="btn btn-secondary btn-sm" title="Upsert key: if set, rows matching an existing record on this attribute will be updated instead of inserted">
+      <option value="">Insert only</option>
+      {% for attr_key, attr in obj_config.attributes.items() %}
+      {% if not attr.reference %}<option value="{{ attr_key }}">Upsert on: {{ attr.name }}</option>{% endif %}
+      {% endfor %}
+    </select>
     <label class="btn btn-secondary btn-sm" style="cursor:pointer">
       Import
       <input type="file" id="import-file" style="display:none" accept=".csv,.tsv,.json" onchange="importFile(this)" />
@@ -71,19 +77,25 @@ async function importFile(input) {
   if (!file) return;
   const ext = file.name.split(".").pop().toLowerCase();
   const format = ext === "json" ? "json" : ext === "tsv" ? "tsv" : "csv";
+  const upsertKey = document.getElementById("upsert-key")?.value || "";
   const fd = new FormData();
   fd.append("file", file);
   const statusEl = document.getElementById("import-status");
   statusEl.innerHTML = `<div class="alert alert-info">Importing…</div>`;
-  const res = await fetch(`/api/records/{{ schema }}/{{ obj }}/import?format=${format}`, {
+  const params = new URLSearchParams({ format });
+  if (upsertKey) params.set("upsert_key", upsertKey);
+  const res = await fetch(`/api/records/{{ schema }}/{{ obj }}/import?${params}`, {
     method: "POST", body: fd
   });
   const data = await res.json();
   if (res.ok) {
+    const parts = [];
+    if (data.inserted) parts.push(`${data.inserted} inserted`);
+    if (data.updated) parts.push(`${data.updated} updated`);
     const errHtml = data.errors.length
       ? `<br>Errors: ${data.errors.map(e => `Row ${e.row}: ${e.error}`).join("; ")}`
       : "";
-    statusEl.innerHTML = `<div class="alert alert-success">Imported ${data.inserted} records.${errHtml}</div>`;
+    statusEl.innerHTML = `<div class="alert alert-success">${parts.join(", ") || "0 records"}.${errHtml}</div>`;
     recordList.load();
   } else {
     statusEl.innerHTML = `<div class="alert alert-error">${data.detail || "Import failed."}</div>`;
