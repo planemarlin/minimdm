@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} – Home{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">{{ app_name }}</h1>
+</div>
+
+{% if schemas %}
+<div class="schema-cards">
+  {% for schema in schemas %}
+  <div class="card schema-card">
+    <div class="schema-card__name">Schema: {{ schema.name }}</div>
+    <ul class="schema-card__objects">
+      {% for obj in schema.objects %}
+      <li>
+        <a href="/{{ schema.name }}/{{ obj.key }}">{{ obj.name }}</a>
+        {% if obj.description %}
+        <span style="font-size:.75rem; color:var(--text-muted); margin-left:.25rem">– {{ obj.description }}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="card__body">
+    <div class="alert alert-info">
+      No data objects configured yet. Create a config file at
+      <code>config/minimdm.yaml</code> and restart the server, or call
+      <code>POST /api/config/reload</code> after placing the file.
+    </div>
+    <p style="margin-top:1rem; font-size:.875rem; color:var(--text-muted)">
+      See the <a href="/docs" target="_blank">API documentation</a> and the
+      <a href="docs/quickstart.md" target="_blank">quickstart guide</a> for help.
+    </p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

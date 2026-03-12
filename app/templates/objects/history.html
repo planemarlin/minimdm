@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}History – {{ obj_config.name }} – {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/">Home</a> / <a href="/{{ schema }}/{{ obj }}">{{ obj_config.name }}</a> /
+  <a href="/{{ schema }}/{{ obj }}/{{ record_id }}">Record</a> / History
+</div>
+
+<div class="page-header">
+  <h1 class="page-title">Record History</h1>
+  <a class="btn btn-secondary" href="/{{ schema }}/{{ obj }}/{{ record_id }}">Back to record</a>
+</div>
+
+<div class="card">
+  <div class="card__body">
+    <div id="history-container">
+      <div style="text-align:center;padding:2rem"><span class="spinner"></span></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+loadHistory("{{ schema }}", "{{ obj }}", "{{ record_id }}");
+</script>
+{% endblock %}
