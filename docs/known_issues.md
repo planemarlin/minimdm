@@ -23,6 +23,11 @@ Issues marked **Fixed** are resolved in the current codebase.
 
 ## Open Issues
 
+### Column names do not match values in the record list table
+**Status:** Bug
+**Description:** The table headers are rendered server-side in Jinja2 using `loop.index <= 6` to cap at six columns, where the loop index counts all attributes including references. The JavaScript rows are rendered from `userAttributes` (references already filtered out) sliced to 6. When a reference attribute appears between non-reference attributes, the header count and the cell count diverge, shifting all subsequent values one column to the left under the wrong header.
+**Planned fix:** Align the header rendering logic with the JS logic — skip reference attributes before applying the column cap, so both sides count only non-reference attributes.
+
 ### Deleted records are not browsable from the UI
 **Status:** Design limitation / future work
 **Description:** Records are soft-deleted (`_deleted_at` is set) and their full history is preserved in the `_history` table and audit log. However, once a record is deleted it no longer appears in the object list, and the only way to reach its history page is to know its UUID directly.
