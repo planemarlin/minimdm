@@ -66,6 +66,7 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
+templates.env.policies["json.dumps_kwargs"] = {"sort_keys": False}
 
 # -----------------------------------------------------------------
 # API routers

@@ -58,6 +58,8 @@ class RecordList {
     this.paginationEl = document.getElementById("pagination");
     this.totalEl = document.getElementById("total-count");
     this.searchInput = document.getElementById("search-input");
+    this.deletedToggle = document.getElementById("show-deleted-toggle");
+    this.includeDeleted = false;
 
     if (this.searchInput) {
       let timer;
@@ -68,6 +70,14 @@ class RecordList {
           this.page = 1;
           this.load();
         }, 300);
+      });
+    }
+
+    if (this.deletedToggle) {
+      this.deletedToggle.addEventListener("change", (e) => {
+        this.includeDeleted = e.target.checked;
+        this.page = 1;
+        this.load();
       });
     }
 
@@ -89,6 +99,7 @@ class RecordList {
       page_size: this.pageSize,
     });
     if (this.search) params.set("search", this.search);
+    if (this.includeDeleted) params.set("include_deleted", "true");
 
     const res = await fetch(
       `/api/records/${this.schema}/${this.obj}?${params}`
@@ -119,17 +130,23 @@ class RecordList {
     const obj = this.obj;
     this.tbody.innerHTML = records
       .map((r) => {
+        const isDeleted = !!r._deleted_at;
         const cells = attrs
           .slice(0, 6)
-          .map(([k]) => `<td>${escHtml(r[k] ?? "")}</td>`)
+          .map(([k]) => `<td style="${isDeleted ? "opacity:.5;text-decoration:line-through" : ""}">${escHtml(r[k] ?? "")}</td>`)
           .join("");
-        return `<tr style="cursor:pointer" onclick="window.location='/${schema}/${obj}/${r._id}'">
+        const actions = isDeleted
+          ? `<a class="btn btn-ghost btn-sm" href="/${schema}/${obj}/${r._id}/history">History</a>
+             <span class="badge badge-delete" style="font-size:.7rem">deleted</span>`
+          : `<a class="btn btn-ghost btn-sm" href="/${schema}/${obj}/${r._id}/edit">Edit</a>
+             <button class="btn btn-ghost btn-sm" style="color:var(--danger)"
+               onclick="recordList.confirmDelete('${r._id}')">Delete</button>`;
+        const rowClick = isDeleted
+          ? `onclick="window.location='/${schema}/${obj}/${r._id}/history'"`
+          : `onclick="window.location='/${schema}/${obj}/${r._id}'"`;
+        return `<tr style="cursor:pointer" ${rowClick}>
           ${cells}
-          <td class="td-actions" onclick="event.stopPropagation()">
-            <a class="btn btn-ghost btn-sm" href="/${schema}/${obj}/${r._id}/edit">Edit</a>
-            <button class="btn btn-ghost btn-sm" style="color:var(--danger)"
-              onclick="recordList.confirmDelete('${r._id}')">Delete</button>
-          </td>
+          <td class="td-actions" onclick="event.stopPropagation()">${actions}</td>
         </tr>`;
       })
       .join("");

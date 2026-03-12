@@ -1,7 +1,7 @@
 # Known Issues
 
 This document tracks confirmed bugs and design limitations found during testing.
-Issues marked **Fixed** are resolved in the current codebase.
+Issues marked **Fixed** are resolved in the current codebase. Issues marked **Implemented** are resolved features.
 
 ---
 
@@ -23,11 +23,13 @@ Issues marked **Fixed** are resolved in the current codebase.
 
 ## Open Issues
 
+### Column names do not match values in the record list table
+**Status:** Fixed in 0.1.2
+**Root cause:** The Jinja2 header loop used `loop.index <= 6` which counted all attributes (including references) toward the 6-column cap, while the JavaScript filtered out references before slicing. Fixed by using a Jinja2 namespace counter that increments only for non-reference attributes.
+
 ### Deleted records are not browsable from the UI
-**Status:** Design limitation / future work
-**Description:** Records are soft-deleted (`_deleted_at` is set) and their full history is preserved in the `_history` table and audit log. However, once a record is deleted it no longer appears in the object list, and the only way to reach its history page is to know its UUID directly.
-**Workaround:** Query the audit log API (`GET /api/audit?schema=…&obj=…&action=DELETE`) to find the UUID, then open `/api/records/{schema}/{obj}/{id}/history` directly.
-**Planned fix:** Add a "Show deleted" toggle to the record list page.
+**Status:** Fixed (implemented "Show deleted" toggle)
+**Root cause:** The record list API filtered out soft-deleted records and there was no UI path to reach their history. Fixed by adding an `include_deleted` query parameter to the list API and a "Show deleted" checkbox to the record list toolbar. Deleted rows are shown with strikethrough styling and link to their history page.
 
 ### A referenced record's ID still shows after the referenced record is deleted
 **Status:** Cosmetic / future work
@@ -43,6 +45,11 @@ Issues marked **Fixed** are resolved in the current codebase.
 **Status:** Partially fixed (parent is now shown with a link)
 **Description:** The detail view shows a link to the parent record but does not display the parent's full data inline. The requirements specify that multiple related objects should be visible simultaneously (read-only), with only one editable at a time.
 **Planned fix:** Add a collapsible "related objects" panel in the detail view.
+
+### History page does not show historic attribute values
+**Status:** Future work
+**Description:** The history page lists versions with their action, timestamp, and optional reason, but does not display the actual attribute values for each snapshot. Without visible values (or a reason comment) it is difficult to decide which version to revert to.
+**Planned fix:** Expand each version entry on the history page to show the full attribute snapshot for that version.
 
 ### Audit log has no dedicated UI page
 **Status:** Future work

@@ -6,8 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+- Column headers in record list misaligned with values when reference attributes appear in the attribute list: Jinja2 header loop now uses a namespace counter that skips references before applying the 6-column cap, matching the JavaScript rendering logic
+
+### Added
+- Upsert support for bulk import: select a key attribute in the import UI (or pass `upsert_key` to the API) to match incoming rows against existing records and update them in place instead of always inserting; the response reports inserted and updated counts separately
+- "Show deleted" toggle on the record list page: displays soft-deleted records with a strikethrough style; clicking a deleted row navigates to its history page where it can be reverted
+
 ### Planned
-- Upsert support for bulk import: match incoming rows against an existing record by a configurable key attribute and update in place instead of always inserting
+- Historic values visible on the history page: expand each version entry to show the full attribute snapshot so users can compare versions and make informed revert decisions
 
 ## [0.1.1] – 2026-03-11
 

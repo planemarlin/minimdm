@@ -101,6 +101,7 @@ async def import_records(
     request: Request,
     file: UploadFile = File(...),
     format: str = Query("csv", pattern="^(csv|tsv|json)$"),
+    upsert_key: Optional[str] = Query(None),
     reason: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
@@ -111,6 +112,11 @@ async def import_records(
         audit_table = tm.get_audit_table()
     except KeyError:
         raise HTTPException(404, f"Object '{schema}.{obj}' not found")
+
+    if upsert_key:
+        user_cols = {c.name for c in table.c if not c.name.startswith("_")}
+        if upsert_key not in user_cols:
+            raise HTTPException(400, f"upsert_key '{upsert_key}' is not a valid column for this object")
 
     content = await file.read()
     text = content.decode("utf-8-sig")  # handle BOM
@@ -133,11 +139,21 @@ async def import_records(
 
     for i, row in enumerate(rows):
         try:
-            _import_row(
-                db, table, history_table, audit_table,
-                row, reason, request, schema, obj
-            )
-            inserted += 1
+            if upsert_key:
+                action = _upsert_row(
+                    db, table, history_table, audit_table,
+                    row, upsert_key, reason, request, schema, obj
+                )
+                if action == "updated":
+                    updated += 1
+                else:
+                    inserted += 1
+            else:
+                _import_row(
+                    db, table, history_table, audit_table,
+                    row, reason, request, schema, obj
+                )
+                inserted += 1
         except Exception as e:
             errors.append({"row": i + 1, "error": str(e)})
 
@@ -152,6 +168,7 @@ async def import_records(
 
 
 def _import_row(db, table, history_table, audit_table, row: dict, reason, request, schema, obj):
+    from app.api.objects import _client_ip
     now = datetime.now(timezone.utc)
     user_cols = {c.name for c in table.c if not c.name.startswith("_")}
     values = {k: (v if v != "" else None) for k, v in row.items() if k in user_cols}
@@ -160,7 +177,6 @@ def _import_row(db, table, history_table, audit_table, row: dict, reason, reques
     values["_created_at"] = now
     values["_updated_at"] = now
 
-    from app.api.objects import _client_ip
     db.execute(table.insert().values(**values))
     audit_svc.write_history(
         db, history_table, values, version=1, action="INSERT", valid_from=now, reason=reason
@@ -170,3 +186,68 @@ def _import_row(db, table, history_table, audit_table, row: dict, reason, reques
         old_values=None, new_values=audit_svc._serialize(values),
         reason=reason, ip_address=_client_ip(request)
     )
+
+
+def _upsert_row(db, table, history_table, audit_table, row: dict, upsert_key: str, reason, request, schema, obj):
+    from app.api.objects import _client_ip
+    now = datetime.now(timezone.utc)
+    user_cols = {c.name for c in table.c if not c.name.startswith("_")}
+    values = {k: (v if v != "" else None) for k, v in row.items() if k in user_cols}
+
+    match_value = values.get(upsert_key)
+    existing = None
+    if match_value is not None:
+        existing = db.execute(
+            select(table)
+            .where(table.c[upsert_key] == match_value)
+            .where(table.c._deleted_at.is_(None))
+        ).mappings().first()
+
+    if existing:
+        rid = existing["_id"]
+        old_values = dict(existing)
+
+        current_version_row = db.execute(
+            select(history_table)
+            .where(history_table.c._id == rid)
+            .where(history_table.c._valid_to.is_(None))
+        ).mappings().first()
+        current_version = current_version_row["_version"] if current_version_row else 0
+
+        if current_version_row:
+            db.execute(
+                history_table.update()
+                .where(history_table.c._history_id == current_version_row["_history_id"])
+                .values(_valid_to=now)
+            )
+
+        updates = {**values, "_updated_at": now}
+        db.execute(table.update().where(table.c._id == rid).values(**updates))
+
+        new_values = {**old_values, **updates}
+        audit_svc.write_history(
+            db, history_table, new_values, version=current_version + 1,
+            action="UPDATE", valid_from=now, reason=reason
+        )
+        audit_svc.log_change(
+            db, audit_table, schema, obj, rid, "UPDATE",
+            old_values=audit_svc._serialize(old_values),
+            new_values=audit_svc._serialize(new_values),
+            reason=reason, ip_address=_client_ip(request)
+        )
+        return "updated"
+    else:
+        record_id = uuid.uuid4()
+        values["_id"] = record_id
+        values["_created_at"] = now
+        values["_updated_at"] = now
+        db.execute(table.insert().values(**values))
+        audit_svc.write_history(
+            db, history_table, values, version=1, action="INSERT", valid_from=now, reason=reason
+        )
+        audit_svc.log_change(
+            db, audit_table, schema, obj, record_id, "INSERT",
+            old_values=None, new_values=audit_svc._serialize(values),
+            reason=reason, ip_address=_client_ip(request)
+        )
+        return "inserted"

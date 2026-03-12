@@ -40,6 +40,7 @@ def list_records(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
     search: Optional[str] = Query(None),
+    include_deleted: bool = Query(False),
     db: Session = Depends(get_db),
 ):
     tm = _get_tm(request)
@@ -48,7 +49,9 @@ def list_records(
     except KeyError:
         raise HTTPException(404, f"Object '{schema}.{obj}' not found")
 
-    q = select(table).where(table.c._deleted_at.is_(None))
+    q = select(table)
+    if not include_deleted:
+        q = q.where(table.c._deleted_at.is_(None))
 
     if search:
         text_cols = [
@@ -363,18 +366,25 @@ def revert_record(
     old_values = dict(existing)
     now = datetime.now(timezone.utc)
 
-    # Close current history
+    # Close current history — use latest version by number because a DELETE
+    # row has _valid_to set, so _valid_to IS NULL would miss it.
     current = db.execute(
+        select(history_table)
+        .where(history_table.c._id == rid)
+        .order_by(history_table.c._version.desc())
+        .limit(1)
+    ).mappings().first()
+    current_version = current["_version"] if current else 0
+
+    open_row = db.execute(
         select(history_table)
         .where(history_table.c._id == rid)
         .where(history_table.c._valid_to.is_(None))
     ).mappings().first()
-    current_version = current["_version"] if current else 0
-
-    if current:
+    if open_row:
         db.execute(
             history_table.update()
-            .where(history_table.c._history_id == current["_history_id"])
+            .where(history_table.c._history_id == open_row["_history_id"])
             .values(_valid_to=now)
         )
 

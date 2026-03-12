@@ -65,10 +65,19 @@ S001,Acme Ltd,US,acme@example.com
 S002,Globex Corp,DE,info@globex.example
 ```
 
-Import via the UI (click **Import** on the object list page) or via the API:
+Import via the UI: on the object list page select **Insert only** (or choose an attribute to upsert on) from the dropdown next to the **Import** button, then click **Import** and pick the file.
+
+To upsert (update existing records instead of always inserting), select the matching attribute in the dropdown. Rows whose value for that attribute matches an existing record are updated; unmatched rows are inserted as new records. The response shows separate inserted and updated counts.
+
+Import via the API:
 
 ```bash
+# Insert only
 curl -X POST "http://localhost:8000/api/records/mycompany/supplier/import?format=csv" \
+  -F "file=@suppliers.csv"
+
+# Upsert on 'code'
+curl -X POST "http://localhost:8000/api/records/mycompany/supplier/import?format=csv&upsert_key=code" \
   -F "file=@suppliers.csv"
 ```
 
@@ -76,9 +85,11 @@ curl -X POST "http://localhost:8000/api/records/mycompany/supplier/import?format
 
 Use the search bar on the object list page to filter records. Results update as you type.
 
+To view soft-deleted records, check the **Show deleted** checkbox in the toolbar. Deleted rows appear with a strikethrough style and link directly to their history page, where they can be reverted.
+
 ## 6. View History and Revert
 
-Click **View** on a record, then click **History** to see all versions. Click **Revert** next to any version to restore it.
+Click any row in the record list to open the detail page, then click **History** to see all versions. Click **Revert** next to any version to restore it.
 
 ## 7. Export Data
 
