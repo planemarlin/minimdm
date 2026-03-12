@@ -40,6 +40,7 @@ def list_records(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
     search: Optional[str] = Query(None),
+    include_deleted: bool = Query(False),
     db: Session = Depends(get_db),
 ):
     tm = _get_tm(request)
@@ -48,7 +49,9 @@ def list_records(
     except KeyError:
         raise HTTPException(404, f"Object '{schema}.{obj}' not found")
 
-    q = select(table).where(table.c._deleted_at.is_(None))
+    q = select(table)
+    if not include_deleted:
+        q = q.where(table.c._deleted_at.is_(None))
 
     if search:
         text_cols = [

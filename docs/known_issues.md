@@ -28,10 +28,8 @@ Issues marked **Fixed** are resolved in the current codebase. Issues marked **Im
 **Root cause:** The Jinja2 header loop used `loop.index <= 6` which counted all attributes (including references) toward the 6-column cap, while the JavaScript filtered out references before slicing. Fixed by using a Jinja2 namespace counter that increments only for non-reference attributes.
 
 ### Deleted records are not browsable from the UI
-**Status:** Design limitation / future work
-**Description:** Records are soft-deleted (`_deleted_at` is set) and their full history is preserved in the `_history` table and audit log. However, once a record is deleted it no longer appears in the object list, and the only way to reach its history page is to know its UUID directly.
-**Workaround:** Query the audit log API (`GET /api/audit?schema=…&obj=…&action=DELETE`) to find the UUID, then open `/api/records/{schema}/{obj}/{id}/history` directly.
-**Planned fix:** Add a "Show deleted" toggle to the record list page.
+**Status:** Fixed (implemented "Show deleted" toggle)
+**Root cause:** The record list API filtered out soft-deleted records and there was no UI path to reach their history. Fixed by adding an `include_deleted` query parameter to the list API and a "Show deleted" checkbox to the record list toolbar. Deleted rows are shown with strikethrough styling and link to their history page.
 
 ### A referenced record's ID still shows after the referenced record is deleted
 **Status:** Cosmetic / future work
