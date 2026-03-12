@@ -148,6 +148,7 @@ async def object_new(request: Request, schema: str, obj: str):
             "schema": schema,
             "obj": obj,
             "obj_config": obj_config,
+            "record_id": None,
             "record": None,
             "schemas": schemas_list,
             "app_name": settings.app_name,
