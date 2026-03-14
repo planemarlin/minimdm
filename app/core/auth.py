@@ -3,8 +3,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import bcrypt
 import jwt
-from passlib.context import CryptContext
 from sqlalchemy import Boolean, Column, DateTime, String, Table, MetaData, func, select, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Session
@@ -13,19 +13,18 @@ from app.config import settings
 
 ALGORITHM = "HS256"
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 # ---------------------------------------------------------------------------
 # Password helpers
 # ---------------------------------------------------------------------------
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    pw = password.encode("utf-8")[:72]
+    return bcrypt.hashpw(pw, bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode("utf-8")[:72], hashed.encode())
 
 
 # ---------------------------------------------------------------------------
