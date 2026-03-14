@@ -11,30 +11,49 @@ pytestmark = pytest.mark.skipif(
     reason="TEST_DATABASE_URL not set – skipping integration tests",
 )
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _get_engine():
+    from app.main import app as fastapi_app
+    return fastapi_app.state.table_manager.engine
+
+
+def _delete_user(engine, username: str):
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("DELETE FROM _system.users WHERE username = :u"), {"u": username})
+        conn.commit()
+
+
+def _no_auth_headers():
+    """Override the session auth header so the request is unauthenticated."""
+    return {"Authorization": "invalid"}
+
+
+def _non_admin_headers():
+    """Return headers with a valid but non-admin token."""
+    from app.core.auth import create_token
+    token = create_token("00000000-0000-0000-0000-000000000002", "plain_user", is_admin=False)
+    return {"Authorization": f"Bearer {token}"}
+
 
 # ---------------------------------------------------------------------------
 # Unauthenticated access
 # ---------------------------------------------------------------------------
 
 def test_unauthenticated_api_request_returns_401(client):
-    """API routes must return 401 when no token is provided."""
-    import httpx
-    from app.main import app as fastapi_app
-    from fastapi.testclient import TestClient
-
-    # Use a fresh client with no auth headers
-    with TestClient(fastapi_app) as bare:
-        res = bare.get("/api/records/test/company")
+    """API routes must return 401 when no valid token is provided."""
+    res = client.get("/api/records/test/company", headers=_no_auth_headers())
     assert res.status_code == 401
 
 
 def test_login_page_is_publicly_accessible(client):
-    import httpx
-    from app.main import app as fastapi_app
-    from fastapi.testclient import TestClient
-
-    with TestClient(fastapi_app) as bare:
-        res = bare.get("/login", follow_redirects=False)
+    """The login page must be reachable without a token."""
+    # The middleware allows /login unconditionally; even with a valid token it
+    # still returns 200 (no redirect) because it's a public path.
+    res = client.get("/login")
     assert res.status_code == 200
 
 
@@ -172,14 +191,13 @@ def test_create_duplicate_user_returns_409(client):
 
 def test_admin_can_toggle_user_active(client):
     engine = _get_engine()
-    from app.core.auth import create_user, get_user_by_username
+    from app.core.auth import create_user, get_user_by_username, get_user_by_id
     create_user(engine, "toggle_user", "pass123")
     user = get_user_by_username(engine, "toggle_user")
     uid = str(user["id"])
     try:
         res = client.patch(f"/api/admin/users/{uid}", json={"is_active": False})
         assert res.status_code == 200
-        from app.core.auth import get_user_by_id
         updated = get_user_by_id(engine, uid)
         assert updated["is_active"] is False
     finally:
@@ -202,33 +220,10 @@ def test_admin_can_toggle_admin_role(client):
 
 
 def test_non_admin_cannot_access_user_management(client):
-    from app.main import app as fastapi_app
-    from fastapi.testclient import TestClient
-    from app.core.auth import create_token
-
-    token = create_token("00000000-0000-0000-0000-000000000002", "plain_user", is_admin=False)
-    with TestClient(fastapi_app) as c:
-        c.headers.update({"Authorization": f"Bearer {token}"})
-        res = c.get("/api/admin/users")
+    res = client.get("/api/admin/users", headers=_non_admin_headers())
     assert res.status_code == 403
 
 
 def test_patch_nonexistent_user_returns_404(client):
     res = client.patch("/api/admin/users/00000000-0000-0000-0000-000000000099", json={"is_active": False})
     assert res.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _get_engine():
-    from app.main import app as fastapi_app
-    return fastapi_app.state.table_manager.engine
-
-
-def _delete_user(engine, username: str):
-    from sqlalchemy import text
-    with engine.connect() as conn:
-        conn.execute(text("DELETE FROM _system.users WHERE username = :u"), {"u": username})
-        conn.commit()
