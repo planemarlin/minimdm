@@ -10,7 +10,15 @@ Follow the [installation guide](installation.md) then run:
 uv run uvicorn app.main:app --reload
 ```
 
-Open `http://localhost:8000` in your browser. You will see the home screen (empty until a config is loaded).
+Open `http://localhost:8000` in your browser. You will be redirected to the login page.
+
+On first run, a default admin account is created automatically:
+
+| Username | Password |
+|---|---|
+| `admin` | `admin` |
+
+Log in and immediately change the password via **Users** in the header navigation.
 
 ## 2. Define Your Data Model
 
@@ -97,10 +105,11 @@ Click **Export CSV**, **Export TSV**, or **Export JSON** on the list page.
 
 ## 8. Audit Log
 
-The full audit log is available via the API:
+The full audit log is available in the UI at **Audit Log** in the header (admin only), or via the API:
 
 ```bash
-curl http://localhost:8000/api/audit?schema=mycompany&obj=supplier
+curl -H "Authorization: Bearer <token>" \
+  http://localhost:8000/api/audit?schema=mycompany&obj=supplier
 ```
 
 ## API Documentation

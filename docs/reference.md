@@ -54,7 +54,7 @@ Every object table includes these system-managed columns (not in the config):
 | `_id` | UUID | Primary key |
 | `_created_at` | TIMESTAMPTZ | Record creation time |
 | `_updated_at` | TIMESTAMPTZ | Last update time |
-| `_created_by` | TEXT | User (future auth feature) |
+| `_created_by` | TEXT | Username of the authenticated user who created the record |
 | `_deleted_at` | TIMESTAMPTZ | Soft-delete timestamp |
 
 ## History Tables
@@ -80,7 +80,7 @@ All changes are recorded in `_system.audit_log`:
 |---|---|
 | `id` | UUID |
 | `timestamp` | UTC timestamp |
-| `user_name` | User (null until auth is implemented) |
+| `user_name` | Authenticated username; `LOGIN` / `LOGIN_FAILED` / `LOGOUT` for auth events |
 | `schema_name` | Schema of the changed object |
 | `object_name` | Object key |
 | `record_id` | UUID of the changed record |
@@ -90,7 +90,31 @@ All changes are recorded in `_system.audit_log`:
 | `reason` | Optional reason provided by the user |
 | `ip_address` | Client IP address |
 
+## Authentication
+
+All routes require authentication. The web UI uses an httpOnly cookie (`access_token`) set at login. API clients should pass `Authorization: Bearer <token>` on every request.
+
+Tokens are JWTs signed with `SECRET_KEY` and expire after `TOKEN_EXPIRE_HOURS` (default: 24 hours).
+
+On first startup, if no users exist, an admin account is created automatically from `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables (defaults: `admin` / `admin`). **Change the default password immediately after first login.**
+
 ## REST API Endpoints
+
+### Auth
+
+| Method | Path | Auth required | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/login` | No | Log in with `{"username": "…", "password": "…"}`; returns username and sets cookie |
+| `POST` | `/api/auth/logout` | No | Clear the session cookie |
+| `GET` | `/api/auth/me` | Yes | Return the current user's username and `is_admin` flag |
+
+### User Management (Admin only)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/admin/users` | List all users |
+| `POST` | `/api/admin/users` | Create a user (`{"username", "password", "is_admin"}`) |
+| `PATCH` | `/api/admin/users/{user_id}` | Update a user (`is_admin`, `is_active`, `password`; any combination) |
 
 ### Records
 
