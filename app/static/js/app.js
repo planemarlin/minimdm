@@ -694,10 +694,11 @@ async function loadAuditLog(page) {
 
   tbody.innerHTML = data.records.map((r) => {
     const shortId = r.record_id ? r.record_id.slice(0, 8) + "…" : "—";
-    const recordLink = r.record_id
+    const isSystemSchema = r.schema_name && r.schema_name.startsWith("_");
+    const recordLink = r.record_id && !isSystemSchema
       ? `<a href="/${r.schema_name}/${r.object_name}/${r.record_id}/history"
             title="${escHtml(r.record_id)}" style="font-family:monospace">${shortId}</a>`
-      : "—";
+      : (r.record_id ? `<span title="${escHtml(r.record_id)}" style="font-family:monospace;color:var(--text-muted)">${shortId}</span>` : "—");
     const objDisplay = objNames[`${r.schema_name}|${r.object_name}`] || r.object_name;
     return `<tr>
       <td style="white-space:nowrap;font-size:.85rem">${fmtDate(r.timestamp)}</td>

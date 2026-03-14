@@ -233,8 +233,8 @@ tr:hover td { background: var(--primary-light); }
 .btn-primary:hover { background: var(--primary-dark); }
 .btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
 .btn-secondary:hover { background: var(--bg); }
-.btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
-.btn-danger:hover { background: #b91c1c; }
+.btn-danger { border-color: var(--danger); color: var(--danger); }
+.btn-danger:hover { background: var(--danger-light); }
 .btn-sm { padding: .25rem .55rem; font-size: .78rem; }
 .btn-ghost { background: none; border-color: transparent; color: var(--primary); padding: .25rem .4rem; }
 .btn-ghost:hover { background: var(--primary-light); }
@@ -245,6 +245,7 @@ label { display: block; font-size: .8rem; font-weight: 600; margin-bottom: .3rem
 label .required { color: var(--danger); margin-left: .15rem; }
 input[type="text"],
 input[type="email"],
+input[type="password"],
 input[type="number"],
 input[type="date"],
 input[type="datetime-local"],
@@ -506,8 +507,6 @@ details[open] > .related-panel__summary::before { transform: rotate(90deg); }
 /* ===== Table utilities ===== */
 .table__actions { display: flex; gap: .4rem; flex-wrap: wrap; }
 .btn-sm { padding: .2rem .5rem; font-size: .78rem; }
-.btn-danger { border-color: var(--danger); color: var(--danger); }
-.btn-danger:hover { background: var(--danger-light); }
 .row--inactive { opacity: .55; }
 
 /* ===== Responsive ===== */
