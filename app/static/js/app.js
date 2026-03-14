@@ -299,6 +299,73 @@ async function loadRecordDetail(schema, obj, recordId, objConfig) {
   </div>`;
 
   container.innerHTML = `<div class="detail-grid">${parentHtml}${fields}</div>${sysMeta}`;
+
+  const relatedContainer = document.getElementById("related-container");
+  if (relatedContainer) {
+    await _renderChildPanels(relatedContainer, schema, obj, recordId);
+  }
+}
+
+async function _renderChildPanels(container, schema, parentObj, parentId) {
+  let schemaConfig;
+  try {
+    const res = await fetch(`/api/schemas/${schema}`);
+    if (!res.ok) return;
+    schemaConfig = await res.json();
+  } catch (_) { return; }
+
+  const childObjects = Object.entries(schemaConfig.objects || {})
+    .filter(([, cfg]) => cfg.parent === parentObj);
+  if (!childObjects.length) return;
+
+  for (const [childKey, childCfg] of childObjects) {
+    const panel = document.createElement("details");
+    panel.className = "related-panel";
+    panel.open = true;
+
+    const summary = document.createElement("summary");
+    summary.className = "related-panel__summary";
+    summary.innerHTML = `${escHtml(childCfg.name || childKey)}<span class="related-panel__count">loading…</span>`;
+    panel.appendChild(summary);
+
+    const body = document.createElement("div");
+    body.className = "related-panel__body";
+    body.innerHTML = `<div style="padding:.75rem 1rem;font-size:.85rem;color:var(--text-muted)"><span class="spinner"></span></div>`;
+    panel.appendChild(body);
+    container.appendChild(panel);
+
+    try {
+      const [recsRes, cfgRes] = await Promise.all([
+        fetch(`/api/records/${schema}/${childKey}?` + new URLSearchParams({ parent_id: parentId, page_size: 500 })),
+        fetch(`/api/schemas/${schema}/objects/${childKey}`),
+      ]);
+      if (!recsRes.ok) { body.innerHTML = `<div class="alert alert-error" style="margin:.75rem">Failed to load records.</div>`; continue; }
+      const data = await recsRes.json();
+      const refCfg = cfgRes.ok ? await cfgRes.json() : {};
+
+      summary.querySelector(".related-panel__count").textContent =
+        `${data.total} record${data.total !== 1 ? "s" : ""}`;
+
+      if (!data.total) {
+        body.innerHTML = `<div style="padding:.75rem 1rem;font-size:.85rem;color:var(--text-muted)">No records.</div>`;
+        continue;
+      }
+
+      const cols = Object.entries(refCfg.attributes || {})
+        .filter(([, v]) => !v.reference)
+        .slice(0, 4);
+
+      const thead = `<thead><tr>${cols.map(([k, v]) => `<th>${escHtml(v.name || k)}</th>`).join("")}<th></th></tr></thead>`;
+      const tbody = data.records.map(r => {
+        const cells = cols.map(([k]) => `<td>${escHtml(String(r[k] ?? ""))}</td>`).join("");
+        return `<tr style="cursor:pointer" onclick="window.location.href='/${schema}/${childKey}/${r._id}'">${cells}<td style="text-align:right"><a href="/${schema}/${childKey}/${r._id}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">View</a></td></tr>`;
+      }).join("");
+
+      body.innerHTML = `<div class="table-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>`;
+    } catch (_) {
+      body.innerHTML = `<div class="alert alert-error" style="margin:.75rem">Failed to load records.</div>`;
+    }
+  }
 }
 
 // ── Form field validation ─────────────────────────────────────────────────────

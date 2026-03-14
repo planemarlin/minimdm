@@ -40,9 +40,8 @@ Issues marked **Fixed** are resolved in the current codebase. Issues marked **Im
 **Description:** Client-side validation now runs before submission. Invalid number inputs are highlighted with a red border and a field-level error message ("Must be a whole number." / "Must be a valid number."). Integer fields also receive `step="1"` so the browser's native number picker enforces whole numbers. Server-side 422 validation error arrays are now formatted into a readable sentence instead of `[object Object]`.
 
 ### Viewing the parent record inline in the detail view
-**Status:** Partially fixed (parent is now shown with a link)
-**Description:** The detail view shows a link to the parent record but does not display the parent's full data inline. The requirements specify that multiple related objects should be visible simultaneously (read-only), with only one editable at a time.
-**Planned fix:** Add a collapsible "related objects" panel in the detail view.
+**Status:** Implemented
+**Description:** The detail view now shows collapsible panels below the main record for every child object (objects whose `parent` points to the current object). Each panel lists the child records in a table with a View link per row, and shows a record count in the header. Panels are open by default and can be collapsed by clicking the header.
 
 ### History page does not show historic attribute values
 **Status:** Implemented
