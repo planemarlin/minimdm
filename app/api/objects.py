@@ -445,9 +445,16 @@ def revert_record(
 # Helpers
 # ---------------------------------------------------------------------------
 
+_SYSTEM_COLS = {"_id", "_created_at", "_updated_at", "_deleted_at", "_version"}
+
+
 def _filter_columns(body: dict, table) -> dict:
-    """Keep only keys that map to actual table columns (excluding system columns)."""
-    col_names = {c.name for c in table.c if not c.name.startswith("_")}
+    """Keep only keys that map to writable table columns.
+
+    System columns are excluded; parent FK columns (e.g. _division_id) are
+    included because they start with _ but are legitimate user-settable fields.
+    """
+    col_names = {c.name for c in table.c if c.name not in _SYSTEM_COLS}
     return {k: v for k, v in body.items() if k in col_names}
 
 
