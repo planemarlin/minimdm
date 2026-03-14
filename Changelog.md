@@ -14,10 +14,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Audit log entries for authentication events: `LOGIN`, `LOGIN_FAILED`, and `LOGOUT` written to `_system.audit_log` including username and client IP
 - All data-change audit log entries now record the authenticated username in `user_name` (previously always null)
 - Admin and Audit Log links in the header navigation (visible to admin users only); username and logout button shown to all authenticated users
-- 17 new integration tests in `tests/test_api_auth.py` covering login/logout, inactive users, audit log entries, and user management CRUD
+- Audit log page split into two tabs: **Data Changes** (INSERT/UPDATE/DELETE/REVERT, excluding system schemas) and **Auth Events** (LOGIN/LOGIN_FAILED/LOGOUT with User and IP Address columns); Data Changes tab gains a User column
+- `GET /api/audit` accepts a new `exclude_system` boolean parameter to omit entries from schemas whose name starts with `_`
+- 19 integration tests in `tests/test_api_auth.py` (added `exclude_system` filter tests and inactive-user message assertion)
 
 ### Fixed
 - `Authorization: Bearer` header now takes priority over the `access_token` cookie in the auth middleware — correct semantics; browser sessions are unaffected (they never send an Authorization header)
+- Inactive users now receive "Account is disabled. Contact an administrator." (401) instead of the generic wrong-password message
+- Deactivate button in the user management table was rendered with a solid red background due to two conflicting `.btn-danger` CSS rules; consolidated to a single outline style
+- Login page password field was unstyled because `input[type="password"]` was missing from the global CSS input selector
+- Audit log record links for `_system` schema entries (LOGIN/LOGOUT events) pointed to a non-existent UI route; system-schema record IDs are now rendered as plain text
 
 ## [0.1.2] – 2026-03-14
 

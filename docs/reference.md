@@ -149,7 +149,20 @@ On first startup, if no users exist, an admin account is created automatically f
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/audit` | Query audit log (filterable by schema, object, action) |
+| `GET` | `/api/audit` | Query audit log (filterable by schema, object, action, time range) |
+
+### Query Parameters (Audit Log)
+
+| Parameter | Default | Description |
+|---|---|---|
+| `schema` | — | Filter by schema name (use `_system` for auth events) |
+| `obj` | — | Filter by object key within the schema |
+| `action` | — | Filter by action: `INSERT`, `UPDATE`, `DELETE`, `REVERT`, `LOGIN`, `LOGIN_FAILED`, `LOGOUT` |
+| `from_time` | — | ISO 8601 datetime — include entries at or after this time |
+| `to_time` | — | ISO 8601 datetime — include entries at or before this time |
+| `exclude_system` | `false` | When `true`, omit entries from system schemas (schema name starts with `_`) |
+| `page` | 1 | Page number |
+| `page_size` | 100 | Entries per page (max 1000) |
 
 ### Query Parameters (List Records)
 
