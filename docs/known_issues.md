@@ -32,9 +32,8 @@ Issues marked **Fixed** are resolved in the current codebase. Issues marked **Im
 **Root cause:** The record list API filtered out soft-deleted records and there was no UI path to reach their history. Fixed by adding an `include_deleted` query parameter to the list API and a "Show deleted" checkbox to the record list toolbar. Deleted rows are shown with strikethrough styling and link to their history page.
 
 ### A referenced record's ID still shows after the referenced record is deleted
-**Status:** Cosmetic / future work
-**Description:** If a Manager is assigned to a Cost Center and the Manager record is later deleted, the Cost Center detail page still shows the UUID of the deleted manager (since the FK column is not cleared on soft-delete).
-**Planned fix:** Resolve references at display time and show a "deleted" indicator when the referenced record has `_deleted_at` set.
+**Status:** Fixed
+**Description:** If a Manager is assigned to a Cost Center and the Manager record is later deleted, the Cost Center detail page now resolves the reference at display time. Active references show a clickable display name; deleted references show the display name with a red "deleted" badge. The single-record GET API was extended with `include_deleted=true` to support this lookup.
 
 ### Numeric fields accept non-numeric input without a visible error message
 **Status:** Known limitation

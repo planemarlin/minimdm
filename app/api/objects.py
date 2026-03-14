@@ -87,6 +87,7 @@ def get_record(
     obj: str,
     record_id: str,
     request: Request,
+    include_deleted: bool = Query(False),
     db: Session = Depends(get_db),
 ):
     tm = _get_tm(request)
@@ -100,9 +101,10 @@ def get_record(
     except ValueError:
         raise HTTPException(400, "Invalid record ID")
 
-    row = db.execute(
-        select(table).where(table.c._id == rid).where(table.c._deleted_at.is_(None))
-    ).mappings().first()
+    q = select(table).where(table.c._id == rid)
+    if not include_deleted:
+        q = q.where(table.c._deleted_at.is_(None))
+    row = db.execute(q).mappings().first()
 
     if not row:
         raise HTTPException(404, "Record not found")

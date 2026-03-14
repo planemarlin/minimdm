@@ -235,11 +235,54 @@ async function loadRecordDetail(schema, obj, recordId, objConfig) {
     }
   }
 
+  // Resolve reference fields: fetch referenced records (including deleted) in parallel
   const attrs = Object.entries(objConfig.attributes || {});
+  const refResolved = {};
+  await Promise.all(
+    attrs
+      .filter(([, v]) => v.reference)
+      .map(async ([k, v]) => {
+        const refId = record[`${k}_id`];
+        if (!refId) return;
+        try {
+          const [rRes, cfgRes] = await Promise.all([
+            fetch(`/api/records/${schema}/${v.reference}/${refId}?include_deleted=true`),
+            fetch(`/api/schemas/${schema}/objects/${v.reference}`),
+          ]);
+          if (!rRes.ok) return;
+          const refRec = await rRes.json();
+          const refCfg = cfgRes.ok ? await cfgRes.json() : {};
+          const dispKeys = Object.entries(refCfg.attributes || {})
+            .filter(([, av]) => !av.reference).slice(0, 2).map(([ak]) => ak);
+          const label = dispKeys.map(ak => refRec[ak]).filter(Boolean).join(" – ") || refId;
+          refResolved[k] = { label, deleted: !!refRec._deleted_at, id: refId, obj: v.reference };
+        } catch (_) {}
+      })
+  );
+
   const fields = attrs
     .map(([k, v]) => {
-      const colKey = v.reference ? `${k}_id` : k;
-      const val = record[colKey];
+      if (v.reference) {
+        const refId = record[`${k}_id`];
+        if (!refId) {
+          return `<div class="detail-field">
+            <div class="detail-field__label">${escHtml(v.name || k)}</div>
+            <div class="detail-field__value detail-field__value--empty">—</div>
+          </div>`;
+        }
+        const ref = refResolved[k];
+        const label = ref ? ref.label : refId;
+        const valueHtml = ref && ref.deleted
+          ? `${escHtml(label)} <span class="badge badge-delete">deleted</span>`
+          : ref
+            ? `<a href="/${schema}/${ref.obj}/${refId}">${escHtml(label)}</a>`
+            : escHtml(String(refId));
+        return `<div class="detail-field">
+          <div class="detail-field__label">${escHtml(v.name || k)}</div>
+          <div class="detail-field__value">${valueHtml}</div>
+        </div>`;
+      }
+      const val = record[k];
       return `<div class="detail-field">
         <div class="detail-field__label">${escHtml(v.name || k)}</div>
         <div class="detail-field__value ${val == null ? "detail-field__value--empty" : ""}">
