@@ -16,6 +16,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Audit log UI page at `/admin/audit`: paginated, filterable table of all changes (schema, object, action, record link, reason); accessible from the header navigation on every page
 - Audit log datetime range filter: From/To datetime-local inputs allow narrowing entries to a specific time window; values are converted to UTC before querying so results match the local timestamps displayed in the table; object filter is now a cascading dropdown showing object display names
 - Deleted reference indicator on the record detail page: reference fields now resolve to a display name with a link; if the referenced record has been soft-deleted the display name is shown with a red "deleted" badge instead of a link
+- Numeric field validation: client-side validation runs before form submission and highlights invalid number inputs with a red border and a field-level error message; integer fields enforce whole numbers via `step="1"`; server-side 422 error details are now displayed as readable text instead of `[object Object]`
 
 ### Added (tests)
 - API integration tests covering the full CRUD lifecycle, search, pagination, soft-delete, `include_deleted` listing, history, revert (including reverting a deleted record), and all import/export formats with upsert; requires `TEST_DATABASE_URL` and is skipped otherwise

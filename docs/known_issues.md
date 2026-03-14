@@ -36,9 +36,8 @@ Issues marked **Fixed** are resolved in the current codebase. Issues marked **Im
 **Description:** If a Manager is assigned to a Cost Center and the Manager record is later deleted, the Cost Center detail page now resolves the reference at display time. Active references show a clickable display name; deleted references show the display name with a red "deleted" badge. The single-record GET API was extended with `include_deleted=true` to support this lookup.
 
 ### Numeric fields accept non-numeric input without a visible error message
-**Status:** Known limitation
-**Description:** HTML `type="number"` inputs prevent non-numeric characters in most browsers but the error state is not styled, and some browsers may be more permissive. Server-side, PostgreSQL will reject invalid values but the error message surfaced in the UI is generic.
-**Planned fix:** Add explicit client-side validation with styled error messages, and improve server-side error response formatting.
+**Status:** Fixed
+**Description:** Client-side validation now runs before submission. Invalid number inputs are highlighted with a red border and a field-level error message ("Must be a whole number." / "Must be a valid number."). Integer fields also receive `step="1"` so the browser's native number picker enforces whole numbers. Server-side 422 validation error arrays are now formatted into a readable sentence instead of `[object Object]`.
 
 ### Viewing the parent record inline in the detail view
 **Status:** Partially fixed (parent is now shown with a link)

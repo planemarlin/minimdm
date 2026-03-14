@@ -301,6 +301,35 @@ async function loadRecordDetail(schema, obj, recordId, objConfig) {
   container.innerHTML = `<div class="detail-grid">${parentHtml}${fields}</div>${sysMeta}`;
 }
 
+// ── Form field validation ─────────────────────────────────────────────────────
+
+function _clearFieldErrors(form) {
+  form.querySelectorAll(".input-error").forEach(el => el.classList.remove("input-error"));
+  form.querySelectorAll(".form-error").forEach(el => el.remove());
+}
+
+function _setFieldError(input, msg) {
+  input.classList.add("input-error");
+  const div = document.createElement("div");
+  div.className = "form-error";
+  div.textContent = msg;
+  input.insertAdjacentElement("afterend", div);
+}
+
+function _validateForm(form) {
+  _clearFieldErrors(form);
+  let valid = true;
+  for (const input of form.querySelectorAll("input[type='number']")) {
+    const val = input.value.trim();
+    if (val === "") continue;
+    if (!input.validity.valid) {
+      _setFieldError(input, input.step === "1" ? "Must be a whole number." : "Must be a valid number.");
+      valid = false;
+    }
+  }
+  return valid;
+}
+
 // ── Record form page ─────────────────────────────────────────────────────────
 
 async function loadRecordForm(schema, obj, recordId, objConfig) {
@@ -330,11 +359,12 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
         : v.type === "numeric" || v.type === "integer" ? "number"
         : v.type === "date" ? "date"
         : "text";
+      const step = v.type === "integer" ? ' step="1"' : v.type === "numeric" ? ' step="any"' : "";
       const val = record[k] ?? "";
       return `<div class="form-group">
         <label>${escHtml(v.name || k)}${v.required ? '<span class="required">*</span>' : ""}</label>
         <input type="${inputType}" name="${k}" value="${escHtml(val)}"
-          ${v.required ? "required" : ""} />
+          ${v.required ? "required" : ""}${step} />
       </div>`;
     })
     .join("");
@@ -369,6 +399,8 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (!_validateForm(form)) return;
+
     const fd = new FormData(form);
     const body = {};
     for (const [k, v] of fd.entries()) {
@@ -392,7 +424,13 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
       window.location.href = `/${schema}/${obj}/${id}`;
     } else {
       const err = await res.json().catch(() => ({}));
-      showAlert(form, err.detail || "Failed to save record.");
+      let msg = "Failed to save record.";
+      if (err.detail) {
+        msg = Array.isArray(err.detail)
+          ? err.detail.map(e => e.msg).join("; ")
+          : String(err.detail);
+      }
+      showAlert(form, msg);
     }
   });
 }

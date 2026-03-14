@@ -250,6 +250,9 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px rgba(37,99,235,.15);
 }
 .form-hint { font-size: .75rem; color: var(--text-muted); margin-top: .25rem; }
+.form-error { font-size: .75rem; color: var(--danger); margin-top: .25rem; }
+input.input-error, select.input-error { border-color: var(--danger); }
+input.input-error:focus, select.input-error:focus { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(220,38,38,.15); }
 .form-actions { display: flex; gap: .75rem; margin-top: 1.5rem; flex-wrap: wrap; }
 .form-section { margin-bottom: 1.5rem; }
 .form-section__title {
