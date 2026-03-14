@@ -469,6 +469,34 @@ function exportRecords(schema, obj, format) {
 let _auditPage = 1;
 const _auditPageSize = 50;
 
+// Build a display-name lookup from the schemas array injected by the audit template.
+// Key: "schema_name|object_key" → display name. Falls back to the key for removed objects.
+function _buildObjNameMap(schemas) {
+  const map = {};
+  for (const s of (schemas || [])) {
+    for (const o of (s.objects || [])) {
+      map[`${s.name}|${o.key}`] = o.name;
+    }
+  }
+  return map;
+}
+
+// Populate the object filter dropdown based on the currently selected schema.
+function _populateObjDropdown() {
+  const schemas = typeof _auditSchemas !== "undefined" ? _auditSchemas : [];
+  const schemaName = document.getElementById("filter-schema")?.value || "";
+  const sel = document.getElementById("filter-obj");
+  if (!sel) return;
+  sel.innerHTML = '<option value="">All objects</option>';
+  const s = schemas.find((s) => s.name === schemaName);
+  for (const o of (s?.objects || [])) {
+    const opt = document.createElement("option");
+    opt.value = o.key;
+    opt.textContent = o.name;
+    sel.appendChild(opt);
+  }
+}
+
 async function loadAuditLog(page) {
   _auditPage = page || 1;
   const tbody = document.getElementById("audit-tbody");
@@ -481,11 +509,15 @@ async function loadAuditLog(page) {
   const schema = document.getElementById("filter-schema")?.value || "";
   const obj = document.getElementById("filter-obj")?.value || "";
   const action = document.getElementById("filter-action")?.value || "";
+  const fromTime = document.getElementById("filter-from")?.value || "";
+  const toTime = document.getElementById("filter-to")?.value || "";
 
   const params = new URLSearchParams({ page: _auditPage, page_size: _auditPageSize });
   if (schema) params.set("schema", schema);
   if (obj) params.set("obj", obj);
   if (action) params.set("action", action);
+  if (fromTime) params.set("from_time", fromTime);
+  if (toTime) params.set("to_time", toTime);
 
   const res = await fetch(`/api/audit?${params}`);
   if (!res.ok) {
@@ -501,6 +533,9 @@ async function loadAuditLog(page) {
     return;
   }
 
+  const schemas = typeof _auditSchemas !== "undefined" ? _auditSchemas : [];
+  const objNames = _buildObjNameMap(schemas);
+
   const actionBadge = (a) => {
     const cls = { INSERT: "badge-insert", UPDATE: "badge-update", DELETE: "badge-delete", REVERT: "badge-revert" }[a] || "";
     return `<span class="badge ${cls}">${a}</span>`;
@@ -512,10 +547,11 @@ async function loadAuditLog(page) {
       ? `<a href="/${r.schema_name}/${r.object_name}/${r.record_id}/history"
             title="${escHtml(r.record_id)}" style="font-family:monospace">${shortId}</a>`
       : "—";
+    const objDisplay = objNames[`${r.schema_name}|${r.object_name}`] || r.object_name;
     return `<tr>
       <td style="white-space:nowrap;font-size:.85rem">${fmtDate(r.timestamp)}</td>
       <td>${escHtml(r.schema_name)}</td>
-      <td>${escHtml(r.object_name)}</td>
+      <td title="${escHtml(r.object_name)}">${escHtml(objDisplay)}</td>
       <td>${actionBadge(r.action)}</td>
       <td>${recordLink}</td>
       <td style="color:var(--text-muted);font-size:.85rem">${escHtml(r.reason || "")}</td>

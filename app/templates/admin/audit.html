@@ -11,14 +11,16 @@
   <span style="font-size:.85rem; color:var(--text-muted)"><span id="audit-total">…</span> entries</span>
 </div>
 
-<div class="toolbar">
+<div class="toolbar" style="flex-wrap:wrap; gap:.5rem">
   <select id="filter-schema">
     <option value="">All schemas</option>
     {% for s in schemas %}
     <option value="{{ s.name }}">{{ s.name }}</option>
     {% endfor %}
   </select>
-  <input type="text" id="filter-obj" placeholder="Object…" style="width:10rem" />
+  <select id="filter-obj">
+    <option value="">All objects</option>
+  </select>
   <select id="filter-action">
     <option value="">All actions</option>
     <option value="INSERT">INSERT</option>
@@ -26,6 +28,12 @@
     <option value="DELETE">DELETE</option>
     <option value="REVERT">REVERT</option>
   </select>
+  <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
+    From <input type="datetime-local" id="filter-from" style="font-size:.85rem" />
+  </label>
+  <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
+    To <input type="datetime-local" id="filter-to" style="font-size:.85rem" />
+  </label>
 </div>
 
 <div class="card">
@@ -53,15 +61,16 @@
 
 {% block scripts %}
 <script>
-document.getElementById("filter-schema").addEventListener("change", () => loadAuditLog(1));
-document.getElementById("filter-action").addEventListener("change", () => loadAuditLog(1));
+const _auditSchemas = {{ schemas | tojson }};
 
-const filterObj = document.getElementById("filter-obj");
-let _objTimer;
-filterObj.addEventListener("input", () => {
-  clearTimeout(_objTimer);
-  _objTimer = setTimeout(() => loadAuditLog(1), 350);
+document.getElementById("filter-schema").addEventListener("change", () => {
+  _populateObjDropdown();
+  loadAuditLog(1);
 });
+document.getElementById("filter-obj").addEventListener("change", () => loadAuditLog(1));
+document.getElementById("filter-action").addEventListener("change", () => loadAuditLog(1));
+document.getElementById("filter-from").addEventListener("change", () => loadAuditLog(1));
+document.getElementById("filter-to").addEventListener("change", () => loadAuditLog(1));
 
 loadAuditLog(1);
 </script>

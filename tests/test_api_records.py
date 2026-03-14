@@ -336,3 +336,23 @@ def test_audit_log_filter_by_action(client):
 
     assert all(r["action"] == "INSERT" for r in inserts["records"])
     assert all(r["action"] == "UPDATE" for r in updates["records"])
+
+
+def test_audit_log_filter_by_time(client):
+    from datetime import datetime, timezone, timedelta
+
+    client.post("/api/records/test/company", json={"code": "C001"})
+
+    # from_time in the future → no results
+    future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    data = client.get(f"/api/audit?schema=test&obj=company&from_time={future}").json()
+    assert data["total"] == 0
+
+    # to_time in the past → no results
+    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    data = client.get(f"/api/audit?schema=test&obj=company&to_time={past}").json()
+    assert data["total"] == 0
+
+    # from_time in the past → finds the entry
+    data = client.get(f"/api/audit?schema=test&obj=company&from_time={past}").json()
+    assert data["total"] >= 1
