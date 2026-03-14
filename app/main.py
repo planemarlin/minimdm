@@ -127,11 +127,12 @@ app.add_middleware(AuthMiddleware)
 # -----------------------------------------------------------------
 # API routers
 # -----------------------------------------------------------------
-from app.api import audit_api, auth_api, import_export, objects, schemas_api  # noqa: E402
+from app.api import admin_api, audit_api, auth_api, import_export, objects, schemas_api  # noqa: E402
 
 # Import/export must be registered before objects to avoid /export being
 # matched by the /{record_id} wildcard route.
 app.include_router(auth_api.router, prefix="/api", tags=["Auth"])
+app.include_router(admin_api.router, prefix="/api", tags=["Admin"])
 app.include_router(import_export.router, prefix="/api", tags=["Import / Export"])
 app.include_router(objects.router, prefix="/api", tags=["Records"])
 app.include_router(schemas_api.router, prefix="/api", tags=["Schemas"])
@@ -146,6 +147,23 @@ app.include_router(audit_api.router, prefix="/api", tags=["Audit"])
 async def login_page(request: Request):
     return templates.TemplateResponse(
         request, "auth/login.html", {"app_name": settings.app_name}
+    )
+
+
+@app.get("/admin/users", response_class=HTMLResponse)
+async def admin_users(request: Request):
+    user = getattr(request.state, "current_user", None)
+    if not user or not user.get("is_admin"):
+        return templates.TemplateResponse(
+            request, "error.html",
+            {"message": "Admin access required", "app_name": settings.app_name},
+            status_code=403,
+        )
+    tm = request.app.state.table_manager
+    schemas_list = [{"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()]
+    return templates.TemplateResponse(
+        request, "admin/users.html",
+        {"schemas": schemas_list, "app_name": settings.app_name},
     )
 
 

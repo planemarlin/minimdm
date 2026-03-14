@@ -88,13 +88,57 @@ def get_user_by_username(engine, username: str) -> Optional[dict]:
         return dict(row) if row else None
 
 
-def create_user(engine, username: str, password: str, is_admin: bool = False) -> None:
+def create_user(engine, username: str, password: str, is_admin: bool = False) -> dict:
     tbl = _users_table(engine)
+    user_id = uuid.uuid4()
     with Session(engine) as s:
         s.execute(tbl.insert().values(
-            id=uuid.uuid4(),
+            id=user_id,
             username=username,
             password_hash=hash_password(password),
             is_admin=is_admin,
         ))
+        s.commit()
+    return {"id": str(user_id), "username": username, "is_admin": is_admin}
+
+
+def list_users(engine) -> list[dict]:
+    tbl = _users_table(engine)
+    with Session(engine) as s:
+        rows = s.execute(tbl.select().order_by(tbl.c.created_at)).mappings().all()
+        return [
+            {
+                "id": str(r["id"]),
+                "username": r["username"],
+                "is_admin": r["is_admin"],
+                "is_active": r["is_active"],
+                "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            }
+            for r in rows
+        ]
+
+
+def get_user_by_id(engine, user_id: str) -> Optional[dict]:
+    tbl = _users_table(engine)
+    with Session(engine) as s:
+        row = s.execute(
+            tbl.select().where(tbl.c.id == uuid.UUID(user_id))
+        ).mappings().first()
+        return dict(row) if row else None
+
+
+def update_user(engine, user_id: str, *, is_admin: Optional[bool] = None,
+                is_active: Optional[bool] = None, password: Optional[str] = None) -> None:
+    tbl = _users_table(engine)
+    values: dict = {}
+    if is_admin is not None:
+        values["is_admin"] = is_admin
+    if is_active is not None:
+        values["is_active"] = is_active
+    if password is not None:
+        values["password_hash"] = hash_password(password)
+    if not values:
+        return
+    with Session(engine) as s:
+        s.execute(tbl.update().where(tbl.c.id == uuid.UUID(user_id)).values(**values))
         s.commit()
