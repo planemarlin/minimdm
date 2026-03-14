@@ -45,7 +45,7 @@ def list_audit_log(
 
     filters = []
     if exclude_system:
-        filters.append(~audit_table.c.schema_name.startswith("_"))
+        filters.append(~audit_table.c.schema_name.startswith("_", autoescape=True))
     if schema:
         filters.append(audit_table.c.schema_name == schema)
     if obj:
