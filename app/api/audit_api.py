@@ -1,10 +1,25 @@
+import uuid
+from datetime import datetime, timezone
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 
 router = APIRouter()
+
+
+def _parse_dt(value: str) -> Optional[datetime]:
+    """Parse an ISO-format datetime string; treat naive values as UTC."""
+    try:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except ValueError:
+        return None
 
 
 @router.get("/audit")
@@ -13,6 +28,8 @@ def list_audit_log(
     schema: str = Query(None),
     obj: str = Query(None),
     action: str = Query(None),
+    from_time: Optional[str] = Query(None, description="ISO datetime — include entries at or after this time"),
+    to_time: Optional[str] = Query(None, description="ISO datetime — include entries at or before this time"),
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
@@ -24,8 +41,6 @@ def list_audit_log(
         return {"records": [], "total": 0, "page": page, "page_size": page_size, "pages": 0}
 
     from sqlalchemy import func
-    import uuid
-    from datetime import datetime
 
     filters = []
     if schema:
@@ -34,6 +49,14 @@ def list_audit_log(
         filters.append(audit_table.c.object_name == obj)
     if action:
         filters.append(audit_table.c.action == action.upper())
+    if from_time:
+        ft = _parse_dt(from_time)
+        if ft:
+            filters.append(audit_table.c.timestamp >= ft)
+    if to_time:
+        tt = _parse_dt(to_time)
+        if tt:
+            filters.append(audit_table.c.timestamp <= tt)
 
     q = select(audit_table)
     if filters:
@@ -52,6 +75,7 @@ def list_audit_log(
         if isinstance(v, datetime):
             return v.isoformat()
         return v
+
 
     return {
         "records": [{k: _ser(v) for k, v in r.items()} for r in rows],

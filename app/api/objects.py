@@ -41,6 +41,7 @@ def list_records(
     page_size: int = Query(50, ge=1, le=500),
     search: Optional[str] = Query(None),
     include_deleted: bool = Query(False),
+    parent_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     tm = _get_tm(request)
@@ -52,6 +53,16 @@ def list_records(
     q = select(table)
     if not include_deleted:
         q = q.where(table.c._deleted_at.is_(None))
+
+    if parent_id:
+        obj_cfg = tm.get_object_config(schema, obj)
+        parent_key = obj_cfg.get("parent") if obj_cfg else None
+        if parent_key:
+            try:
+                pid = uuid.UUID(parent_id)
+                q = q.where(table.c[f"_{parent_key}_id"] == pid)
+            except (ValueError, KeyError):
+                pass
 
     if search:
         text_cols = [
@@ -87,6 +98,7 @@ def get_record(
     obj: str,
     record_id: str,
     request: Request,
+    include_deleted: bool = Query(False),
     db: Session = Depends(get_db),
 ):
     tm = _get_tm(request)
@@ -100,9 +112,10 @@ def get_record(
     except ValueError:
         raise HTTPException(400, "Invalid record ID")
 
-    row = db.execute(
-        select(table).where(table.c._id == rid).where(table.c._deleted_at.is_(None))
-    ).mappings().first()
+    q = select(table).where(table.c._id == rid)
+    if not include_deleted:
+        q = q.where(table.c._deleted_at.is_(None))
+    row = db.execute(q).mappings().first()
 
     if not row:
         raise HTTPException(404, "Record not found")
@@ -432,9 +445,16 @@ def revert_record(
 # Helpers
 # ---------------------------------------------------------------------------
 
+_SYSTEM_COLS = {"_id", "_created_at", "_updated_at", "_deleted_at", "_version"}
+
+
 def _filter_columns(body: dict, table) -> dict:
-    """Keep only keys that map to actual table columns (excluding system columns)."""
-    col_names = {c.name for c in table.c if not c.name.startswith("_")}
+    """Keep only keys that map to writable table columns.
+
+    System columns are excluded; parent FK columns (e.g. _division_id) are
+    included because they start with _ but are legitimate user-settable fields.
+    """
+    col_names = {c.name for c in table.c if c.name not in _SYSTEM_COLS}
     return {k: v for k, v in body.items() if k in col_names}
 
 

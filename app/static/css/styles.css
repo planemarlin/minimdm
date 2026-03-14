@@ -231,12 +231,14 @@ input[type="text"],
 input[type="email"],
 input[type="number"],
 input[type="date"],
+input[type="datetime-local"],
 select,
 textarea {
   width: 100%;
   padding: .45rem .65rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  font-family: inherit;
   font-size: .875rem;
   color: var(--text);
   background: var(--surface);
@@ -248,6 +250,9 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px rgba(37,99,235,.15);
 }
 .form-hint { font-size: .75rem; color: var(--text-muted); margin-top: .25rem; }
+.form-error { font-size: .75rem; color: var(--danger); margin-top: .25rem; }
+input.input-error, select.input-error { border-color: var(--danger); }
+input.input-error:focus, select.input-error:focus { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(220,38,38,.15); }
 .form-actions { display: flex; gap: .75rem; margin-top: 1.5rem; flex-wrap: wrap; }
 .form-section { margin-bottom: 1.5rem; }
 .form-section__title {
@@ -279,6 +284,37 @@ input:focus, select:focus, textarea:focus {
 .detail-field__value { font-size: .9rem; word-break: break-word; }
 .detail-field__value--empty { color: var(--text-muted); font-style: italic; }
 
+/* ===== Related-objects panels ===== */
+.related-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-top: 1.25rem;
+  overflow: hidden;
+}
+.related-panel__summary {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .75rem 1.25rem;
+  font-weight: 600;
+  font-size: .9rem;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.related-panel__summary::-webkit-details-marker { display: none; }
+.related-panel__summary::before {
+  content: "▶";
+  font-size: .65rem;
+  color: var(--text-muted);
+  transition: transform .15s;
+}
+details[open] > .related-panel__summary::before { transform: rotate(90deg); }
+.related-panel__count { font-size: .78rem; font-weight: 400; color: var(--text-muted); }
+.related-panel__body { border-top: 1px solid var(--border); }
+
 /* ===== Badges ===== */
 .badge {
   display: inline-block;
@@ -306,6 +342,15 @@ input:focus, select:focus, textarea:focus {
 .history-meta__version { font-weight: 700; font-size: .875rem; }
 .history-meta__time { font-size: .78rem; color: var(--text-muted); }
 .history-meta__reason { font-size: .78rem; color: var(--text-muted); font-style: italic; }
+.history-meta__attrs {
+  font-size: .78rem;
+  color: var(--text-muted);
+  margin-top: .3rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .15rem .75rem;
+}
+.history-meta__attrs span { white-space: nowrap; }
 
 /* ===== Pagination ===== */
 .pagination {

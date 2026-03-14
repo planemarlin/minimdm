@@ -235,11 +235,54 @@ async function loadRecordDetail(schema, obj, recordId, objConfig) {
     }
   }
 
+  // Resolve reference fields: fetch referenced records (including deleted) in parallel
   const attrs = Object.entries(objConfig.attributes || {});
+  const refResolved = {};
+  await Promise.all(
+    attrs
+      .filter(([, v]) => v.reference)
+      .map(async ([k, v]) => {
+        const refId = record[`${k}_id`];
+        if (!refId) return;
+        try {
+          const [rRes, cfgRes] = await Promise.all([
+            fetch(`/api/records/${schema}/${v.reference}/${refId}?include_deleted=true`),
+            fetch(`/api/schemas/${schema}/objects/${v.reference}`),
+          ]);
+          if (!rRes.ok) return;
+          const refRec = await rRes.json();
+          const refCfg = cfgRes.ok ? await cfgRes.json() : {};
+          const dispKeys = Object.entries(refCfg.attributes || {})
+            .filter(([, av]) => !av.reference).slice(0, 2).map(([ak]) => ak);
+          const label = dispKeys.map(ak => refRec[ak]).filter(Boolean).join(" – ") || refId;
+          refResolved[k] = { label, deleted: !!refRec._deleted_at, id: refId, obj: v.reference };
+        } catch (_) {}
+      })
+  );
+
   const fields = attrs
     .map(([k, v]) => {
-      const colKey = v.reference ? `${k}_id` : k;
-      const val = record[colKey];
+      if (v.reference) {
+        const refId = record[`${k}_id`];
+        if (!refId) {
+          return `<div class="detail-field">
+            <div class="detail-field__label">${escHtml(v.name || k)}</div>
+            <div class="detail-field__value detail-field__value--empty">—</div>
+          </div>`;
+        }
+        const ref = refResolved[k];
+        const label = ref ? ref.label : refId;
+        const valueHtml = ref && ref.deleted
+          ? `${escHtml(label)} <span class="badge badge-delete">deleted</span>`
+          : ref
+            ? `<a href="/${schema}/${ref.obj}/${refId}">${escHtml(label)}</a>`
+            : escHtml(String(refId));
+        return `<div class="detail-field">
+          <div class="detail-field__label">${escHtml(v.name || k)}</div>
+          <div class="detail-field__value">${valueHtml}</div>
+        </div>`;
+      }
+      const val = record[k];
       return `<div class="detail-field">
         <div class="detail-field__label">${escHtml(v.name || k)}</div>
         <div class="detail-field__value ${val == null ? "detail-field__value--empty" : ""}">
@@ -256,6 +299,102 @@ async function loadRecordDetail(schema, obj, recordId, objConfig) {
   </div>`;
 
   container.innerHTML = `<div class="detail-grid">${parentHtml}${fields}</div>${sysMeta}`;
+
+  const relatedContainer = document.getElementById("related-container");
+  if (relatedContainer) {
+    await _renderChildPanels(relatedContainer, schema, obj, recordId);
+  }
+}
+
+async function _renderChildPanels(container, schema, parentObj, parentId) {
+  let schemaConfig;
+  try {
+    const res = await fetch(`/api/schemas/${schema}`);
+    if (!res.ok) return;
+    schemaConfig = await res.json();
+  } catch (_) { return; }
+
+  const childObjects = Object.entries(schemaConfig.objects || {})
+    .filter(([, cfg]) => cfg.parent === parentObj);
+  if (!childObjects.length) return;
+
+  for (const [childKey, childCfg] of childObjects) {
+    const panel = document.createElement("details");
+    panel.className = "related-panel";
+    panel.open = true;
+
+    const summary = document.createElement("summary");
+    summary.className = "related-panel__summary";
+    summary.innerHTML = `${escHtml(childCfg.name || childKey)}<span class="related-panel__count">loading…</span>`;
+    panel.appendChild(summary);
+
+    const body = document.createElement("div");
+    body.className = "related-panel__body";
+    body.innerHTML = `<div style="padding:.75rem 1rem;font-size:.85rem;color:var(--text-muted)"><span class="spinner"></span></div>`;
+    panel.appendChild(body);
+    container.appendChild(panel);
+
+    try {
+      const [recsRes, cfgRes] = await Promise.all([
+        fetch(`/api/records/${schema}/${childKey}?` + new URLSearchParams({ parent_id: parentId, page_size: 500 })),
+        fetch(`/api/schemas/${schema}/objects/${childKey}`),
+      ]);
+      if (!recsRes.ok) { body.innerHTML = `<div class="alert alert-error" style="margin:.75rem">Failed to load records.</div>`; continue; }
+      const data = await recsRes.json();
+      const refCfg = cfgRes.ok ? await cfgRes.json() : {};
+
+      summary.querySelector(".related-panel__count").textContent =
+        `${data.total} record${data.total !== 1 ? "s" : ""}`;
+
+      if (!data.total) {
+        body.innerHTML = `<div style="padding:.75rem 1rem;font-size:.85rem;color:var(--text-muted)">No records.</div>`;
+        continue;
+      }
+
+      const cols = Object.entries(refCfg.attributes || {})
+        .filter(([, v]) => !v.reference)
+        .slice(0, 4);
+
+      const thead = `<thead><tr>${cols.map(([k, v]) => `<th>${escHtml(v.name || k)}</th>`).join("")}<th></th></tr></thead>`;
+      const tbody = data.records.map(r => {
+        const cells = cols.map(([k]) => `<td>${escHtml(String(r[k] ?? ""))}</td>`).join("");
+        return `<tr style="cursor:pointer" onclick="window.location.href='/${schema}/${childKey}/${r._id}'">${cells}<td style="text-align:right"><a href="/${schema}/${childKey}/${r._id}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">View</a></td></tr>`;
+      }).join("");
+
+      body.innerHTML = `<div class="table-wrap"><table>${thead}<tbody>${tbody}</tbody></table></div>`;
+    } catch (_) {
+      body.innerHTML = `<div class="alert alert-error" style="margin:.75rem">Failed to load records.</div>`;
+    }
+  }
+}
+
+// ── Form field validation ─────────────────────────────────────────────────────
+
+function _clearFieldErrors(form) {
+  form.querySelectorAll(".input-error").forEach(el => el.classList.remove("input-error"));
+  form.querySelectorAll(".form-error").forEach(el => el.remove());
+}
+
+function _setFieldError(input, msg) {
+  input.classList.add("input-error");
+  const div = document.createElement("div");
+  div.className = "form-error";
+  div.textContent = msg;
+  input.insertAdjacentElement("afterend", div);
+}
+
+function _validateForm(form) {
+  _clearFieldErrors(form);
+  let valid = true;
+  for (const input of form.querySelectorAll("input[type='number']")) {
+    // When non-numeric text is typed, browsers set value="" but badInput=true.
+    if (input.value === "" && !input.validity.badInput) continue;
+    if (!input.validity.valid) {
+      _setFieldError(input, input.step === "1" ? "Must be a whole number." : "Must be a valid number.");
+      valid = false;
+    }
+  }
+  return valid;
 }
 
 // ── Record form page ─────────────────────────────────────────────────────────
@@ -287,11 +426,12 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
         : v.type === "numeric" || v.type === "integer" ? "number"
         : v.type === "date" ? "date"
         : "text";
+      const step = v.type === "integer" ? ' step="1"' : v.type === "numeric" ? ' step="any"' : "";
       const val = record[k] ?? "";
       return `<div class="form-group">
         <label>${escHtml(v.name || k)}${v.required ? '<span class="required">*</span>' : ""}</label>
         <input type="${inputType}" name="${k}" value="${escHtml(val)}"
-          ${v.required ? "required" : ""} />
+          ${v.required ? "required" : ""}${step} />
       </div>`;
     })
     .join("");
@@ -326,6 +466,8 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (!_validateForm(form)) return;
+
     const fd = new FormData(form);
     const body = {};
     for (const [k, v] of fd.entries()) {
@@ -349,7 +491,13 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
       window.location.href = `/${schema}/${obj}/${id}`;
     } else {
       const err = await res.json().catch(() => ({}));
-      showAlert(form, err.detail || "Failed to save record.");
+      let msg = "Failed to save record.";
+      if (err.detail) {
+        msg = Array.isArray(err.detail)
+          ? err.detail.map(e => e.msg).join("; ")
+          : String(err.detail);
+      }
+      showAlert(form, msg);
     }
   });
 }
@@ -382,7 +530,7 @@ async function populateRefSelects(schema, objConfig, record) {
 
 // ── History page ─────────────────────────────────────────────────────────────
 
-async function loadHistory(schema, obj, recordId) {
+async function loadHistory(schema, obj, recordId, objConfig) {
   const container = document.getElementById("history-container");
   if (!container) return;
   container.innerHTML = `<div style="text-align:center;padding:2rem"><span class="spinner"></span></div>`;
@@ -404,6 +552,23 @@ async function loadHistory(schema, obj, recordId) {
     return `<span class="badge ${cls}">${a}</span>`;
   };
 
+  // Non-reference user attributes, used to render the attribute snapshot per version.
+  const userAttrs = Object.entries((objConfig || {}).attributes || {}).filter(([, v]) => !v.reference);
+
+  const attrSnapshot = (h) => {
+    if (!userAttrs.length) return "";
+    const pairs = userAttrs
+      .map(([k, v]) => {
+        const val = h[k];
+        return val != null
+          ? `<span><b>${escHtml(v.name || k)}:</b> ${escHtml(String(val))}</span>`
+          : null;
+      })
+      .filter(Boolean)
+      .join("");
+    return pairs ? `<div class="history-meta__attrs">${pairs}</div>` : "";
+  };
+
   const rows = history
     .map(
       (h) => `<li class="history-item">
@@ -414,6 +579,7 @@ async function loadHistory(schema, obj, recordId) {
           <div class="history-meta__time">${fmtDate(h._changed_at)}</div>
           ${h._change_reason ? `<div class="history-meta__reason">Reason: ${escHtml(h._change_reason)}</div>` : ""}
           ${h._changed_by ? `<div class="history-meta__time">By: ${escHtml(h._changed_by)}</div>` : ""}
+          ${attrSnapshot(h)}
         </div>
         <div>
           ${h._action !== "DELETE" ? `<button class="btn btn-secondary btn-sm"
@@ -444,4 +610,125 @@ async function revertToVersion(schema, obj, recordId, version) {
 
 function exportRecords(schema, obj, format) {
   window.location.href = `/api/records/${schema}/${obj}/export?format=${format}`;
+}
+
+// ── Audit log page ────────────────────────────────────────────────────────────
+
+let _auditPage = 1;
+const _auditPageSize = 50;
+
+// Build a display-name lookup from the schemas array injected by the audit template.
+// Key: "schema_name|object_key" → display name. Falls back to the key for removed objects.
+function _buildObjNameMap(schemas) {
+  const map = {};
+  for (const s of (schemas || [])) {
+    for (const o of (s.objects || [])) {
+      map[`${s.name}|${o.key}`] = o.name;
+    }
+  }
+  return map;
+}
+
+// Populate the object filter dropdown based on the currently selected schema.
+function _populateObjDropdown() {
+  const schemas = typeof _auditSchemas !== "undefined" ? _auditSchemas : [];
+  const schemaName = document.getElementById("filter-schema")?.value || "";
+  const sel = document.getElementById("filter-obj");
+  if (!sel) return;
+  sel.innerHTML = '<option value="">All objects</option>';
+  const s = schemas.find((s) => s.name === schemaName);
+  for (const o of (s?.objects || [])) {
+    const opt = document.createElement("option");
+    opt.value = o.key;
+    opt.textContent = o.name;
+    sel.appendChild(opt);
+  }
+}
+
+async function loadAuditLog(page) {
+  _auditPage = page || 1;
+  const tbody = document.getElementById("audit-tbody");
+  const totalEl = document.getElementById("audit-total");
+  const paginationEl = document.getElementById("audit-pagination");
+  if (!tbody) return;
+
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>`;
+
+  const schema = document.getElementById("filter-schema")?.value || "";
+  const obj = document.getElementById("filter-obj")?.value || "";
+  const action = document.getElementById("filter-action")?.value || "";
+  const fromTime = document.getElementById("filter-from")?.value || "";
+  const toTime = document.getElementById("filter-to")?.value || "";
+
+  const params = new URLSearchParams({ page: _auditPage, page_size: _auditPageSize });
+  if (schema) params.set("schema", schema);
+  if (obj) params.set("obj", obj);
+  if (action) params.set("action", action);
+  // datetime-local values are in local time; convert to UTC ISO so the API
+  // compares against the correct instant regardless of the server's timezone.
+  const toUtcIso = s => new Date(s).toISOString().replace(/\.\d{3}Z$/, "+00:00");
+  if (fromTime) params.set("from_time", toUtcIso(fromTime));
+  if (toTime) params.set("to_time", toUtcIso(toTime));
+
+  const res = await fetch(`/api/audit?${params}`);
+  if (!res.ok) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="alert alert-error">Failed to load audit log.</div></td></tr>`;
+    return;
+  }
+  const data = await res.json();
+  if (totalEl) totalEl.textContent = data.total;
+
+  if (!data.records.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted)">No entries found.</td></tr>`;
+    _renderAuditPagination(paginationEl, data.pages);
+    return;
+  }
+
+  const schemas = typeof _auditSchemas !== "undefined" ? _auditSchemas : [];
+  const objNames = _buildObjNameMap(schemas);
+
+  const actionBadge = (a) => {
+    const cls = { INSERT: "badge-insert", UPDATE: "badge-update", DELETE: "badge-delete", REVERT: "badge-revert" }[a] || "";
+    return `<span class="badge ${cls}">${a}</span>`;
+  };
+
+  tbody.innerHTML = data.records.map((r) => {
+    const shortId = r.record_id ? r.record_id.slice(0, 8) + "…" : "—";
+    const recordLink = r.record_id
+      ? `<a href="/${r.schema_name}/${r.object_name}/${r.record_id}/history"
+            title="${escHtml(r.record_id)}" style="font-family:monospace">${shortId}</a>`
+      : "—";
+    const objDisplay = objNames[`${r.schema_name}|${r.object_name}`] || r.object_name;
+    return `<tr>
+      <td style="white-space:nowrap;font-size:.85rem">${fmtDate(r.timestamp)}</td>
+      <td>${escHtml(r.schema_name)}</td>
+      <td title="${escHtml(r.object_name)}">${escHtml(objDisplay)}</td>
+      <td>${actionBadge(r.action)}</td>
+      <td>${recordLink}</td>
+      <td style="color:var(--text-muted);font-size:.85rem">${escHtml(r.reason || "")}</td>
+    </tr>`;
+  }).join("");
+
+  _renderAuditPagination(paginationEl, data.pages);
+}
+
+function _renderAuditPagination(el, pages) {
+  if (!el) return;
+  if (pages <= 1) { el.innerHTML = ""; return; }
+
+  let html = `<button class="page-btn" ${_auditPage === 1 ? "disabled" : ""}
+    onclick="loadAuditLog(${_auditPage - 1})">&#8592;</button>`;
+
+  for (let p = 1; p <= pages; p++) {
+    if (pages > 7 && Math.abs(p - _auditPage) > 2 && p !== 1 && p !== pages) {
+      if (p === 2 || p === pages - 1) html += `<span style="padding:0 .3rem">…</span>`;
+      continue;
+    }
+    html += `<button class="page-btn ${p === _auditPage ? "page-btn--active" : ""}"
+      onclick="loadAuditLog(${p})">${p}</button>`;
+  }
+
+  html += `<button class="page-btn" ${_auditPage === pages ? "disabled" : ""}
+    onclick="loadAuditLog(${_auditPage + 1})">&#8594;</button>`;
+  el.innerHTML = html;
 }

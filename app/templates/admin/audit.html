@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Audit Log – {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/">Home</a> / Audit Log
+</div>
+
+<div class="page-header">
+  <h1 class="page-title">Audit Log</h1>
+  <span style="font-size:.85rem; color:var(--text-muted)"><span id="audit-total">…</span> entries</span>
+</div>
+
+<div class="toolbar" style="flex-wrap:wrap; gap:.5rem">
+  <select id="filter-schema">
+    <option value="">All schemas</option>
+    {% for s in schemas %}
+    <option value="{{ s.name }}">{{ s.name }}</option>
+    {% endfor %}
+  </select>
+  <select id="filter-obj">
+    <option value="">All objects</option>
+  </select>
+  <select id="filter-action">
+    <option value="">All actions</option>
+    <option value="INSERT">INSERT</option>
+    <option value="UPDATE">UPDATE</option>
+    <option value="DELETE">DELETE</option>
+    <option value="REVERT">REVERT</option>
+  </select>
+  <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
+    From <input type="datetime-local" id="filter-from" />
+  </label>
+  <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
+    To <input type="datetime-local" id="filter-to" />
+  </label>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Schema</th>
+          <th>Object</th>
+          <th>Action</th>
+          <th>Record</th>
+          <th>Reason</th>
+        </tr>
+      </thead>
+      <tbody id="audit-tbody">
+        <tr><td colspan="6" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="audit-pagination" class="pagination"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const _auditSchemas = {{ schemas | tojson }};
+
+document.getElementById("filter-schema").addEventListener("change", () => {
+  _populateObjDropdown();
+  loadAuditLog(1);
+});
+document.getElementById("filter-obj").addEventListener("change", () => loadAuditLog(1));
+document.getElementById("filter-action").addEventListener("change", () => loadAuditLog(1));
+document.getElementById("filter-from").addEventListener("change", () => loadAuditLog(1));
+document.getElementById("filter-to").addEventListener("change", () => loadAuditLog(1));
+
+loadAuditLog(1);
+</script>
+{% endblock %}
