@@ -50,8 +50,13 @@ def client():
 
     from fastapi.testclient import TestClient
     from app.main import app as fastapi_app
+    from app.core.auth import create_token
 
     with TestClient(fastapi_app) as c:
+        # Inject a test admin token so all requests pass through AuthMiddleware.
+        token = create_token("00000000-0000-0000-0000-000000000001", "test_admin", is_admin=True)
+        c.headers.update({"Authorization": f"Bearer {token}"})
+
         tm = fastapi_app.state.table_manager
         # Replace whatever config was loaded from YAML with the test config.
         tm.sync_schema(SAMPLE_CONFIG)
