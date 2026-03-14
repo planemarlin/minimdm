@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Audit Log – {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+  <a href="/">Home</a> / Audit Log
+</div>
+
+<div class="page-header">
+  <h1 class="page-title">Audit Log</h1>
+  <span style="font-size:.85rem; color:var(--text-muted)"><span id="audit-total">…</span> entries</span>
+</div>
+
+<div class="toolbar">
+  <select id="filter-schema">
+    <option value="">All schemas</option>
+    {% for s in schemas %}
+    <option value="{{ s.name }}">{{ s.name }}</option>
+    {% endfor %}
+  </select>
+  <input type="text" id="filter-obj" placeholder="Object…" style="width:10rem" />
+  <select id="filter-action">
+    <option value="">All actions</option>
+    <option value="INSERT">INSERT</option>
+    <option value="UPDATE">UPDATE</option>
+    <option value="DELETE">DELETE</option>
+    <option value="REVERT">REVERT</option>
+  </select>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Schema</th>
+          <th>Object</th>
+          <th>Action</th>
+          <th>Record</th>
+          <th>Reason</th>
+        </tr>
+      </thead>
+      <tbody id="audit-tbody">
+        <tr><td colspan="6" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="audit-pagination" class="pagination"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("filter-schema").addEventListener("change", () => loadAuditLog(1));
+document.getElementById("filter-action").addEventListener("change", () => loadAuditLog(1));
+
+const filterObj = document.getElementById("filter-obj");
+let _objTimer;
+filterObj.addEventListener("input", () => {
+  clearTimeout(_objTimer);
+  _objTimer = setTimeout(() => loadAuditLog(1), 350);
+});
+
+loadAuditLog(1);
+</script>
+{% endblock %}

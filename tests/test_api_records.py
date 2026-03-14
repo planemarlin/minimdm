@@ -311,3 +311,28 @@ def test_revert_nonexistent_version_returns_404(client):
     rid = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
     res = client.post(f"/api/records/test/company/{rid}/revert/99")
     assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Audit log API
+# ---------------------------------------------------------------------------
+
+def test_audit_log_records_create(client):
+    client.post("/api/records/test/company", json={"code": "C001", "_reason": "audit test"})
+
+    res = client.get("/api/audit?schema=test&obj=company")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total"] >= 1
+    assert any(r["action"] == "INSERT" for r in data["records"])
+
+
+def test_audit_log_filter_by_action(client):
+    rid = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
+    client.put(f"/api/records/test/company/{rid}", json={"name": "Updated"})
+
+    inserts = client.get("/api/audit?schema=test&obj=company&action=INSERT").json()
+    updates = client.get("/api/audit?schema=test&obj=company&action=UPDATE").json()
+
+    assert all(r["action"] == "INSERT" for r in inserts["records"])
+    assert all(r["action"] == "UPDATE" for r in updates["records"])

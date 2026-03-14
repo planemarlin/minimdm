@@ -51,6 +51,5 @@ Issues marked **Fixed** are resolved in the current codebase. Issues marked **Im
 **Description:** Each version entry on the history page now shows the full attribute snapshot recorded at that point, making it easy to compare versions before reverting.
 
 ### Audit log has no dedicated UI page
-**Status:** Future work
-**Description:** The audit log is accessible via `GET /api/audit` but there is no web page for browsing it.
-**Planned fix:** Add an `/admin/audit` page.
+**Status:** Implemented
+**Description:** `/admin/audit` provides a paginated, filterable table of all audit log entries. Accessible from the "Audit Log" link in the header navigation on every page.

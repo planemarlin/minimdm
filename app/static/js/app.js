@@ -463,3 +463,85 @@ async function revertToVersion(schema, obj, recordId, version) {
 function exportRecords(schema, obj, format) {
   window.location.href = `/api/records/${schema}/${obj}/export?format=${format}`;
 }
+
+// ── Audit log page ────────────────────────────────────────────────────────────
+
+let _auditPage = 1;
+const _auditPageSize = 50;
+
+async function loadAuditLog(page) {
+  _auditPage = page || 1;
+  const tbody = document.getElementById("audit-tbody");
+  const totalEl = document.getElementById("audit-total");
+  const paginationEl = document.getElementById("audit-pagination");
+  if (!tbody) return;
+
+  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>`;
+
+  const schema = document.getElementById("filter-schema")?.value || "";
+  const obj = document.getElementById("filter-obj")?.value || "";
+  const action = document.getElementById("filter-action")?.value || "";
+
+  const params = new URLSearchParams({ page: _auditPage, page_size: _auditPageSize });
+  if (schema) params.set("schema", schema);
+  if (obj) params.set("obj", obj);
+  if (action) params.set("action", action);
+
+  const res = await fetch(`/api/audit?${params}`);
+  if (!res.ok) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="alert alert-error">Failed to load audit log.</div></td></tr>`;
+    return;
+  }
+  const data = await res.json();
+  if (totalEl) totalEl.textContent = data.total;
+
+  if (!data.records.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted)">No entries found.</td></tr>`;
+    _renderAuditPagination(paginationEl, data.pages);
+    return;
+  }
+
+  const actionBadge = (a) => {
+    const cls = { INSERT: "badge-insert", UPDATE: "badge-update", DELETE: "badge-delete", REVERT: "badge-revert" }[a] || "";
+    return `<span class="badge ${cls}">${a}</span>`;
+  };
+
+  tbody.innerHTML = data.records.map((r) => {
+    const shortId = r.record_id ? r.record_id.slice(0, 8) + "…" : "—";
+    const recordLink = r.record_id
+      ? `<a href="/${r.schema_name}/${r.object_name}/${r.record_id}/history"
+            title="${escHtml(r.record_id)}" style="font-family:monospace">${shortId}</a>`
+      : "—";
+    return `<tr>
+      <td style="white-space:nowrap;font-size:.85rem">${fmtDate(r.timestamp)}</td>
+      <td>${escHtml(r.schema_name)}</td>
+      <td>${escHtml(r.object_name)}</td>
+      <td>${actionBadge(r.action)}</td>
+      <td>${recordLink}</td>
+      <td style="color:var(--text-muted);font-size:.85rem">${escHtml(r.reason || "")}</td>
+    </tr>`;
+  }).join("");
+
+  _renderAuditPagination(paginationEl, data.pages);
+}
+
+function _renderAuditPagination(el, pages) {
+  if (!el) return;
+  if (pages <= 1) { el.innerHTML = ""; return; }
+
+  let html = `<button class="page-btn" ${_auditPage === 1 ? "disabled" : ""}
+    onclick="loadAuditLog(${_auditPage - 1})">&#8592;</button>`;
+
+  for (let p = 1; p <= pages; p++) {
+    if (pages > 7 && Math.abs(p - _auditPage) > 2 && p !== 1 && p !== pages) {
+      if (p === 2 || p === pages - 1) html += `<span style="padding:0 .3rem">…</span>`;
+      continue;
+    }
+    html += `<button class="page-btn ${p === _auditPage ? "page-btn--active" : ""}"
+      onclick="loadAuditLog(${p})">${p}</button>`;
+  }
+
+  html += `<button class="page-btn" ${_auditPage === pages ? "disabled" : ""}
+    onclick="loadAuditLog(${_auditPage + 1})">&#8594;</button>`;
+  el.innerHTML = html;
+}

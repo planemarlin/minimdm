@@ -18,6 +18,12 @@ def test_home_page_renders(client):
     assert "miniMDM" in res.text
 
 
+def test_audit_log_page_renders(client):
+    res = client.get("/admin/audit")
+    assert res.status_code == 200
+    assert "Audit Log" in res.text
+
+
 def test_list_page_renders(client):
     res = client.get("/test/company")
     assert res.status_code == 200

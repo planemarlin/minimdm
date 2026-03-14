@@ -85,6 +85,22 @@ app.include_router(audit_api.router, prefix="/api", tags=["Audit"])
 # Web UI routes
 # -----------------------------------------------------------------
 
+@app.get("/admin/audit", response_class=HTMLResponse)
+async def admin_audit(request: Request):
+    tm = request.app.state.table_manager
+    schemas_list = [
+        {"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()
+    ]
+    return templates.TemplateResponse(
+        request,
+        "admin/audit.html",
+        {
+            "schemas": schemas_list,
+            "app_name": settings.app_name,
+        },
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     tm = request.app.state.table_manager
