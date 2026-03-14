@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}Users – {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="page-title">User Management</h1>
+  <button class="btn btn-primary" onclick="openNewUserModal()">+ New user</button>
+</div>
+
+<div class="card">
+  <table class="table" id="users-table">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Role</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="users-tbody">
+      <tr><td colspan="5" class="table__empty">Loading…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- New user modal -->
+<div class="modal-backdrop" id="new-user-modal" style="display:none">
+  <div class="modal">
+    <div class="modal__header">
+      <h2 class="modal__title">New User</h2>
+      <button class="modal__close" onclick="closeModal()">&times;</button>
+    </div>
+    <form id="new-user-form" onsubmit="submitNewUser(event)">
+      <div class="form-group">
+        <label class="form-label" for="nu-username">Username</label>
+        <input class="input" type="text" id="nu-username" name="username" required autocomplete="off" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="nu-password">Password</label>
+        <input class="input" type="password" id="nu-password" name="password" required autocomplete="new-password" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">
+          <input type="checkbox" id="nu-admin" name="is_admin" />
+          Administrator
+        </label>
+      </div>
+      <div id="new-user-error" class="alert alert-error" style="display:none"></div>
+      <div class="form-actions">
+        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create user</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Change password modal -->
+<div class="modal-backdrop" id="pw-modal" style="display:none">
+  <div class="modal">
+    <div class="modal__header">
+      <h2 class="modal__title">Change Password</h2>
+      <button class="modal__close" onclick="closeModal()">&times;</button>
+    </div>
+    <form id="pw-form" onsubmit="submitPassword(event)">
+      <input type="hidden" id="pw-user-id" />
+      <div class="form-group">
+        <label class="form-label" for="pw-new">New Password</label>
+        <input class="input" type="password" id="pw-new" required autocomplete="new-password" />
+      </div>
+      <div id="pw-error" class="alert alert-error" style="display:none"></div>
+      <div class="form-actions">
+        <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadUsers() {
+  const res = await fetch('/api/admin/users');
+  if (!res.ok) { document.getElementById('users-tbody').innerHTML = '<tr><td colspan="5">Failed to load users.</td></tr>'; return; }
+  const users = await res.json();
+  const tbody = document.getElementById('users-tbody');
+  if (!users.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="table__empty">No users found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => `
+    <tr class="${u.is_active ? '' : 'row--inactive'}">
+      <td>${escHtml(u.username)}</td>
+      <td>${u.is_admin ? '<span class="badge badge-insert">Admin</span>' : 'User'}</td>
+      <td>${u.is_active ? '<span class="badge badge-update">Active</span>' : '<span class="badge badge-delete">Inactive</span>'}</td>
+      <td>${u.created_at ? u.created_at.slice(0,10) : '—'}</td>
+      <td class="table__actions">
+        <button class="btn btn-sm" onclick="openPasswordModal('${u.id}')">Password</button>
+        <button class="btn btn-sm" onclick="toggleAdmin('${u.id}', ${u.is_admin})">${u.is_admin ? 'Remove admin' : 'Make admin'}</button>
+        <button class="btn btn-sm ${u.is_active ? 'btn-danger' : ''}" onclick="toggleActive('${u.id}', ${u.is_active})">${u.is_active ? 'Deactivate' : 'Activate'}</button>
+      </td>
+    </tr>`).join('');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function openNewUserModal() {
+  document.getElementById('new-user-form').reset();
+  document.getElementById('new-user-error').style.display = 'none';
+  document.getElementById('new-user-modal').style.display = 'flex';
+}
+
+function openPasswordModal(userId) {
+  document.getElementById('pw-user-id').value = userId;
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-error').style.display = 'none';
+  document.getElementById('pw-modal').style.display = 'flex';
+}
+
+function closeModal() {
+  document.querySelectorAll('.modal-backdrop').forEach(m => m.style.display = 'none');
+}
+
+async function submitNewUser(e) {
+  e.preventDefault();
+  const errEl = document.getElementById('new-user-error');
+  errEl.style.display = 'none';
+  const body = {
+    username: document.getElementById('nu-username').value.trim(),
+    password: document.getElementById('nu-password').value,
+    is_admin: document.getElementById('nu-admin').checked,
+  };
+  const res = await fetch('/api/admin/users', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const err = await res.json();
+    errEl.textContent = err.detail || 'Failed to create user';
+    errEl.style.display = 'flex';
+    return;
+  }
+  closeModal();
+  loadUsers();
+}
+
+async function submitPassword(e) {
+  e.preventDefault();
+  const userId = document.getElementById('pw-user-id').value;
+  const errEl = document.getElementById('pw-error');
+  errEl.style.display = 'none';
+  const res = await fetch(`/api/admin/users/${userId}`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ password: document.getElementById('pw-new').value }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    errEl.textContent = err.detail || 'Failed to update password';
+    errEl.style.display = 'flex';
+    return;
+  }
+  closeModal();
+}
+
+async function toggleAdmin(userId, isAdmin) {
+  const res = await fetch(`/api/admin/users/${userId}`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ is_admin: !isAdmin }),
+  });
+  if (!res.ok) { const e = await res.json(); alert(e.detail || 'Failed'); return; }
+  loadUsers();
+}
+
+async function toggleActive(userId, isActive) {
+  const res = await fetch(`/api/admin/users/${userId}`, {
+    method: 'PATCH',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ is_active: !isActive }),
+  });
+  if (!res.ok) { const e = await res.json(); alert(e.detail || 'Failed'); return; }
+  loadUsers();
+}
+
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-backdrop')) closeModal();
+});
+
+loadUsers();
+</script>
+{% endblock %}

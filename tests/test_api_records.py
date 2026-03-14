@@ -134,6 +134,18 @@ def test_get_deleted_record_returns_404(client):
     assert res.status_code == 404
 
 
+def test_get_deleted_record_with_include_deleted(client):
+    """include_deleted=true must return soft-deleted records (powers deleted-reference indicator)."""
+    rid = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
+    client.delete(f"/api/records/test/company/{rid}")
+
+    res = client.get(f"/api/records/test/company/{rid}?include_deleted=true")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["code"] == "C001"
+    assert data["_deleted_at"] is not None
+
+
 def test_get_record_invalid_uuid_returns_400(client):
     res = client.get("/api/records/test/company/not-a-uuid")
     assert res.status_code == 400
@@ -396,3 +408,30 @@ def test_audit_log_filter_by_time(client):
     # from_time in the past → finds the entry
     data = client.get("/api/audit", params={"schema": "test", "obj": "company", "from_time": past}).json()
     assert data["total"] >= 1
+
+
+def test_audit_log_records_delete_action(client):
+    rid = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
+    client.delete(f"/api/records/test/company/{rid}?reason=cleanup")
+
+    data = client.get("/api/audit?schema=test&obj=company&action=DELETE").json()
+    assert data["total"] >= 1
+    assert all(r["action"] == "DELETE" for r in data["records"])
+
+
+def test_audit_log_records_revert_action(client):
+    rid = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
+    client.put(f"/api/records/test/company/{rid}", json={"name": "v2"})
+    client.post(f"/api/records/test/company/{rid}/revert/1?reason=undo")
+
+    data = client.get("/api/audit?schema=test&obj=company&action=REVERT").json()
+    assert data["total"] >= 1
+    assert all(r["action"] == "REVERT" for r in data["records"])
+
+
+def test_audit_log_entries_contain_record_id(client):
+    rid = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
+
+    data = client.get("/api/audit?schema=test&obj=company").json()
+    assert data["total"] >= 1
+    assert all(r["record_id"] == rid for r in data["records"])

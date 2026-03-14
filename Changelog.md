@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- JWT-based authentication: all routes are protected; users log in at `/login` and receive an httpOnly `access_token` cookie; API clients may alternatively pass `Authorization: Bearer <token>`
+- First-run setup: if no users exist at startup, an admin user is created automatically using `ADMIN_USERNAME` / `ADMIN_PASSWORD` from the environment (defaults: `admin` / `admin`)
+- User management UI at `/admin/users` (admin-only): create users, change passwords, toggle active/inactive status, toggle admin role
+- Admin API at `/api/admin/users` — `GET`, `POST`, `PATCH /{user_id}` for user management; self-protection guard prevents an admin from deactivating or demoting their own account
+- Audit log entries for authentication events: `LOGIN`, `LOGIN_FAILED`, and `LOGOUT` written to `_system.audit_log` including username and client IP
+- All data-change audit log entries now record the authenticated username in `user_name` (previously always null)
+- Admin and Audit Log links in the header navigation (visible to admin users only); username and logout button shown to all authenticated users
+- 17 new integration tests in `tests/test_api_auth.py` covering login/logout, inactive users, audit log entries, and user management CRUD
+
+### Fixed
+- `Authorization: Bearer` header now takes priority over the `access_token` cookie in the auth middleware — correct semantics; browser sessions are unaffected (they never send an Authorization header)
+
 ## [0.1.2] – 2026-03-14
 
 ### Fixed

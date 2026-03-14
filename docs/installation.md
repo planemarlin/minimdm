@@ -46,6 +46,14 @@ Edit `.env`:
 ```env
 DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm
 CONFIG_FILE=config/minimdm.yaml
+
+# Secret key for signing JWT tokens — use a long random string in production
+SECRET_KEY=change-me-to-a-long-random-secret
+TOKEN_EXPIRE_HOURS=24
+
+# First-run admin account (created automatically if no users exist)
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=change-me
 ```
 
 ## Create a Config File

@@ -3,11 +3,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
+from app.core.auth import count_users, create_user, decode_token, ensure_users_table
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
 from sqlalchemy import text
@@ -22,13 +24,20 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     tm = TableManager(engine)
 
-    # Create _system schema first, then the audit log table
+    # Create _system schema first, then system tables
     with engine.connect() as conn:
         conn.execute(text("CREATE SCHEMA IF NOT EXISTS _system"))
         conn.commit()
 
     tm._ensure_audit_log_table()
+    ensure_users_table(engine)
     tm.metadata.create_all(engine)
+
+    # Auto-create first admin if credentials are configured and no users exist
+    if settings.admin_username and settings.admin_password:
+        if count_users(engine) == 0:
+            create_user(engine, settings.admin_username, settings.admin_password, is_admin=True)
+            logger.info("Created initial admin user: %s", settings.admin_username)
 
     app.state.table_manager = tm
     app.state.app_config = {}
@@ -69,12 +78,61 @@ templates = Jinja2Templates(directory="app/templates")
 templates.env.policies["json.dumps_kwargs"] = {"sort_keys": False}
 
 # -----------------------------------------------------------------
+# Auth middleware
+# -----------------------------------------------------------------
+
+_PUBLIC_PATHS = {"/login", "/api/auth/login", "/docs", "/openapi.json", "/redoc"}
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path in _PUBLIC_PATHS or path.startswith("/static"):
+            request.state.current_user = None
+            return await call_next(request)
+
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+        else:
+            token = request.cookies.get("access_token")
+
+        user = None
+        if token:
+            payload = decode_token(token)
+            if payload:
+                user = {
+                    "user_id": payload.get("user_id"),
+                    "username": payload.get("sub"),
+                    "is_admin": payload.get("is_admin", False),
+                }
+
+        request.state.current_user = user
+
+        if user is None:
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+            next_url = request.url.path
+            if request.url.query:
+                next_url += f"?{request.url.query}"
+            return RedirectResponse(
+                url=f"/login?next={next_url}", status_code=303
+            )
+
+        return await call_next(request)
+
+
+app.add_middleware(AuthMiddleware)
+
+# -----------------------------------------------------------------
 # API routers
 # -----------------------------------------------------------------
-from app.api import audit_api, import_export, objects, schemas_api  # noqa: E402
+from app.api import admin_api, audit_api, auth_api, import_export, objects, schemas_api  # noqa: E402
 
 # Import/export must be registered before objects to avoid /export being
 # matched by the /{record_id} wildcard route.
+app.include_router(auth_api.router, prefix="/api", tags=["Auth"])
+app.include_router(admin_api.router, prefix="/api", tags=["Admin"])
 app.include_router(import_export.router, prefix="/api", tags=["Import / Export"])
 app.include_router(objects.router, prefix="/api", tags=["Records"])
 app.include_router(schemas_api.router, prefix="/api", tags=["Schemas"])
@@ -84,6 +142,30 @@ app.include_router(audit_api.router, prefix="/api", tags=["Audit"])
 # -----------------------------------------------------------------
 # Web UI routes
 # -----------------------------------------------------------------
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse(
+        request, "auth/login.html", {"app_name": settings.app_name}
+    )
+
+
+@app.get("/admin/users", response_class=HTMLResponse)
+async def admin_users(request: Request):
+    user = getattr(request.state, "current_user", None)
+    if not user or not user.get("is_admin"):
+        return templates.TemplateResponse(
+            request, "error.html",
+            {"message": "Admin access required", "app_name": settings.app_name},
+            status_code=403,
+        )
+    tm = request.app.state.table_manager
+    schemas_list = [{"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()]
+    return templates.TemplateResponse(
+        request, "admin/users.html",
+        {"schemas": schemas_list, "app_name": settings.app_name},
+    )
+
 
 @app.get("/admin/audit", response_class=HTMLResponse)
 async def admin_audit(request: Request):

@@ -21,32 +21,34 @@ Issues marked **Fixed** are resolved in the current codebase. Issues marked **Im
 
 ---
 
-## Open Issues
+## Fixed / Implemented in 0.1.2
 
 ### Column names do not match values in the record list table
-**Status:** Fixed in 0.1.2
 **Root cause:** The Jinja2 header loop used `loop.index <= 6` which counted all attributes (including references) toward the 6-column cap, while the JavaScript filtered out references before slicing. Fixed by using a Jinja2 namespace counter that increments only for non-reference attributes.
 
 ### Deleted records are not browsable from the UI
-**Status:** Fixed (implemented "Show deleted" toggle)
 **Root cause:** The record list API filtered out soft-deleted records and there was no UI path to reach their history. Fixed by adding an `include_deleted` query parameter to the list API and a "Show deleted" checkbox to the record list toolbar. Deleted rows are shown with strikethrough styling and link to their history page.
 
 ### A referenced record's ID still shows after the referenced record is deleted
-**Status:** Fixed
-**Description:** If a Manager is assigned to a Cost Center and the Manager record is later deleted, the Cost Center detail page now resolves the reference at display time. Active references show a clickable display name; deleted references show the display name with a red "deleted" badge. The single-record GET API was extended with `include_deleted=true` to support this lookup.
+**Root cause:** Reference fields were rendered as raw UUIDs with no lookup. The detail page now resolves references at display time: active references show a clickable display name; deleted references show the name with a red "deleted" badge. `GET /api/records/{schema}/{obj}/{id}` extended with `include_deleted=true` to support this lookup.
 
 ### Numeric fields accept non-numeric input without a visible error message
-**Status:** Fixed
-**Description:** Client-side validation now runs before submission. Invalid number inputs are highlighted with a red border and a field-level error message ("Must be a whole number." / "Must be a valid number."). Integer fields also receive `step="1"` so the browser's native number picker enforces whole numbers. Server-side 422 validation error arrays are now formatted into a readable sentence instead of `[object Object]`.
+**Root cause:** No client-side validation existed; non-numeric text was silently dropped by the browser (`value=""` with `validity.badInput=true`). Fixed by checking `badInput` before submission and highlighting invalid inputs with a red border and field-level error message. Integer fields carry `step="1"`; server 422 detail arrays are now rendered as readable text.
 
-### Viewing the parent record inline in the detail view
-**Status:** Implemented
-**Description:** The detail view now shows collapsible panels below the main record for every child object (objects whose `parent` points to the current object). Each panel lists the child records in a table with a View link per row, and shows a record count in the header. Panels are open by default and can be collapsed by clicking the header.
+### Parent FK silently dropped on create and update
+**Root cause:** `_filter_columns` excluded all `_`-prefixed keys to block system columns, but parent FK columns (e.g. `_division_id`) also start with `_` and were dropped. Fixed by enumerating the known system columns explicitly.
+
+### Parent / child records not visible from the detail view
+**Root cause:** No UI existed to navigate to or display related records. Fixed by adding collapsible child-record panels below the main card for every object whose `parent` points to the current object. Each panel shows a record count and a table with View links; panels are open by default.
 
 ### History page does not show historic attribute values
-**Status:** Implemented
-**Description:** Each version entry on the history page now shows the full attribute snapshot recorded at that point, making it easy to compare versions before reverting.
+**Root cause:** The history API returned version metadata only; attribute values were stored in `_history` tables but not rendered. Fixed by passing the full attribute snapshot to the history template and rendering it per version entry.
 
 ### Audit log has no dedicated UI page
-**Status:** Implemented
-**Description:** `/admin/audit` provides a paginated, filterable table of all audit log entries. Accessible from the "Audit Log" link in the header navigation on every page.
+**Root cause:** No UI existed to browse audit log entries. Fixed by adding `/admin/audit`: a paginated, filterable table (schema, object, action, record, reason, timestamp) with a cascading object dropdown and datetime range filter. Accessible from the header navigation on every page.
+
+---
+
+## Open Issues
+
+No open issues at this time. New findings can be added here as they are discovered.

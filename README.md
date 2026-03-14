@@ -8,6 +8,8 @@ A minimal, lightweight, open-source **Master Data Management** application with 
 - Create, read, update, and delete records through the web UI or API
 - Full record versioning with the ability to view and revert to any historical version
 - Complete audit log: what changed, who changed it, when, and why
+- JWT-based authentication with role-based access control (admin / user)
+- User management UI and API for creating and managing accounts
 - Bulk import/export (CSV, TSV, JSON)
 - Full-text search within any object
 - Cross-object references and parent-child hierarchies

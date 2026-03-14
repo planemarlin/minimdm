@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in – {{ app_name }}</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body class="login-body">
+  <div class="login-card">
+    <div class="login-card__brand">{{ app_name }}</div>
+    <h1 class="login-card__title">Sign in</h1>
+
+    <div id="login-error" class="alert alert-error" style="display:none"></div>
+
+    <form id="login-form" autocomplete="on">
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" autocomplete="username" required />
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required />
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary" style="width:100%" id="login-btn">Sign in</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("login-btn");
+      const errEl = document.getElementById("login-error");
+      errEl.style.display = "none";
+      btn.disabled = true;
+      btn.textContent = "Signing in…";
+
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+
+      try {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+
+        if (res.ok) {
+          const next = new URLSearchParams(window.location.search).get("next") || "/";
+          window.location.href = next;
+        } else {
+          const data = await res.json().catch(() => ({}));
+          errEl.textContent = data.detail || "Invalid username or password.";
+          errEl.style.display = "flex";
+          btn.disabled = false;
+          btn.textContent = "Sign in";
+        }
+      } catch {
+        errEl.textContent = "Could not reach the server. Please try again.";
+        errEl.style.display = "flex";
+        btn.disabled = false;
+        btn.textContent = "Sign in";
+      }
+    });
+  </script>
+</body>
+</html>
