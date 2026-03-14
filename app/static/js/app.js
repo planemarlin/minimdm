@@ -382,7 +382,7 @@ async function populateRefSelects(schema, objConfig, record) {
 
 // ── History page ─────────────────────────────────────────────────────────────
 
-async function loadHistory(schema, obj, recordId) {
+async function loadHistory(schema, obj, recordId, objConfig) {
   const container = document.getElementById("history-container");
   if (!container) return;
   container.innerHTML = `<div style="text-align:center;padding:2rem"><span class="spinner"></span></div>`;
@@ -404,6 +404,23 @@ async function loadHistory(schema, obj, recordId) {
     return `<span class="badge ${cls}">${a}</span>`;
   };
 
+  // Non-reference user attributes, used to render the attribute snapshot per version.
+  const userAttrs = Object.entries((objConfig || {}).attributes || {}).filter(([, v]) => !v.reference);
+
+  const attrSnapshot = (h) => {
+    if (!userAttrs.length) return "";
+    const pairs = userAttrs
+      .map(([k, v]) => {
+        const val = h[k];
+        return val != null
+          ? `<span><b>${escHtml(v.name || k)}:</b> ${escHtml(String(val))}</span>`
+          : null;
+      })
+      .filter(Boolean)
+      .join("");
+    return pairs ? `<div class="history-meta__attrs">${pairs}</div>` : "";
+  };
+
   const rows = history
     .map(
       (h) => `<li class="history-item">
@@ -414,6 +431,7 @@ async function loadHistory(schema, obj, recordId) {
           <div class="history-meta__time">${fmtDate(h._changed_at)}</div>
           ${h._change_reason ? `<div class="history-meta__reason">Reason: ${escHtml(h._change_reason)}</div>` : ""}
           ${h._changed_by ? `<div class="history-meta__time">By: ${escHtml(h._changed_by)}</div>` : ""}
+          ${attrSnapshot(h)}
         </div>
         <div>
           ${h._action !== "DELETE" ? `<button class="btn btn-secondary btn-sm"

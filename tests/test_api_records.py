@@ -208,6 +208,26 @@ def test_history_after_create_has_one_insert_entry(client):
     assert history[0]["_action"] == "INSERT"
 
 
+def test_history_entries_include_attribute_snapshot(client):
+    """Each history row must carry the full attribute snapshot so the UI can display values."""
+    rid = client.post(
+        "/api/records/test/company",
+        json={"code": "C001", "name": "Original"},
+    ).json()["id"]
+    client.put(f"/api/records/test/company/{rid}", json={"name": "Updated"})
+
+    history = client.get(f"/api/records/test/company/{rid}/history").json()
+    by_version = {h["_version"]: h for h in history}
+
+    # Version 1 (INSERT) snapshot
+    assert by_version[1]["code"] == "C001"
+    assert by_version[1]["name"] == "Original"
+
+    # Version 2 (UPDATE) snapshot
+    assert by_version[2]["code"] == "C001"
+    assert by_version[2]["name"] == "Updated"
+
+
 def test_history_after_update_has_two_entries(client):
     rid = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
     client.put(f"/api/records/test/company/{rid}", json={"name": "Changed"})

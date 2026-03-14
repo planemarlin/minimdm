@@ -47,9 +47,8 @@ Issues marked **Fixed** are resolved in the current codebase. Issues marked **Im
 **Planned fix:** Add a collapsible "related objects" panel in the detail view.
 
 ### History page does not show historic attribute values
-**Status:** Future work
-**Description:** The history page lists versions with their action, timestamp, and optional reason, but does not display the actual attribute values for each snapshot. Without visible values (or a reason comment) it is difficult to decide which version to revert to.
-**Planned fix:** Expand each version entry on the history page to show the full attribute snapshot for that version.
+**Status:** Implemented
+**Description:** Each version entry on the history page now shows the full attribute snapshot recorded at that point, making it easy to compare versions before reverting.
 
 ### Audit log has no dedicated UI page
 **Status:** Future work
