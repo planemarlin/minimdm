@@ -1,0 +1,234 @@
+"""Integration tests for authentication and user management endpoints.
+
+Requires TEST_DATABASE_URL to be set; the entire module is skipped otherwise.
+"""
+import os
+
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("TEST_DATABASE_URL"),
+    reason="TEST_DATABASE_URL not set – skipping integration tests",
+)
+
+
+# ---------------------------------------------------------------------------
+# Unauthenticated access
+# ---------------------------------------------------------------------------
+
+def test_unauthenticated_api_request_returns_401(client):
+    """API routes must return 401 when no token is provided."""
+    import httpx
+    from app.main import app as fastapi_app
+    from fastapi.testclient import TestClient
+
+    # Use a fresh client with no auth headers
+    with TestClient(fastapi_app) as bare:
+        res = bare.get("/api/records/test/company")
+    assert res.status_code == 401
+
+
+def test_login_page_is_publicly_accessible(client):
+    import httpx
+    from app.main import app as fastapi_app
+    from fastapi.testclient import TestClient
+
+    with TestClient(fastapi_app) as bare:
+        res = bare.get("/login", follow_redirects=False)
+    assert res.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Login / logout
+# ---------------------------------------------------------------------------
+
+def test_login_success(client):
+    """Create a user and verify login returns 200 with username."""
+    engine = _get_engine()
+    from app.core.auth import create_user
+    create_user(engine, "auth_test_user", "correct_password")
+    try:
+        res = client.post("/api/auth/login", json={"username": "auth_test_user", "password": "correct_password"})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["username"] == "auth_test_user"
+        assert "is_admin" in data
+    finally:
+        _delete_user(engine, "auth_test_user")
+
+
+def test_login_wrong_password_returns_401(client):
+    engine = _get_engine()
+    from app.core.auth import create_user
+    create_user(engine, "auth_wp_user", "rightpass")
+    try:
+        res = client.post("/api/auth/login", json={"username": "auth_wp_user", "password": "wrongpass"})
+        assert res.status_code == 401
+    finally:
+        _delete_user(engine, "auth_wp_user")
+
+
+def test_login_unknown_user_returns_401(client):
+    res = client.post("/api/auth/login", json={"username": "nobody_xyz", "password": "anything"})
+    assert res.status_code == 401
+
+
+def test_login_inactive_user_returns_401(client):
+    engine = _get_engine()
+    from app.core.auth import create_user, update_user, list_users
+    create_user(engine, "auth_inactive", "pass123")
+    users = list_users(engine)
+    uid = next(u["id"] for u in users if u["username"] == "auth_inactive")
+    update_user(engine, uid, is_active=False)
+    try:
+        res = client.post("/api/auth/login", json={"username": "auth_inactive", "password": "pass123"})
+        assert res.status_code == 401
+    finally:
+        _delete_user(engine, "auth_inactive")
+
+
+def test_logout_returns_200(client):
+    res = client.post("/api/auth/logout")
+    assert res.status_code == 200
+
+
+def test_me_endpoint_returns_current_user(client):
+    res = client.get("/api/auth/me")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["username"] == "test_admin"
+    assert data["is_admin"] is True
+
+
+# ---------------------------------------------------------------------------
+# Login writes to audit log
+# ---------------------------------------------------------------------------
+
+def test_successful_login_is_logged(client):
+    engine = _get_engine()
+    from app.core.auth import create_user
+    from sqlalchemy import text
+    create_user(engine, "audit_login_user", "pass123")
+    try:
+        client.post("/api/auth/login", json={"username": "audit_login_user", "password": "pass123"})
+        with engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT action FROM _system.audit_log "
+                "WHERE object_name='users' AND user_name='audit_login_user' AND action='LOGIN' "
+                "ORDER BY timestamp DESC LIMIT 1"
+            )).fetchone()
+        assert row is not None
+    finally:
+        _delete_user(engine, "audit_login_user")
+
+
+def test_failed_login_is_logged(client):
+    from sqlalchemy import text
+    engine = _get_engine()
+    client.post("/api/auth/login", json={"username": "nosuchuser_audit", "password": "x"})
+    with engine.connect() as conn:
+        row = conn.execute(text(
+            "SELECT action FROM _system.audit_log "
+            "WHERE object_name='users' AND action='LOGIN_FAILED' AND user_name='nosuchuser_audit' "
+            "ORDER BY timestamp DESC LIMIT 1"
+        )).fetchone()
+    assert row is not None
+
+
+# ---------------------------------------------------------------------------
+# User management API
+# ---------------------------------------------------------------------------
+
+def test_admin_can_list_users(client):
+    res = client.get("/api/admin/users")
+    assert res.status_code == 200
+    assert isinstance(res.json(), list)
+
+
+def test_admin_can_create_user(client):
+    engine = _get_engine()
+    res = client.post("/api/admin/users", json={
+        "username": "new_api_user",
+        "password": "secret123",
+        "is_admin": False,
+    })
+    assert res.status_code == 201
+    data = res.json()
+    assert data["username"] == "new_api_user"
+    assert data["is_admin"] is False
+    _delete_user(engine, "new_api_user")
+
+
+def test_create_duplicate_user_returns_409(client):
+    engine = _get_engine()
+    from app.core.auth import create_user
+    create_user(engine, "dup_user_test", "pass")
+    try:
+        res = client.post("/api/admin/users", json={"username": "dup_user_test", "password": "pass"})
+        assert res.status_code == 409
+    finally:
+        _delete_user(engine, "dup_user_test")
+
+
+def test_admin_can_toggle_user_active(client):
+    engine = _get_engine()
+    from app.core.auth import create_user, get_user_by_username
+    create_user(engine, "toggle_user", "pass123")
+    user = get_user_by_username(engine, "toggle_user")
+    uid = str(user["id"])
+    try:
+        res = client.patch(f"/api/admin/users/{uid}", json={"is_active": False})
+        assert res.status_code == 200
+        from app.core.auth import get_user_by_id
+        updated = get_user_by_id(engine, uid)
+        assert updated["is_active"] is False
+    finally:
+        _delete_user(engine, "toggle_user")
+
+
+def test_admin_can_toggle_admin_role(client):
+    engine = _get_engine()
+    from app.core.auth import create_user, get_user_by_username, get_user_by_id
+    create_user(engine, "role_user", "pass123", is_admin=False)
+    user = get_user_by_username(engine, "role_user")
+    uid = str(user["id"])
+    try:
+        res = client.patch(f"/api/admin/users/{uid}", json={"is_admin": True})
+        assert res.status_code == 200
+        updated = get_user_by_id(engine, uid)
+        assert updated["is_admin"] is True
+    finally:
+        _delete_user(engine, "role_user")
+
+
+def test_non_admin_cannot_access_user_management(client):
+    from app.main import app as fastapi_app
+    from fastapi.testclient import TestClient
+    from app.core.auth import create_token
+
+    token = create_token("00000000-0000-0000-0000-000000000002", "plain_user", is_admin=False)
+    with TestClient(fastapi_app) as c:
+        c.headers.update({"Authorization": f"Bearer {token}"})
+        res = c.get("/api/admin/users")
+    assert res.status_code == 403
+
+
+def test_patch_nonexistent_user_returns_404(client):
+    res = client.patch("/api/admin/users/00000000-0000-0000-0000-000000000099", json={"is_active": False})
+    assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _get_engine():
+    from app.main import app as fastapi_app
+    return fastapi_app.state.table_manager.engine
+
+
+def _delete_user(engine, username: str):
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        conn.execute(text("DELETE FROM _system.users WHERE username = :u"), {"u": username})
+        conn.commit()
