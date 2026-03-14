@@ -504,6 +504,22 @@ details[open] > .related-panel__summary::before { transform: rotate(90deg); }
 }
 .modal__close:hover { color: var(--text); }
 
+/* ===== Tabs ===== */
+.tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 1.25rem; }
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: .55rem 1.1rem;
+  font-size: .875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn--active { color: var(--primary); border-bottom-color: var(--primary); }
+
 /* ===== Table utilities ===== */
 .table__actions { display: flex; gap: .4rem; flex-wrap: wrap; }
 .btn-sm { padding: .2rem .5rem; font-size: .78rem; }
