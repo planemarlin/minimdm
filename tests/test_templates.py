@@ -125,18 +125,23 @@ def test_list_page_objconfig_json_preserves_attribute_order(client):
     assert res.status_code == 200
     html = res.text
 
-    # The embedded JSON is: objConfig: { ... "attributes": {"code": {...}, "name": {...}} }
-    # If sort_keys was True, "name" would appear before "code".
-    # Check that "code" appears before "name" within the objConfig script block.
+    # The embedded JSON is: objConfig: { "name": "Company", ..., "attributes": {"code": {...}, "name": {...}} }
+    # If sort_keys was True, "name" would appear before "code" inside "attributes".
+    # Note: obj_config has a top-level "name" key ("Company") that appears before "attributes",
+    # so we must search for key order within the "attributes" section only.
     script_start = html.find("const recordList")
     assert script_start != -1, "RecordList script block not found"
     script_block = html[script_start:]
 
-    code_pos = script_block.find('"code"')
-    name_pos = script_block.find('"name"')
+    attr_start = script_block.find('"attributes"')
+    assert attr_start != -1, '"attributes" key not found in objConfig JSON'
+    attr_section = script_block[attr_start:]
+
+    code_pos = attr_section.find('"code"')
+    name_pos = attr_section.find('"name"')
 
     assert code_pos != -1 and name_pos != -1
     assert code_pos < name_pos, (
-        "In objConfig JSON, 'code' attribute must appear before 'name' — "
+        "In objConfig JSON attributes, 'code' must appear before 'name' — "
         "sort_keys regression detected"
     )
