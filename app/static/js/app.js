@@ -320,8 +320,8 @@ function _validateForm(form) {
   _clearFieldErrors(form);
   let valid = true;
   for (const input of form.querySelectorAll("input[type='number']")) {
-    const val = input.value.trim();
-    if (val === "") continue;
+    // When non-numeric text is typed, browsers set value="" but badInput=true.
+    if (input.value === "" && !input.validity.badInput) continue;
     if (!input.validity.valid) {
       _setFieldError(input, input.step === "1" ? "Must be a whole number." : "Must be a valid number.");
       valid = false;
