@@ -91,11 +91,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.state.current_user = None
             return await call_next(request)
 
-        token = request.cookies.get("access_token")
-        if not token:
-            auth_header = request.headers.get("Authorization", "")
-            if auth_header.startswith("Bearer "):
-                token = auth_header[7:]
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+        else:
+            token = request.cookies.get("access_token")
 
         user = None
         if token:
