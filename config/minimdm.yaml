@@ -17,6 +17,12 @@ minimdm:
             country:
               name: Country
               type: string
+            externalid:
+              name: External ID
+              type: string
+            companymanager:
+              reference: manager
+              name: Company manager
         division:
           name: Division
           parent: company
