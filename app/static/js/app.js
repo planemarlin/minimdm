@@ -516,8 +516,11 @@ async function loadAuditLog(page) {
   if (schema) params.set("schema", schema);
   if (obj) params.set("obj", obj);
   if (action) params.set("action", action);
-  if (fromTime) params.set("from_time", fromTime);
-  if (toTime) params.set("to_time", toTime);
+  // datetime-local values are in local time; convert to UTC ISO so the API
+  // compares against the correct instant regardless of the server's timezone.
+  const toUtcIso = s => new Date(s).toISOString().replace(/\.\d{3}Z$/, "+00:00");
+  if (fromTime) params.set("from_time", toUtcIso(fromTime));
+  if (toTime) params.set("to_time", toUtcIso(toTime));
 
   const res = await fetch(`/api/audit?${params}`);
   if (!res.ok) {

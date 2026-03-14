@@ -231,12 +231,14 @@ input[type="text"],
 input[type="email"],
 input[type="number"],
 input[type="date"],
+input[type="datetime-local"],
 select,
 textarea {
   width: 100%;
   padding: .45rem .65rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  font-family: inherit;
   font-size: .875rem;
   color: var(--text);
   background: var(--surface);
