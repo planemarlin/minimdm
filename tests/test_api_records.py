@@ -314,6 +314,46 @@ def test_revert_nonexistent_version_returns_404(client):
 
 
 # ---------------------------------------------------------------------------
+# Parent-child relationships
+# ---------------------------------------------------------------------------
+
+def test_parent_id_is_saved_on_create(client):
+    company_id = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
+    div_id = client.post("/api/records/test/division",
+        json={"code": "D001", "_company_id": company_id}).json()["id"]
+
+    rec = client.get(f"/api/records/test/division/{div_id}").json()
+    assert rec["_company_id"] == company_id
+
+
+def test_parent_id_is_saved_on_update(client):
+    company_id = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
+    div_id = client.post("/api/records/test/division", json={"code": "D001"}).json()["id"]
+
+    # Verify no parent initially
+    assert client.get(f"/api/records/test/division/{div_id}").json()["_company_id"] is None
+
+    client.put(f"/api/records/test/division/{div_id}", json={"_company_id": company_id})
+    assert client.get(f"/api/records/test/division/{div_id}").json()["_company_id"] == company_id
+
+
+def test_list_records_filter_by_parent_id(client):
+    c1 = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
+    c2 = client.post("/api/records/test/company", json={"code": "C002"}).json()["id"]
+    client.post("/api/records/test/division", json={"code": "D001", "_company_id": c1})
+    client.post("/api/records/test/division", json={"code": "D002", "_company_id": c1})
+    client.post("/api/records/test/division", json={"code": "D003", "_company_id": c2})
+
+    data = client.get("/api/records/test/division", params={"parent_id": c1}).json()
+    assert data["total"] == 2
+    assert all(r["_company_id"] == c1 for r in data["records"])
+
+    data = client.get("/api/records/test/division", params={"parent_id": c2}).json()
+    assert data["total"] == 1
+    assert data["records"][0]["code"] == "D003"
+
+
+# ---------------------------------------------------------------------------
 # Audit log API
 # ---------------------------------------------------------------------------
 
