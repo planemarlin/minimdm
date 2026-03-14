@@ -64,6 +64,22 @@ a:hover { text-decoration: underline; }
   margin-left: 1rem;
 }
 .header__nav a:hover { color: #fff; text-decoration: none; }
+.header__user {
+  color: var(--sidebar-text);
+  font-size: .875rem;
+  margin-left: 1rem;
+}
+.header__logout {
+  background: none;
+  border: 1px solid #475569;
+  border-radius: var(--radius);
+  color: var(--sidebar-text);
+  cursor: pointer;
+  font-size: .8rem;
+  margin-left: .75rem;
+  padding: .2rem .6rem;
+}
+.header__logout:hover { border-color: #94a3b8; color: #fff; }
 .menu-btn {
   display: none;
   background: none;
@@ -418,6 +434,39 @@ details[open] > .related-panel__summary::before { transform: rotate(90deg); }
 
 /* ===== Import/Export bar ===== */
 .import-export { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+
+/* ===== Login page ===== */
+.login-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--bg);
+  grid-template-areas: none;
+  grid-template-columns: 1fr;
+}
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 24px rgba(0,0,0,.08);
+  padding: 2.5rem 2rem;
+  width: 100%;
+  max-width: 360px;
+}
+.login-card__brand {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  text-align: center;
+  margin-bottom: .25rem;
+}
+.login-card__title {
+  font-size: .9rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 1.75rem;
+}
 
 /* ===== Responsive ===== */
 @media (max-width: 768px) {

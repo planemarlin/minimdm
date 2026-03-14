@@ -16,6 +16,11 @@ def _get_tm(request: Request):
     return request.app.state.table_manager
 
 
+def _get_username(request: Request) -> Optional[str]:
+    user = getattr(request.state, "current_user", None)
+    return user["username"] if user else None
+
+
 def _serialize_row(row: dict) -> dict:
     result = {}
     for k, v in row.items():
@@ -155,12 +160,13 @@ def create_record(
     full_row = {**values}
     audit_svc.write_history(
         db, history_table, full_row, version=1, action="INSERT", valid_from=now,
-        reason=body.get("_reason"), user_name=None
+        reason=body.get("_reason"), user_name=_get_username(request)
     )
     audit_svc.log_change(
         db, audit_table, schema, obj, record_id, "INSERT",
         old_values=None, new_values=audit_svc._serialize(values),
-        reason=body.get("_reason"), ip_address=_client_ip(request)
+        reason=body.get("_reason"), ip_address=_client_ip(request),
+        user_name=_get_username(request)
     )
     db.commit()
 
@@ -225,13 +231,14 @@ def update_record(
     audit_svc.write_history(
         db, history_table, new_values, version=current_version + 1,
         action="UPDATE", valid_from=now,
-        reason=body.get("_reason"), user_name=None
+        reason=body.get("_reason"), user_name=_get_username(request)
     )
     audit_svc.log_change(
         db, audit_table, schema, obj, rid, "UPDATE",
         old_values=audit_svc._serialize(old_values),
         new_values=audit_svc._serialize(new_values),
-        reason=body.get("_reason"), ip_address=_client_ip(request)
+        reason=body.get("_reason"), ip_address=_client_ip(request),
+        user_name=_get_username(request)
     )
     db.commit()
 
@@ -291,12 +298,13 @@ def delete_record(
     audit_svc.write_history(
         db, history_table, old_values, version=current_version + 1,
         action="DELETE", valid_from=now, valid_to=now,
-        reason=reason, user_name=None
+        reason=reason, user_name=_get_username(request)
     )
     audit_svc.log_change(
         db, audit_table, schema, obj, rid, "DELETE",
         old_values=audit_svc._serialize(old_values), new_values=None,
-        reason=reason, ip_address=_client_ip(request)
+        reason=reason, ip_address=_client_ip(request),
+        user_name=_get_username(request)
     )
     db.commit()
 
@@ -427,14 +435,15 @@ def revert_record(
     audit_svc.write_history(
         db, history_table, new_values, version=current_version + 1,
         action="REVERT", valid_from=now,
-        reason=reason or f"Reverted to version {version}", user_name=None
+        reason=reason or f"Reverted to version {version}", user_name=_get_username(request)
     )
     audit_svc.log_change(
         db, audit_table, schema, obj, rid, "REVERT",
         old_values=audit_svc._serialize(old_values),
         new_values=audit_svc._serialize(new_values),
         reason=reason or f"Reverted to version {version}",
-        ip_address=_client_ip(request)
+        ip_address=_client_ip(request),
+        user_name=_get_username(request)
     )
     db.commit()
 

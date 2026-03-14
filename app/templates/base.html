@@ -16,6 +16,11 @@
     <nav class="header__nav">
       <a href="/admin/audit">Audit Log</a>
       <a href="/docs" target="_blank">API Docs</a>
+      {% set current_user = request.state.current_user %}
+      {% if current_user %}
+      <span class="header__user">{{ current_user.username }}</span>
+      <button class="header__logout" onclick="fetch('/api/auth/logout',{method:'POST'}).then(()=>location.href='/login')">Logout</button>
+      {% endif %}
     </nav>
   </header>
 

@@ -168,7 +168,7 @@ async def import_records(
 
 
 def _import_row(db, table, history_table, audit_table, row: dict, reason, request, schema, obj):
-    from app.api.objects import _client_ip
+    from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
     user_cols = {c.name for c in table.c if not c.name.startswith("_")}
     values = {k: (v if v != "" else None) for k, v in row.items() if k in user_cols}
@@ -179,17 +179,18 @@ def _import_row(db, table, history_table, audit_table, row: dict, reason, reques
 
     db.execute(table.insert().values(**values))
     audit_svc.write_history(
-        db, history_table, values, version=1, action="INSERT", valid_from=now, reason=reason
+        db, history_table, values, version=1, action="INSERT", valid_from=now,
+        reason=reason, user_name=_get_username(request)
     )
     audit_svc.log_change(
         db, audit_table, schema, obj, record_id, "INSERT",
         old_values=None, new_values=audit_svc._serialize(values),
-        reason=reason, ip_address=_client_ip(request)
+        reason=reason, ip_address=_client_ip(request), user_name=_get_username(request)
     )
 
 
 def _upsert_row(db, table, history_table, audit_table, row: dict, upsert_key: str, reason, request, schema, obj):
-    from app.api.objects import _client_ip
+    from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
     user_cols = {c.name for c in table.c if not c.name.startswith("_")}
     values = {k: (v if v != "" else None) for k, v in row.items() if k in user_cols}
@@ -227,13 +228,13 @@ def _upsert_row(db, table, history_table, audit_table, row: dict, upsert_key: st
         new_values = {**old_values, **updates}
         audit_svc.write_history(
             db, history_table, new_values, version=current_version + 1,
-            action="UPDATE", valid_from=now, reason=reason
+            action="UPDATE", valid_from=now, reason=reason, user_name=_get_username(request)
         )
         audit_svc.log_change(
             db, audit_table, schema, obj, rid, "UPDATE",
             old_values=audit_svc._serialize(old_values),
             new_values=audit_svc._serialize(new_values),
-            reason=reason, ip_address=_client_ip(request)
+            reason=reason, ip_address=_client_ip(request), user_name=_get_username(request)
         )
         return "updated"
     else:
@@ -243,11 +244,12 @@ def _upsert_row(db, table, history_table, audit_table, row: dict, upsert_key: st
         values["_updated_at"] = now
         db.execute(table.insert().values(**values))
         audit_svc.write_history(
-            db, history_table, values, version=1, action="INSERT", valid_from=now, reason=reason
+            db, history_table, values, version=1, action="INSERT", valid_from=now,
+            reason=reason, user_name=_get_username(request)
         )
         audit_svc.log_change(
             db, audit_table, schema, obj, record_id, "INSERT",
             old_values=None, new_values=audit_svc._serialize(values),
-            reason=reason, ip_address=_client_ip(request)
+            reason=reason, ip_address=_client_ip(request), user_name=_get_username(request)
         )
         return "inserted"

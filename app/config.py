@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # Authentication
+    secret_key: str = "change-me-in-production-use-a-long-random-string"
+    token_expire_hours: int = 8
+    # Set these to auto-create the first admin on startup when no users exist
+    admin_username: str = ""
+    admin_password: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
