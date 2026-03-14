@@ -94,9 +94,9 @@ async def home(request: Request):
             {"name": schema_name, "objects": tm.list_objects(schema_name)}
         )
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "schemas": schemas_list,
             "app_name": settings.app_name,
         },
@@ -109,17 +109,18 @@ async def object_list(request: Request, schema: str, obj: str):
     obj_config = tm.get_object_config(schema, obj)
     if not obj_config:
         return templates.TemplateResponse(
+            request,
             "error.html",
-            {"request": request, "message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
+            {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
     schemas_list = [
         {"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()
     ]
     return templates.TemplateResponse(
+        request,
         "objects/list.html",
         {
-            "request": request,
             "schema": schema,
             "obj": obj,
             "obj_config": obj_config,
@@ -135,17 +136,18 @@ async def object_new(request: Request, schema: str, obj: str):
     obj_config = tm.get_object_config(schema, obj)
     if not obj_config:
         return templates.TemplateResponse(
+            request,
             "error.html",
-            {"request": request, "message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
+            {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
     schemas_list = [
         {"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()
     ]
     return templates.TemplateResponse(
+        request,
         "objects/form.html",
         {
-            "request": request,
             "schema": schema,
             "obj": obj,
             "obj_config": obj_config,
@@ -163,17 +165,18 @@ async def object_detail(request: Request, schema: str, obj: str, record_id: str)
     obj_config = tm.get_object_config(schema, obj)
     if not obj_config:
         return templates.TemplateResponse(
+            request,
             "error.html",
-            {"request": request, "message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
+            {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
     schemas_list = [
         {"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()
     ]
     return templates.TemplateResponse(
+        request,
         "objects/detail.html",
         {
-            "request": request,
             "schema": schema,
             "obj": obj,
             "obj_config": obj_config,
@@ -190,17 +193,18 @@ async def object_edit(request: Request, schema: str, obj: str, record_id: str):
     obj_config = tm.get_object_config(schema, obj)
     if not obj_config:
         return templates.TemplateResponse(
+            request,
             "error.html",
-            {"request": request, "message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
+            {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
     schemas_list = [
         {"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()
     ]
     return templates.TemplateResponse(
+        request,
         "objects/form.html",
         {
-            "request": request,
             "schema": schema,
             "obj": obj,
             "obj_config": obj_config,
@@ -218,17 +222,18 @@ async def object_history(request: Request, schema: str, obj: str, record_id: str
     obj_config = tm.get_object_config(schema, obj)
     if not obj_config:
         return templates.TemplateResponse(
+            request,
             "error.html",
-            {"request": request, "message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
+            {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
     schemas_list = [
         {"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()
     ]
     return templates.TemplateResponse(
+        request,
         "objects/history.html",
         {
-            "request": request,
             "schema": schema,
             "obj": obj,
             "obj_config": obj_config,
