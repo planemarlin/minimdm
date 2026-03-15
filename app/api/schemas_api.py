@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.config import settings
+from app.core.permissions import get_accessible_schemas, require_schema_access
 from app.core.schema_loader import load_config, validate_config
 
 router = APIRouter()
@@ -13,8 +14,17 @@ router = APIRouter()
 def list_schemas(request: Request):
     tm = request.app.state.table_manager
     config = tm.get_config()
+    user = getattr(request.state, "current_user", None)
+    is_admin = user and user.get("is_admin")
+    if not is_admin and user:
+        accessible = get_accessible_schemas(tm.engine, user["user_id"])
+    else:
+        accessible = None  # admins see all
+
     result = []
     for schema_name, schema_body in config.get("schemas", {}).items():
+        if accessible is not None and schema_name not in accessible:
+            continue
         objects = schema_body.get("objects", {})
         result.append(
             {
@@ -35,6 +45,7 @@ def list_schemas(request: Request):
 
 @router.get("/schemas/{schema}")
 def get_schema(schema: str, request: Request):
+    require_schema_access(request, schema)
     tm = request.app.state.table_manager
     config = tm.get_config()
     schema_body = config.get("schemas", {}).get(schema)
@@ -48,6 +59,7 @@ def get_schema(schema: str, request: Request):
 
 @router.get("/schemas/{schema}/objects/{obj}")
 def get_object(schema: str, obj: str, request: Request):
+    require_schema_access(request, schema)
     tm = request.app.state.table_manager
     obj_config = tm.get_object_config(schema, obj)
     if not obj_config:

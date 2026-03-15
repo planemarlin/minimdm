@@ -24,6 +24,14 @@
   </div>
   {% endfor %}
 </div>
+{% elif any_schemas_configured %}
+<div class="card">
+  <div class="card__body">
+    <div class="alert alert-info">
+      You do not have access to any schemas. Contact an administrator to request access.
+    </div>
+  </div>
+</div>
 {% else %}
 <div class="card">
   <div class="card__body">

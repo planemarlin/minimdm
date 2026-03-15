@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from app.core.auth import create_user, get_user_by_id, list_users, update_user
+from app.core.permissions import delete_permission, get_user_permissions, set_permission
 
 router = APIRouter()
 
@@ -63,3 +64,34 @@ async def patch_user(user_id: str, request: Request):
         password=data.get("password") or None,
     )
     return {"status": "ok"}
+
+
+@router.get("/admin/users/{user_id}/permissions")
+def get_permissions(user_id: str, request: Request):
+    _require_admin(request)
+    engine = request.app.state.table_manager.engine
+    if not get_user_by_id(engine, user_id):
+        raise HTTPException(404, "User not found")
+    return get_user_permissions(engine, user_id)
+
+
+@router.put("/admin/users/{user_id}/permissions/{schema_name}", status_code=200)
+async def upsert_permission(user_id: str, schema_name: str, request: Request):
+    _require_admin(request)
+    data = await request.json()
+    can_read = bool(data.get("can_read", True))
+    can_write = bool(data.get("can_write", False))
+    engine = request.app.state.table_manager.engine
+    if not get_user_by_id(engine, user_id):
+        raise HTTPException(404, "User not found")
+    set_permission(engine, user_id, schema_name, can_read=can_read, can_write=can_write)
+    return {"status": "ok"}
+
+
+@router.delete("/admin/users/{user_id}/permissions/{schema_name}", status_code=204)
+def remove_permission(user_id: str, schema_name: str, request: Request):
+    _require_admin(request)
+    engine = request.app.state.table_manager.engine
+    if not get_user_by_id(engine, user_id):
+        raise HTTPException(404, "User not found")
+    delete_permission(engine, user_id, schema_name)

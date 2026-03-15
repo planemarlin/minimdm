@@ -7,6 +7,7 @@ from sqlalchemy import String, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core import audit as audit_svc
+from app.core.permissions import require_schema_access
 from app.database import get_db
 
 router = APIRouter()
@@ -49,6 +50,7 @@ def list_records(
     parent_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
+    require_schema_access(request, schema)
     tm = _get_tm(request)
     try:
         table = tm.get_table(schema, obj)
@@ -106,6 +108,7 @@ def get_record(
     include_deleted: bool = Query(False),
     db: Session = Depends(get_db),
 ):
+    require_schema_access(request, schema)
     tm = _get_tm(request)
     try:
         table = tm.get_table(schema, obj)
@@ -140,6 +143,7 @@ def create_record(
     body: dict,
     db: Session = Depends(get_db),
 ):
+    require_schema_access(request, schema, write=True)
     tm = _get_tm(request)
     try:
         table = tm.get_table(schema, obj)
@@ -186,6 +190,7 @@ def update_record(
     body: dict,
     db: Session = Depends(get_db),
 ):
+    require_schema_access(request, schema, write=True)
     tm = _get_tm(request)
     try:
         table = tm.get_table(schema, obj)
@@ -258,6 +263,7 @@ def delete_record(
     reason: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
+    require_schema_access(request, schema, write=True)
     tm = _get_tm(request)
     try:
         table = tm.get_table(schema, obj)
@@ -321,6 +327,7 @@ def get_record_history(
     request: Request,
     db: Session = Depends(get_db),
 ):
+    require_schema_access(request, schema)
     tm = _get_tm(request)
     try:
         history_table = tm.get_history_table(schema, obj)
@@ -355,6 +362,7 @@ def revert_record(
     reason: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
+    require_schema_access(request, schema, write=True)
     tm = _get_tm(request)
     try:
         table = tm.get_table(schema, obj)
