@@ -102,6 +102,7 @@ def test_login_inactive_user_returns_401(client):
     try:
         res = client.post("/api/auth/login", json={"username": "auth_inactive", "password": "pass123"})
         assert res.status_code == 401
+        assert "disabled" in res.json()["detail"].lower()
     finally:
         _delete_user(engine, "auth_inactive")
 
@@ -227,3 +228,35 @@ def test_non_admin_cannot_access_user_management(client):
 def test_patch_nonexistent_user_returns_404(client):
     res = client.patch("/api/admin/users/00000000-0000-0000-0000-000000000099", json={"is_active": False})
     assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Audit log exclude_system filter
+# ---------------------------------------------------------------------------
+
+def test_audit_exclude_system_hides_auth_events(client):
+    """exclude_system=true must omit _system schema rows (e.g. LOGIN events)."""
+    # Trigger a LOGIN entry in the audit log.
+    engine = _get_engine()
+    from app.core.auth import create_user
+    create_user(engine, "audit_excl_user", "pass123")
+    try:
+        client.post("/api/auth/login", json={"username": "audit_excl_user", "password": "pass123"})
+        res = client.get("/api/audit?exclude_system=true&page_size=500")
+        assert res.status_code == 200
+        records = res.json()["records"]
+        assert all(not r["schema_name"].startswith("_") for r in records), \
+            "exclude_system=true returned a _system schema row"
+    finally:
+        _delete_user(engine, "audit_excl_user")
+
+
+def test_audit_system_schema_filter_returns_auth_events(client):
+    """schema=_system must return only _system rows (LOGIN/LOGOUT/etc.)."""
+    res = client.get("/api/audit?schema=_system&page_size=500")
+    assert res.status_code == 200
+    records = res.json()["records"]
+    assert all(r["schema_name"] == "_system" for r in records), \
+        "schema=_system returned a non-system row"
+    assert any(r["action"] in ("LOGIN", "LOGIN_FAILED", "LOGOUT") for r in records), \
+        "No auth events found in _system schema"

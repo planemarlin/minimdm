@@ -652,7 +652,7 @@ async function loadAuditLog(page) {
   const paginationEl = document.getElementById("audit-pagination");
   if (!tbody) return;
 
-  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>`;
 
   const schema = document.getElementById("filter-schema")?.value || "";
   const obj = document.getElementById("filter-obj")?.value || "";
@@ -660,26 +660,24 @@ async function loadAuditLog(page) {
   const fromTime = document.getElementById("filter-from")?.value || "";
   const toTime = document.getElementById("filter-to")?.value || "";
 
-  const params = new URLSearchParams({ page: _auditPage, page_size: _auditPageSize });
+  const toUtcIso = s => new Date(s).toISOString().replace(/\.\d{3}Z$/, "+00:00");
+  const params = new URLSearchParams({ page: _auditPage, page_size: _auditPageSize, exclude_system: "true" });
   if (schema) params.set("schema", schema);
   if (obj) params.set("obj", obj);
   if (action) params.set("action", action);
-  // datetime-local values are in local time; convert to UTC ISO so the API
-  // compares against the correct instant regardless of the server's timezone.
-  const toUtcIso = s => new Date(s).toISOString().replace(/\.\d{3}Z$/, "+00:00");
   if (fromTime) params.set("from_time", toUtcIso(fromTime));
   if (toTime) params.set("to_time", toUtcIso(toTime));
 
   const res = await fetch(`/api/audit?${params}`);
   if (!res.ok) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="alert alert-error">Failed to load audit log.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7"><div class="alert alert-error">Failed to load audit log.</div></td></tr>`;
     return;
   }
   const data = await res.json();
   if (totalEl) totalEl.textContent = data.total;
 
   if (!data.records.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted)">No entries found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted)">No entries found.</td></tr>`;
     _renderAuditPagination(paginationEl, data.pages);
     return;
   }
@@ -705,9 +703,59 @@ async function loadAuditLog(page) {
       <td title="${escHtml(r.object_name)}">${escHtml(objDisplay)}</td>
       <td>${actionBadge(r.action)}</td>
       <td>${recordLink}</td>
+      <td style="font-size:.85rem">${escHtml(r.user_name || "")}</td>
       <td style="color:var(--text-muted);font-size:.85rem">${escHtml(r.reason || "")}</td>
     </tr>`;
   }).join("");
+
+  _renderAuditPagination(paginationEl, data.pages);
+}
+
+async function loadAuthLog(page) {
+  _auditPage = page || 1;
+  const tbody = document.getElementById("auth-tbody");
+  const totalEl = document.getElementById("audit-total");
+  const paginationEl = document.getElementById("auth-pagination");
+  if (!tbody) return;
+
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>`;
+
+  const action = document.getElementById("auth-filter-action")?.value || "";
+  const fromTime = document.getElementById("auth-filter-from")?.value || "";
+  const toTime = document.getElementById("auth-filter-to")?.value || "";
+
+  const toUtcIso = s => new Date(s).toISOString().replace(/\.\d{3}Z$/, "+00:00");
+  const params = new URLSearchParams({ page: _auditPage, page_size: _auditPageSize, schema: "_system" });
+  if (action) params.set("action", action);
+  if (fromTime) params.set("from_time", toUtcIso(fromTime));
+  if (toTime) params.set("to_time", toUtcIso(toTime));
+
+  const res = await fetch(`/api/audit?${params}`);
+  if (!res.ok) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="alert alert-error">Failed to load auth events.</div></td></tr>`;
+    return;
+  }
+  const data = await res.json();
+  if (totalEl) totalEl.textContent = data.total;
+
+  if (!data.records.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted)">No entries found.</td></tr>`;
+    _renderAuditPagination(paginationEl, data.pages);
+    return;
+  }
+
+  const authBadge = (a) => {
+    const cls = { LOGIN: "badge-insert", LOGIN_FAILED: "badge-delete", LOGOUT: "badge-update" }[a] || "";
+    return `<span class="badge ${cls}">${a}</span>`;
+  };
+
+  tbody.innerHTML = data.records.map((r) => `<tr>
+    <td style="white-space:nowrap;font-size:.85rem">${fmtDate(r.timestamp)}</td>
+    <td>${escHtml(r.user_name || "")}</td>
+    <td>${authBadge(r.action)}</td>
+    <td style="font-family:monospace;font-size:.85rem">${escHtml(r.ip_address || "")}</td>
+    <td style="color:var(--text-muted);font-size:.85rem">${escHtml(r.reason || "")}</td>
+  </tr>`).join("");
 
   _renderAuditPagination(paginationEl, data.pages);
 }

@@ -53,10 +53,15 @@ async def login(request: Request):
     engine = request.app.state.table_manager.engine
     user = get_user_by_username(engine, username)
 
-    if not user or not user["is_active"] or not verify_password(password, user["password_hash"]):
+    if not user or not verify_password(password, user["password_hash"]):
         _log_auth(request, "LOGIN_FAILED", _ZERO_UUID, username,
                   reason=f"Failed login attempt for '{username}'")
         raise HTTPException(401, "Invalid username or password")
+
+    if not user["is_active"]:
+        _log_auth(request, "LOGIN_FAILED", user["id"], username,
+                  reason=f"Login attempt for inactive account '{username}'")
+        raise HTTPException(401, "Account is disabled. Contact an administrator.")
 
     token = create_token(str(user["id"]), user["username"], user["is_admin"])
     _log_auth(request, "LOGIN", user["id"], user["username"])

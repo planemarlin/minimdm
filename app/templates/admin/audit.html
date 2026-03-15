@@ -11,57 +11,111 @@
   <span style="font-size:.85rem; color:var(--text-muted)"><span id="audit-total">…</span> entries</span>
 </div>
 
-<div class="toolbar" style="flex-wrap:wrap; gap:.5rem">
-  <select id="filter-schema">
-    <option value="">All schemas</option>
-    {% for s in schemas %}
-    <option value="{{ s.name }}">{{ s.name }}</option>
-    {% endfor %}
-  </select>
-  <select id="filter-obj">
-    <option value="">All objects</option>
-  </select>
-  <select id="filter-action">
-    <option value="">All actions</option>
-    <option value="INSERT">INSERT</option>
-    <option value="UPDATE">UPDATE</option>
-    <option value="DELETE">DELETE</option>
-    <option value="REVERT">REVERT</option>
-  </select>
-  <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
-    From <input type="datetime-local" id="filter-from" />
-  </label>
-  <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
-    To <input type="datetime-local" id="filter-to" />
-  </label>
+<div class="tabs">
+  <button class="tab-btn tab-btn--active" id="tab-data-btn" onclick="switchTab('data')">Data Changes</button>
+  <button class="tab-btn" id="tab-auth-btn" onclick="switchTab('auth')">Auth Events</button>
 </div>
 
-<div class="card">
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Timestamp</th>
-          <th>Schema</th>
-          <th>Object</th>
-          <th>Action</th>
-          <th>Record</th>
-          <th>Reason</th>
-        </tr>
-      </thead>
-      <tbody id="audit-tbody">
-        <tr><td colspan="6" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
-      </tbody>
-    </table>
+<!-- Data Changes tab -->
+<div id="tab-data">
+  <div class="toolbar" style="flex-wrap:wrap; gap:.5rem">
+    <select id="filter-schema">
+      <option value="">All schemas</option>
+      {% for s in schemas %}
+      <option value="{{ s.name }}">{{ s.name }}</option>
+      {% endfor %}
+    </select>
+    <select id="filter-obj">
+      <option value="">All objects</option>
+    </select>
+    <select id="filter-action">
+      <option value="">All actions</option>
+      <option value="INSERT">INSERT</option>
+      <option value="UPDATE">UPDATE</option>
+      <option value="DELETE">DELETE</option>
+      <option value="REVERT">REVERT</option>
+    </select>
+    <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
+      From <input type="datetime-local" id="filter-from" />
+    </label>
+    <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
+      To <input type="datetime-local" id="filter-to" />
+    </label>
   </div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Schema</th>
+            <th>Object</th>
+            <th>Action</th>
+            <th>Record</th>
+            <th>User</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody id="audit-tbody">
+          <tr><td colspan="7" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div id="audit-pagination" class="pagination"></div>
 </div>
 
-<div id="audit-pagination" class="pagination"></div>
+<!-- Auth Events tab -->
+<div id="tab-auth" style="display:none">
+  <div class="toolbar" style="flex-wrap:wrap; gap:.5rem">
+    <select id="auth-filter-action">
+      <option value="">All actions</option>
+      <option value="LOGIN">LOGIN</option>
+      <option value="LOGIN_FAILED">LOGIN_FAILED</option>
+      <option value="LOGOUT">LOGOUT</option>
+    </select>
+    <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
+      From <input type="datetime-local" id="auth-filter-from" />
+    </label>
+    <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
+      To <input type="datetime-local" id="auth-filter-to" />
+    </label>
+  </div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>User</th>
+            <th>Action</th>
+            <th>IP Address</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody id="auth-tbody">
+          <tr><td colspan="5" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div id="auth-pagination" class="pagination"></div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 const _auditSchemas = {{ schemas | tojson }};
+
+function switchTab(name) {
+  document.getElementById("tab-data").style.display = name === "data" ? "" : "none";
+  document.getElementById("tab-auth").style.display = name === "auth" ? "" : "none";
+  document.getElementById("tab-data-btn").classList.toggle("tab-btn--active", name === "data");
+  document.getElementById("tab-auth-btn").classList.toggle("tab-btn--active", name === "auth");
+  document.getElementById("audit-total").textContent = "…";
+  if (name === "data") loadAuditLog(1);
+  else loadAuthLog(1);
+}
 
 document.getElementById("filter-schema").addEventListener("change", () => {
   _populateObjDropdown();
@@ -71,6 +125,10 @@ document.getElementById("filter-obj").addEventListener("change", () => loadAudit
 document.getElementById("filter-action").addEventListener("change", () => loadAuditLog(1));
 document.getElementById("filter-from").addEventListener("change", () => loadAuditLog(1));
 document.getElementById("filter-to").addEventListener("change", () => loadAuditLog(1));
+
+document.getElementById("auth-filter-action").addEventListener("change", () => loadAuthLog(1));
+document.getElementById("auth-filter-from").addEventListener("change", () => loadAuthLog(1));
+document.getElementById("auth-filter-to").addEventListener("change", () => loadAuthLog(1));
 
 loadAuditLog(1);
 </script>
