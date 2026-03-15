@@ -529,6 +529,11 @@ details[open] > .related-panel__summary::before { transform: rotate(90deg); }
   margin: .25rem 0 .5rem;
 }
 
+/* ===== Sortable column headers ===== */
+th.th-sortable { cursor: pointer; user-select: none; }
+th.th-sortable:hover { color: var(--text); }
+.th-sort-icon { opacity: .6; }
+
 /* ===== Table utilities ===== */
 .table__actions { display: flex; gap: .4rem; flex-wrap: wrap; }
 .btn-sm { padding: .2rem .5rem; font-size: .78rem; }

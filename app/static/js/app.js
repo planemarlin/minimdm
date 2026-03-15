@@ -98,6 +98,10 @@ class RecordList {
     this.deletedToggle = document.getElementById("show-deleted-toggle");
     this.includeDeleted = false;
 
+    const firstNonRef = Object.entries(objConfig.attributes || {}).find(([, v]) => !v.reference);
+    this.sortBy = firstNonRef ? firstNonRef[0] : null;
+    this.sortDir = "asc";
+
     if (this.searchInput) {
       let timer;
       this.searchInput.addEventListener("input", (e) => {
@@ -135,6 +139,7 @@ class RecordList {
     });
     if (this.search) params.set("search", this.search);
     if (this.includeDeleted) params.set("include_deleted", "true");
+    if (this.sortBy) { params.set("sort_by", this.sortBy); params.set("sort_dir", this.sortDir); }
 
     const res = await fetch(
       `/api/records/${this.schema}/${this.obj}?${params}`
@@ -147,6 +152,7 @@ class RecordList {
     this.total = data.total;
     const { maps: refLabelMaps } = await _resolveRefLabels(this.schema, this.objConfig);
     this.renderRows(data.records, refLabelMaps);
+    this._updateSortHeaders();
     this.renderPagination(data.pages);
     if (this.totalEl) this.totalEl.textContent = data.total;
   }
@@ -222,6 +228,25 @@ class RecordList {
       onclick="recordList.goPage(${this.page + 1})">&#8594;</button>`;
     html += `<span class="pagination__info">${this.total} records</span>`;
     this.paginationEl.innerHTML = html;
+  }
+
+  setSort(col) {
+    if (this.sortBy === col) {
+      this.sortDir = this.sortDir === "asc" ? "desc" : "asc";
+    } else {
+      this.sortBy = col;
+      this.sortDir = "asc";
+    }
+    this.page = 1;
+    this.load();
+  }
+
+  _updateSortHeaders() {
+    document.querySelectorAll(".th-sort-icon").forEach(el => { el.textContent = ""; });
+    if (this.sortBy) {
+      const icon = document.querySelector(`#th-col-${this.sortBy} .th-sort-icon`);
+      if (icon) icon.textContent = this.sortDir === "asc" ? " ↑" : " ↓";
+    }
   }
 
   goPage(p) {
@@ -610,12 +635,18 @@ async function populateRefSelects(schema, objConfig, record) {
     const dispKeys = Object.entries(refConfig.attributes || {})
       .filter(([, v]) => !v.reference).slice(0, 2).map(([k]) => k);
 
-    for (const r of data.records) {
-      const opt = document.createElement("option");
-      opt.value = r._id;
-      opt.textContent = dispKeys.map(k => r[k]).filter(Boolean).join(" – ") || r._id;
-      if (record[sel.name] === r._id) opt.selected = true;
-      sel.appendChild(opt);
+    const options = data.records.map(r => ({
+      value: r._id,
+      label: dispKeys.map(k => r[k]).filter(Boolean).join(" – ") || r._id,
+      selected: record[sel.name] === r._id,
+    }));
+    options.sort((a, b) => a.label.localeCompare(b.label));
+    for (const opt of options) {
+      const el = document.createElement("option");
+      el.value = opt.value;
+      el.textContent = opt.label;
+      if (opt.selected) el.selected = true;
+      sel.appendChild(el);
     }
   }
 }

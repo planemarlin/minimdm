@@ -108,13 +108,13 @@ def test_list_page_column_headers_in_config_order(client):
     assert res.status_code == 200
     html = res.text
 
-    # The <th> elements are rendered as: <th>Code</th> and <th>Name</th>
-    # (with surrounding whitespace). Check relative position in the HTML.
-    code_pos = html.find("<th>Code</th>")
-    name_pos = html.find("<th>Name</th>")
+    # Sortable column headers are rendered with id="th-col-{attr_key}".
+    # Check relative position of the two headers in the HTML.
+    code_pos = html.find('id="th-col-code"')
+    name_pos = html.find('id="th-col-name"')
 
-    assert code_pos != -1, "'Code' <th> not found in list page"
-    assert name_pos != -1, "'Name' <th> not found in list page"
+    assert code_pos != -1, "'code' column header not found in list page"
+    assert name_pos != -1, "'name' column header not found in list page"
     assert code_pos < name_pos, (
         f"Expected 'Code' header (pos {code_pos}) before 'Name' header (pos {name_pos}), "
         "but order was reversed — possible sort_keys regression"
