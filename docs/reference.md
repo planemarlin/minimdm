@@ -186,6 +186,11 @@ Grants are managed in the User Management UI (`/admin/users`) via the inline per
 | `page_size` | 50 | Records per page (max 500) |
 | `search` | — | Full-text search across string columns |
 | `include_deleted` | false | Include soft-deleted records in the results |
+| `parent_id` | — | Filter records by parent UUID (requires `parent` to be set on the object) |
+| `ref_field` | — | Attribute key of a reference field to filter by (use together with `ref_id`) |
+| `ref_id` | — | UUID value to match against `ref_field`; returns only records where `{ref_field}_id` equals this value |
+| `sort_by` | first non-reference attribute | Column key to sort by; must be a non-system, non-reference attribute of the object |
+| `sort_dir` | `asc` | Sort direction: `asc` or `desc` |
 
 ### Query Parameters (Import)
 
