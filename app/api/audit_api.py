@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
+from app.core.permissions import get_accessible_schemas
 from app.database import get_db
 
 router = APIRouter()
@@ -43,7 +44,16 @@ def list_audit_log(
 
     from sqlalchemy import func
 
+    user = getattr(request.state, "current_user", None)
+    is_admin = user and user.get("is_admin")
+
     filters = []
+    # Non-admins can only see audit entries for schemas they can read
+    # (system schema _system is implicitly excluded unless they are admin)
+    if not is_admin and user:
+        accessible = get_accessible_schemas(tm.engine, user["user_id"])
+        filters.append(audit_table.c.schema_name.in_(accessible))
+
     if exclude_system:
         filters.append(~audit_table.c.schema_name.startswith("_", autoescape=True))
     if schema:

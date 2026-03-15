@@ -7,6 +7,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- Schema-based access control: non-admin users have no access to any schema by default; admins grant read and/or write access per schema on the User Management page; admins always retain full access regardless of permission rows
+- Permission management endpoints: `GET /api/admin/users/{user_id}/permissions`, `PUT /api/admin/users/{user_id}/permissions/{schema_name}`, `DELETE /api/admin/users/{user_id}/permissions/{schema_name}` (admin-only)
+- Inline permissions panel on the User Management page: clicking the expand arrow on any non-admin user opens a per-schema read/write toggle table with a Revoke button; changes take effect immediately without a page reload
+- Sidebar schemas filtered by user permissions: non-admin users see only the schemas they have read access to; admins see all schemas
+- Audit log API results filtered by permissions: non-admin users can only see audit entries for schemas they have read access to
+- 18 integration tests in `tests/test_api_permissions.py` covering permission CRUD, access enforcement (no permission, read-only, read+write), and admin bypass
 - JWT-based authentication: all routes are protected; users log in at `/login` and receive an httpOnly `access_token` cookie; API clients may alternatively pass `Authorization: Bearer <token>`
 - First-run setup: if no users exist at startup, an admin user is created automatically using `ADMIN_USERNAME` / `ADMIN_PASSWORD` from the environment (defaults: `admin` / `admin`)
 - User management UI at `/admin/users` (admin-only): create users, change passwords, toggle active/inactive status, toggle admin role

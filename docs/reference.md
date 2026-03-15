@@ -115,6 +115,20 @@ On first startup, if no users exist, an admin account is created automatically f
 | `GET` | `/api/admin/users` | List all users |
 | `POST` | `/api/admin/users` | Create a user (`{"username", "password", "is_admin"}`) |
 | `PATCH` | `/api/admin/users/{user_id}` | Update a user (`is_admin`, `is_active`, `password`; any combination) |
+| `GET` | `/api/admin/users/{user_id}/permissions` | List schema permissions for a user |
+| `PUT` | `/api/admin/users/{user_id}/permissions/{schema_name}` | Grant or update access (`{"can_read": true, "can_write": false}`) |
+| `DELETE` | `/api/admin/users/{user_id}/permissions/{schema_name}` | Revoke all access to a schema |
+
+### Schema-Based Access Control
+
+Non-admin users have **no access** to any schema unless explicitly granted. Admins always have full access.
+
+| Permission | Effect |
+|---|---|
+| `can_read: true` | User can list records, get individual records, view history, export, and call `GET /api/schemas/{schema}` |
+| `can_write: true` | User can additionally create, update, delete, revert, and import records |
+
+Grants are managed in the User Management UI (`/admin/users`) via the inline permissions panel, or directly through the API.
 
 ### Records
 

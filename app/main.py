@@ -10,6 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.core.auth import count_users, create_user, decode_token, ensure_users_table
+from app.core.permissions import ensure_permissions_table, get_accessible_schemas
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
 from sqlalchemy import text
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI):
 
     tm._ensure_audit_log_table()
     ensure_users_table(engine)
+    ensure_permissions_table(engine)
     tm.metadata.create_all(engine)
 
     # Auto-create first admin if credentials are configured and no users exist
@@ -143,6 +145,22 @@ app.include_router(audit_api.router, prefix="/api", tags=["Audit"])
 # Web UI routes
 # -----------------------------------------------------------------
 
+def _sidebar_schemas(request: Request) -> list[dict]:
+    """Build the schemas list for the sidebar, filtered by user permissions."""
+    tm = request.app.state.table_manager
+    user = getattr(request.state, "current_user", None)
+    all_schemas = tm.list_schemas()
+    if user and user.get("is_admin"):
+        visible = all_schemas
+    elif user:
+        accessible = get_accessible_schemas(tm.engine, user["user_id"])
+        visible = [s for s in all_schemas if s in accessible]
+    else:
+        visible = []
+    return [{"name": s, "objects": tm.list_objects(s)} for s in visible]
+
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return templates.TemplateResponse(
@@ -160,24 +178,19 @@ async def admin_users(request: Request):
             status_code=403,
         )
     tm = request.app.state.table_manager
-    schemas_list = [{"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()]
     return templates.TemplateResponse(
         request, "admin/users.html",
-        {"schemas": schemas_list, "app_name": settings.app_name},
+        {"schemas": _sidebar_schemas(request), "all_schemas": tm.list_schemas(), "app_name": settings.app_name},
     )
 
 
 @app.get("/admin/audit", response_class=HTMLResponse)
 async def admin_audit(request: Request):
-    tm = request.app.state.table_manager
-    schemas_list = [
-        {"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()
-    ]
     return templates.TemplateResponse(
         request,
         "admin/audit.html",
         {
-            "schemas": schemas_list,
+            "schemas": _sidebar_schemas(request),
             "app_name": settings.app_name,
         },
     )
@@ -186,16 +199,12 @@ async def admin_audit(request: Request):
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     tm = request.app.state.table_manager
-    schemas_list = []
-    for schema_name in tm.list_schemas():
-        schemas_list.append(
-            {"name": schema_name, "objects": tm.list_objects(schema_name)}
-        )
     return templates.TemplateResponse(
         request,
         "index.html",
         {
-            "schemas": schemas_list,
+            "schemas": _sidebar_schemas(request),
+            "any_schemas_configured": bool(tm.list_schemas()),
             "app_name": settings.app_name,
         },
     )
@@ -212,9 +221,6 @@ async def object_list(request: Request, schema: str, obj: str):
             {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
-    schemas_list = [
-        {"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()
-    ]
     return templates.TemplateResponse(
         request,
         "objects/list.html",
@@ -222,7 +228,7 @@ async def object_list(request: Request, schema: str, obj: str):
             "schema": schema,
             "obj": obj,
             "obj_config": obj_config,
-            "schemas": schemas_list,
+            "schemas": _sidebar_schemas(request),
             "app_name": settings.app_name,
         },
     )
@@ -239,9 +245,6 @@ async def object_new(request: Request, schema: str, obj: str):
             {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
-    schemas_list = [
-        {"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()
-    ]
     return templates.TemplateResponse(
         request,
         "objects/form.html",
@@ -251,7 +254,7 @@ async def object_new(request: Request, schema: str, obj: str):
             "obj_config": obj_config,
             "record_id": None,
             "record": None,
-            "schemas": schemas_list,
+            "schemas": _sidebar_schemas(request),
             "app_name": settings.app_name,
         },
     )
@@ -268,9 +271,6 @@ async def object_detail(request: Request, schema: str, obj: str, record_id: str)
             {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
-    schemas_list = [
-        {"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()
-    ]
     return templates.TemplateResponse(
         request,
         "objects/detail.html",
@@ -279,7 +279,7 @@ async def object_detail(request: Request, schema: str, obj: str, record_id: str)
             "obj": obj,
             "obj_config": obj_config,
             "record_id": record_id,
-            "schemas": schemas_list,
+            "schemas": _sidebar_schemas(request),
             "app_name": settings.app_name,
         },
     )
@@ -296,9 +296,6 @@ async def object_edit(request: Request, schema: str, obj: str, record_id: str):
             {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
-    schemas_list = [
-        {"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()
-    ]
     return templates.TemplateResponse(
         request,
         "objects/form.html",
@@ -308,7 +305,7 @@ async def object_edit(request: Request, schema: str, obj: str, record_id: str):
             "obj_config": obj_config,
             "record_id": record_id,
             "record": None,  # JS will load via API
-            "schemas": schemas_list,
+            "schemas": _sidebar_schemas(request),
             "app_name": settings.app_name,
         },
     )
@@ -325,9 +322,6 @@ async def object_history(request: Request, schema: str, obj: str, record_id: str
             {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
-    schemas_list = [
-        {"name": s, "objects": tm.list_objects(s)} for s in tm.list_schemas()
-    ]
     return templates.TemplateResponse(
         request,
         "objects/history.html",
@@ -336,7 +330,7 @@ async def object_history(request: Request, schema: str, obj: str, record_id: str
             "obj": obj,
             "obj_config": obj_config,
             "record_id": record_id,
-            "schemas": schemas_list,
+            "schemas": _sidebar_schemas(request),
             "app_name": settings.app_name,
         },
     )

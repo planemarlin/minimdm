@@ -11,6 +11,7 @@
   <table class="table" id="users-table">
     <thead>
       <tr>
+        <th style="width:2rem"></th>
         <th>Username</th>
         <th>Role</th>
         <th>Status</th>
@@ -19,7 +20,7 @@
       </tr>
     </thead>
     <tbody id="users-tbody">
-      <tr><td colspan="5" class="table__empty">Loading…</td></tr>
+      <tr><td colspan="6" class="table__empty">Loading…</td></tr>
     </tbody>
   </table>
 </div>
@@ -80,17 +81,22 @@
 
 {% block scripts %}
 <script>
+const _allSchemas = {{ all_schemas | tojson }};
+
 async function loadUsers() {
   const res = await fetch('/api/admin/users');
-  if (!res.ok) { document.getElementById('users-tbody').innerHTML = '<tr><td colspan="5">Failed to load users.</td></tr>'; return; }
+  if (!res.ok) { document.getElementById('users-tbody').innerHTML = '<tr><td colspan="6">Failed to load users.</td></tr>'; return; }
   const users = await res.json();
   const tbody = document.getElementById('users-tbody');
   if (!users.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="table__empty">No users found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="table__empty">No users found.</td></tr>';
     return;
   }
   tbody.innerHTML = users.map(u => `
-    <tr class="${u.is_active ? '' : 'row--inactive'}">
+    <tr class="${u.is_active ? '' : 'row--inactive'}" id="user-row-${u.id}">
+      <td style="text-align:center">
+        ${u.is_admin ? '' : `<button class="btn btn-sm" style="padding:.1rem .4rem; font-size:.75rem" onclick="togglePermPanel('${u.id}')" title="Schema permissions">&#x25B6;</button>`}
+      </td>
       <td>${escHtml(u.username)}</td>
       <td>${u.is_admin ? '<span class="badge badge-insert">Admin</span>' : 'User'}</td>
       <td>${u.is_active ? '<span class="badge badge-update">Active</span>' : '<span class="badge badge-delete">Inactive</span>'}</td>
@@ -100,7 +106,91 @@ async function loadUsers() {
         <button class="btn btn-sm" onclick="toggleAdmin('${u.id}', ${u.is_admin})">${u.is_admin ? 'Remove admin' : 'Make admin'}</button>
         <button class="btn btn-sm ${u.is_active ? 'btn-danger' : ''}" onclick="toggleActive('${u.id}', ${u.is_active})">${u.is_active ? 'Deactivate' : 'Activate'}</button>
       </td>
+    </tr>
+    <tr id="perm-panel-${u.id}" style="display:none">
+      <td></td>
+      <td colspan="5">
+        <div class="perm-panel" id="perm-panel-content-${u.id}">
+          <span style="color:var(--text-muted); font-size:.85rem">Loading permissions…</span>
+        </div>
+      </td>
     </tr>`).join('');
+}
+
+async function togglePermPanel(userId) {
+  const panel = document.getElementById(`perm-panel-${userId}`);
+  const btn = document.querySelector(`#user-row-${userId} button`);
+  const isOpen = panel.style.display !== 'none';
+  if (isOpen) {
+    panel.style.display = 'none';
+    btn.innerHTML = '&#x25B6;';
+    return;
+  }
+  panel.style.display = '';
+  btn.innerHTML = '&#x25BC;';
+  await loadPermissions(userId);
+}
+
+async function loadPermissions(userId) {
+  const content = document.getElementById(`perm-panel-content-${userId}`);
+  const res = await fetch(`/api/admin/users/${userId}/permissions`);
+  if (!res.ok) { content.innerHTML = '<span style="color:var(--danger)">Failed to load permissions.</span>'; return; }
+  const perms = await res.json();
+  const permMap = {};
+  perms.forEach(p => { permMap[p.schema_name] = p; });
+
+  const rows = _allSchemas.map(s => {
+    const p = permMap[s] || null;
+    const hasRead = p ? p.can_read : false;
+    const hasWrite = p ? p.can_write : false;
+    return `
+      <tr>
+        <td style="padding:.3rem .6rem; font-family:monospace; font-size:.85rem">${escHtml(s)}</td>
+        <td style="padding:.3rem .6rem">
+          <label style="display:flex; align-items:center; gap:.3rem; font-size:.85rem; cursor:pointer">
+            <input type="checkbox" ${hasRead ? 'checked' : ''} onchange="setPermission('${userId}','${s}',this.checked, document.getElementById('perm-write-${userId}-${s}').checked)" />
+            Read
+          </label>
+        </td>
+        <td style="padding:.3rem .6rem">
+          <label style="display:flex; align-items:center; gap:.3rem; font-size:.85rem; cursor:pointer">
+            <input type="checkbox" id="perm-write-${userId}-${s}" ${hasWrite ? 'checked' : ''} onchange="setPermission('${userId}','${s}', document.querySelector('#perm-panel-content-${userId} tr:nth-child(${_allSchemas.indexOf(s)+1}) input[type=checkbox]').checked, this.checked)" />
+            Write
+          </label>
+        </td>
+        <td style="padding:.3rem .6rem">
+          ${p ? `<button class="btn btn-sm btn-danger" onclick="revokePermission('${userId}','${s}')">Revoke</button>` : ''}
+        </td>
+      </tr>`;
+  }).join('');
+
+  content.innerHTML = `
+    <div style="font-size:.8rem; font-weight:600; color:var(--text-muted); margin-bottom:.5rem">Schema Permissions</div>
+    <table style="border-collapse:collapse; width:100%">
+      <thead>
+        <tr style="font-size:.75rem; color:var(--text-muted)">
+          <th style="padding:.3rem .6rem; text-align:left">Schema</th>
+          <th style="padding:.3rem .6rem; text-align:left">Read</th>
+          <th style="padding:.3rem .6rem; text-align:left">Write</th>
+          <th style="padding:.3rem .6rem"></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function setPermission(userId, schemaName, canRead, canWrite) {
+  await fetch(`/api/admin/users/${userId}/permissions/${schemaName}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ can_read: canRead, can_write: canWrite }),
+  });
+  await loadPermissions(userId);
+}
+
+async function revokePermission(userId, schemaName) {
+  await fetch(`/api/admin/users/${userId}/permissions/${schemaName}`, { method: 'DELETE' });
+  await loadPermissions(userId);
 }
 
 function escHtml(s) {

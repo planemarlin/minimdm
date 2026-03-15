@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import audit as audit_svc
+from app.core.permissions import require_schema_access
 from app.database import get_db
 
 router = APIRouter()
@@ -44,6 +45,7 @@ def export_records(
     format: str = Query("csv", pattern="^(csv|tsv|json)$"),
     db: Session = Depends(get_db),
 ):
+    require_schema_access(request, schema)
     tm = _get_tm(request)
     try:
         table = tm.get_table(schema, obj)
@@ -105,6 +107,7 @@ async def import_records(
     reason: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
+    require_schema_access(request, schema, write=True)
     tm = _get_tm(request)
     try:
         table = tm.get_table(schema, obj)

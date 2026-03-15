@@ -520,6 +520,15 @@ details[open] > .related-panel__summary::before { transform: rotate(90deg); }
 .tab-btn:hover { color: var(--text); }
 .tab-btn--active { color: var(--primary); border-bottom-color: var(--primary); }
 
+/* ===== Permissions panel ===== */
+.perm-panel {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .75rem 1rem;
+  margin: .25rem 0 .5rem;
+}
+
 /* ===== Table utilities ===== */
 .table__actions { display: flex; gap: .4rem; flex-wrap: wrap; }
 .btn-sm { padding: .2rem .5rem; font-size: .78rem; }
