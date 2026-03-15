@@ -48,6 +48,8 @@ def list_records(
     search: Optional[str] = Query(None),
     include_deleted: bool = Query(False),
     parent_id: Optional[str] = Query(None),
+    ref_field: Optional[str] = Query(None),
+    ref_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema)
@@ -70,6 +72,13 @@ def list_records(
                 q = q.where(table.c[f"_{parent_key}_id"] == pid)
             except (ValueError, KeyError):
                 pass
+
+    if ref_field and ref_id:
+        try:
+            rid = uuid.UUID(ref_id)
+            q = q.where(table.c[f"{ref_field}_id"] == rid)
+        except (ValueError, KeyError):
+            pass
 
     if search:
         text_cols = [

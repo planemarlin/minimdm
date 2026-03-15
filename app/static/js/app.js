@@ -213,9 +213,10 @@ async function loadRecordDetail(schema, obj, recordId, objConfig) {
     const parentId = record[`_${objConfig.parent}_id`];
     if (parentId) {
       let parentLabel = parentId;
+      let parentDeleted = false;
       try {
         const [prRes, pcRes] = await Promise.all([
-          fetch(`/api/records/${schema}/${objConfig.parent}/${parentId}`),
+          fetch(`/api/records/${schema}/${objConfig.parent}/${parentId}?include_deleted=true`),
           fetch(`/api/schemas/${schema}/objects/${objConfig.parent}`),
         ]);
         if (prRes.ok && pcRes.ok) {
@@ -224,12 +225,16 @@ async function loadRecordDetail(schema, obj, recordId, objConfig) {
           const dispKeys = Object.entries(pc.attributes || {})
             .filter(([, v]) => !v.reference).slice(0, 2).map(([k]) => k);
           parentLabel = dispKeys.map(k => pr[k]).filter(Boolean).join(" – ") || parentId;
+          parentDeleted = !!pr._deleted_at;
         }
       } catch (_) {}
+      const deletedBadge = parentDeleted ? ' <span class="badge badge-delete">deleted</span>' : "";
       parentHtml = `<div class="detail-field">
         <div class="detail-field__label">${escHtml(objConfig.parent)} (parent)</div>
         <div class="detail-field__value">
-          <a href="/${schema}/${objConfig.parent}/${parentId}">${escHtml(parentLabel)}</a>
+          ${parentDeleted
+            ? `${escHtml(parentLabel)}${deletedBadge}`
+            : `<a href="/${schema}/${objConfig.parent}/${parentId}">${escHtml(parentLabel)}</a>`}
         </div>
       </div>`;
     }
@@ -314,18 +319,42 @@ async function _renderChildPanels(container, schema, parentObj, parentId) {
     schemaConfig = await res.json();
   } catch (_) { return; }
 
+  // Parent-child panels
   const childObjects = Object.entries(schemaConfig.objects || {})
     .filter(([, cfg]) => cfg.parent === parentObj);
-  if (!childObjects.length) return;
 
-  for (const [childKey, childCfg] of childObjects) {
+  // Reference panels: objects with a reference attribute pointing to parentObj
+  const refObjects = [];
+  for (const [objKey, objCfg] of Object.entries(schemaConfig.objects || {})) {
+    for (const [attrKey, attrCfg] of Object.entries(objCfg.attributes || {})) {
+      if (attrCfg.reference === parentObj) {
+        refObjects.push({ objKey, objCfg, attrKey, attrCfg });
+      }
+    }
+  }
+
+  if (!childObjects.length && !refObjects.length) return;
+
+  const panels = [
+    ...childObjects.map(([childKey, childCfg]) => ({
+      key: childKey, cfg: childCfg,
+      params: new URLSearchParams({ parent_id: parentId, page_size: 500 }),
+    })),
+    ...refObjects.map(({ objKey, objCfg, attrKey, attrCfg }) => ({
+      key: objKey, cfg: objCfg,
+      label: `${objCfg.name || objKey} (via ${attrCfg.name || attrKey})`,
+      params: new URLSearchParams({ ref_field: attrKey, ref_id: parentId, page_size: 500 }),
+    })),
+  ];
+
+  for (const { key: childKey, cfg: childCfg, label, params } of panels) {
     const panel = document.createElement("details");
     panel.className = "related-panel";
     panel.open = true;
 
     const summary = document.createElement("summary");
     summary.className = "related-panel__summary";
-    summary.innerHTML = `${escHtml(childCfg.name || childKey)}<span class="related-panel__count">loading…</span>`;
+    summary.innerHTML = `${escHtml(label || childCfg.name || childKey)}<span class="related-panel__count">loading…</span>`;
     panel.appendChild(summary);
 
     const body = document.createElement("div");
@@ -336,7 +365,7 @@ async function _renderChildPanels(container, schema, parentObj, parentId) {
 
     try {
       const [recsRes, cfgRes] = await Promise.all([
-        fetch(`/api/records/${schema}/${childKey}?` + new URLSearchParams({ parent_id: parentId, page_size: 500 })),
+        fetch(`/api/records/${schema}/${childKey}?` + params),
         fetch(`/api/schemas/${schema}/objects/${childKey}`),
       ]);
       if (!recsRes.ok) { body.innerHTML = `<div class="alert alert-error" style="margin:.75rem">Failed to load records.</div>`; continue; }
@@ -463,6 +492,19 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
 
   // Populate reference selects
   await populateRefSelects(schema, objConfig, record);
+
+  // Blur-time numeric validation
+  for (const input of document.querySelectorAll("#form-fields input[type='number']")) {
+    input.addEventListener("blur", () => {
+      const group = input.closest(".form-group");
+      group.querySelectorAll(".input-error").forEach(el => el.classList.remove("input-error"));
+      group.querySelectorAll(".form-error").forEach(el => el.remove());
+      if (input.value === "" && !input.validity.badInput) return;
+      if (!input.validity.valid) {
+        _setFieldError(input, input.step === "1" ? "Must be a whole number." : "Must be a valid number.");
+      }
+    });
+  }
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
