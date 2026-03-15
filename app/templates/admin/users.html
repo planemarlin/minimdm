@@ -143,18 +143,22 @@ async function loadPermissions(userId) {
     const p = permMap[s] || null;
     const hasRead = p ? p.can_read : false;
     const hasWrite = p ? p.can_write : false;
+    const readId  = `perm-read-${userId}-${s}`;
+    const writeId = `perm-write-${userId}-${s}`;
     return `
       <tr>
         <td style="padding:.3rem .6rem; font-family:monospace; font-size:.85rem">${escHtml(s)}</td>
         <td style="padding:.3rem .6rem">
           <label style="display:flex; align-items:center; gap:.3rem; font-size:.85rem; cursor:pointer">
-            <input type="checkbox" ${hasRead ? 'checked' : ''} onchange="setPermission('${userId}','${s}',this.checked, document.getElementById('perm-write-${userId}-${s}').checked)" />
+            <input type="checkbox" id="${readId}" ${hasRead ? 'checked' : ''}
+              onchange="onReadChange('${userId}','${s}','${readId}','${writeId}')" />
             Read
           </label>
         </td>
         <td style="padding:.3rem .6rem">
           <label style="display:flex; align-items:center; gap:.3rem; font-size:.85rem; cursor:pointer">
-            <input type="checkbox" id="perm-write-${userId}-${s}" ${hasWrite ? 'checked' : ''} onchange="setPermission('${userId}','${s}', document.querySelector('#perm-panel-content-${userId} tr:nth-child(${_allSchemas.indexOf(s)+1}) input[type=checkbox]').checked, this.checked)" />
+            <input type="checkbox" id="${writeId}" ${hasWrite ? 'checked' : ''}
+              onchange="onWriteChange('${userId}','${s}','${readId}','${writeId}')" />
             Write
           </label>
         </td>
@@ -179,7 +183,23 @@ async function loadPermissions(userId) {
     </table>`;
 }
 
-async function setPermission(userId, schemaName, canRead, canWrite) {
+function onReadChange(userId, schemaName, readId, writeId) {
+  const readEl  = document.getElementById(readId);
+  const writeEl = document.getElementById(writeId);
+  // Removing read also removes write
+  if (!readEl.checked) writeEl.checked = false;
+  _applyPermission(userId, schemaName, readEl.checked, writeEl.checked);
+}
+
+function onWriteChange(userId, schemaName, readId, writeId) {
+  const readEl  = document.getElementById(readId);
+  const writeEl = document.getElementById(writeId);
+  // Granting write also grants read
+  if (writeEl.checked) readEl.checked = true;
+  _applyPermission(userId, schemaName, readEl.checked, writeEl.checked);
+}
+
+async function _applyPermission(userId, schemaName, canRead, canWrite) {
   await fetch(`/api/admin/users/${userId}/permissions/${schemaName}`, {
     method: 'PUT',
     headers: {'Content-Type':'application/json'},

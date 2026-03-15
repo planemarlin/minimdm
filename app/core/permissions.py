@@ -49,7 +49,14 @@ def get_user_permissions(engine, user_id: str) -> list[dict]:
 
 
 def set_permission(engine, user_id: str, schema_name: str, can_read: bool, can_write: bool) -> None:
-    """Insert or update a permission row for a user/schema pair."""
+    """Insert or update a permission row for a user/schema pair.
+
+    Write access implies read access. Removing read access also removes write access.
+    """
+    if can_write:
+        can_read = True
+    if not can_read:
+        can_write = False
     tbl = _perms_table(engine)
     uid = uuid.UUID(user_id)
     with Session(engine) as s:
