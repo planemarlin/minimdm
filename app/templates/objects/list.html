@@ -47,10 +47,15 @@
       <thead>
         <tr>
           {% set ns = namespace(col=0) %}
+          {% if obj_config.parent %}<th>{{ obj_config.parent }}</th>{% set ns.col = ns.col + 1 %}{% endif %}
           {% for attr_key, attr in obj_config.attributes.items() %}
-          {% if not attr.reference %}{% set ns.col = ns.col + 1 %}{% if ns.col <= 6 %}
+          {% if ns.col < 6 %}{% set ns.col = ns.col + 1 %}
+          {% if not attr.reference %}
+          <th class="th-sortable" id="th-col-{{ attr_key }}" onclick="recordList.setSort('{{ attr_key }}')">{{ attr.name }} <span class="th-sort-icon"></span></th>
+          {% else %}
           <th>{{ attr.name }}</th>
-          {% endif %}{% endif %}
+          {% endif %}
+          {% endif %}
           {% endfor %}
           <th></th>
         </tr>

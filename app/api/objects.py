@@ -48,6 +48,10 @@ def list_records(
     search: Optional[str] = Query(None),
     include_deleted: bool = Query(False),
     parent_id: Optional[str] = Query(None),
+    ref_field: Optional[str] = Query(None),
+    ref_id: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query(None),
+    sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema)
@@ -57,19 +61,27 @@ def list_records(
     except KeyError:
         raise HTTPException(404, f"Object '{schema}.{obj}' not found")
 
+    obj_cfg = tm.get_object_config(schema, obj) or {}
+
     q = select(table)
     if not include_deleted:
         q = q.where(table.c._deleted_at.is_(None))
 
     if parent_id:
-        obj_cfg = tm.get_object_config(schema, obj)
-        parent_key = obj_cfg.get("parent") if obj_cfg else None
+        parent_key = obj_cfg.get("parent")
         if parent_key:
             try:
                 pid = uuid.UUID(parent_id)
                 q = q.where(table.c[f"_{parent_key}_id"] == pid)
             except (ValueError, KeyError):
                 pass
+
+    if ref_field and ref_id:
+        try:
+            rid = uuid.UUID(ref_id)
+            q = q.where(table.c[f"{ref_field}_id"] == rid)
+        except (ValueError, KeyError):
+            pass
 
     if search:
         text_cols = [
@@ -79,9 +91,23 @@ def list_records(
         if text_cols:
             q = q.where(or_(*[c.ilike(f"%{search}%") for c in text_cols]))
 
+    user_col_names = {c.name for c in table.c if not c.name.startswith("_")}
+    if sort_by and sort_by in user_col_names:
+        sort_col = table.c[sort_by]
+    else:
+        attrs = obj_cfg.get("attributes", {})
+        first_non_ref = next(
+            (k for k, v in attrs.items() if not v.get("reference")), None
+        )
+        sort_col = (
+            table.c[first_non_ref]
+            if first_non_ref and first_non_ref in user_col_names
+            else table.c._created_at
+        )
+
     total = db.execute(select(func.count()).select_from(q.subquery())).scalar()
     rows = db.execute(
-        q.order_by(table.c._created_at.desc())
+        q.order_by(sort_col.asc() if sort_dir == "asc" else sort_col.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     ).mappings().all()
