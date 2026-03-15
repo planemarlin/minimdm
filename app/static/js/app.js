@@ -42,6 +42,43 @@ function showAlert(container, message, type = "error") {
   setTimeout(() => div.remove(), 5000);
 }
 
+// ── Reference label resolution ───────────────────────────────────────────────
+// Fetches display-label maps for all reference attributes (and the parent, if
+// any) defined in objConfig.  Returns an object keyed by attribute name (or
+// '_parent' for the parent relationship) whose values are {id -> label} maps.
+
+async function _resolveRefLabels(schema, objConfig) {
+  const maps = {};
+  const names = {}; // human-readable name for each key's target object
+  const jobs = [];
+  if (objConfig.parent) {
+    jobs.push({ key: "_parent", objName: objConfig.parent });
+  }
+  for (const [k, v] of Object.entries(objConfig.attributes || {})) {
+    if (v.reference) jobs.push({ key: k, objName: v.reference });
+  }
+  await Promise.all(jobs.map(async ({ key, objName }) => {
+    try {
+      const [recsRes, cfgRes] = await Promise.all([
+        fetch(`/api/records/${schema}/${objName}?page_size=500&include_deleted=true`),
+        fetch(`/api/schemas/${schema}/objects/${objName}`),
+      ]);
+      if (!recsRes.ok || !cfgRes.ok) return;
+      const recsData = await recsRes.json();
+      const refCfg = await cfgRes.json();
+      names[key] = refCfg.name || objName;
+      const dispKeys = Object.entries(refCfg.attributes || {})
+        .filter(([, av]) => !av.reference).slice(0, 2).map(([ak]) => ak);
+      const map = {};
+      for (const r of recsData.records) {
+        map[r._id] = dispKeys.map(dk => r[dk]).filter(Boolean).join(" – ") || r._id;
+      }
+      maps[key] = map;
+    } catch (_) {}
+  }));
+  return { maps, names };
+}
+
 // ── Record list page ─────────────────────────────────────────────────────────
 
 class RecordList {
@@ -85,9 +122,7 @@ class RecordList {
   }
 
   get userAttributes() {
-    return Object.entries(this.objConfig.attributes || {}).filter(
-      ([, v]) => !v.reference
-    );
+    return Object.entries(this.objConfig.attributes || {});
   }
 
   async load() {
@@ -110,12 +145,13 @@ class RecordList {
     }
     const data = await res.json();
     this.total = data.total;
-    this.renderRows(data.records);
+    const { maps: refLabelMaps } = await _resolveRefLabels(this.schema, this.objConfig);
+    this.renderRows(data.records, refLabelMaps);
     this.renderPagination(data.pages);
     if (this.totalEl) this.totalEl.textContent = data.total;
   }
 
-  renderRows(records) {
+  renderRows(records, refLabelMaps = {}) {
     if (!records.length) {
       this.tbody.innerHTML = `<tr><td colspan="20">
         <div class="empty-state">
@@ -128,13 +164,27 @@ class RecordList {
     const attrs = this.userAttributes;
     const schema = this.schema;
     const obj = this.obj;
+    const objConfig = this.objConfig;
     this.tbody.innerHTML = records
       .map((r) => {
         const isDeleted = !!r._deleted_at;
-        const cells = attrs
-          .slice(0, 6)
-          .map(([k]) => `<td style="${isDeleted ? "opacity:.5;text-decoration:line-through" : ""}">${escHtml(r[k] ?? "")}</td>`)
-          .join("");
+        const style = isDeleted ? "opacity:.5;text-decoration:line-through" : "";
+        const cells = [];
+        if (objConfig.parent) {
+          const pid = r[`_${objConfig.parent}_id`];
+          const label = pid ? (refLabelMaps["_parent"]?.[pid] || pid) : "";
+          cells.push(`<td style="${style}">${escHtml(label)}</td>`);
+        }
+        const remaining = 6 - cells.length;
+        for (const [k, v] of attrs.slice(0, remaining)) {
+          if (v.reference) {
+            const refId = r[`${k}_id`];
+            const label = refId ? (refLabelMaps[k]?.[refId] || refId) : "";
+            cells.push(`<td style="${style}">${escHtml(label)}</td>`);
+          } else {
+            cells.push(`<td style="${style}">${escHtml(r[k] ?? "")}</td>`);
+          }
+        }
         const actions = isDeleted
           ? `<a class="btn btn-ghost btn-sm" href="/${schema}/${obj}/${r._id}/history">History</a>
              <span class="badge badge-delete" style="font-size:.7rem">deleted</span>`
@@ -145,7 +195,7 @@ class RecordList {
           ? `onclick="window.location='/${schema}/${obj}/${r._id}/history'"`
           : `onclick="window.location='/${schema}/${obj}/${r._id}'"`;
         return `<tr style="cursor:pointer" ${rowClick}>
-          ${cells}
+          ${cells.join("")}
           <td class="td-actions" onclick="event.stopPropagation()">${actions}</td>
         </tr>`;
       })
@@ -594,21 +644,34 @@ async function loadHistory(schema, obj, recordId, objConfig) {
     return `<span class="badge ${cls}">${a}</span>`;
   };
 
-  // Non-reference user attributes, used to render the attribute snapshot per version.
-  const userAttrs = Object.entries((objConfig || {}).attributes || {}).filter(([, v]) => !v.reference);
+  const { maps: refLabelMaps, names: refObjNames } = await _resolveRefLabels(schema, objConfig || {});
+  const userAttrs = Object.entries((objConfig || {}).attributes || {});
 
   const attrSnapshot = (h) => {
-    if (!userAttrs.length) return "";
-    const pairs = userAttrs
-      .map(([k, v]) => {
+    const pairs = [];
+    if (objConfig?.parent) {
+      const pid = h[`_${objConfig.parent}_id`];
+      if (pid != null) {
+        const label = refLabelMaps["_parent"]?.[pid] || pid;
+        const parentName = refObjNames["_parent"] || objConfig.parent;
+        pairs.push(`<span><b>${escHtml(parentName)}:</b> ${escHtml(String(label))}</span>`);
+      }
+    }
+    for (const [k, v] of userAttrs) {
+      if (v.reference) {
+        const refId = h[`${k}_id`];
+        if (refId != null) {
+          const label = refLabelMaps[k]?.[refId] || refId;
+          pairs.push(`<span><b>${escHtml(v.name || k)}:</b> ${escHtml(String(label))}</span>`);
+        }
+      } else {
         const val = h[k];
-        return val != null
-          ? `<span><b>${escHtml(v.name || k)}:</b> ${escHtml(String(val))}</span>`
-          : null;
-      })
-      .filter(Boolean)
-      .join("");
-    return pairs ? `<div class="history-meta__attrs">${pairs}</div>` : "";
+        if (val != null) {
+          pairs.push(`<span><b>${escHtml(v.name || k)}:</b> ${escHtml(String(val))}</span>`);
+        }
+      }
+    }
+    return pairs.length ? `<div class="history-meta__attrs">${pairs.join("")}</div>` : "";
   };
 
   const rows = history
