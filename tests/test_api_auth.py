@@ -244,14 +244,14 @@ def test_logout_is_logged(client):
     """A logout must write a LOGOUT entry to the audit log."""
     from sqlalchemy import text
     engine = _get_engine()
-    from app.core.auth import create_user
+    from app.core.auth import create_user, create_token, get_user_by_username
     create_user(engine, "audit_logout_user", "pass123")
     try:
-        login_res = client.post("/api/auth/login", json={"username": "audit_logout_user", "password": "pass123"})
-        assert login_res.status_code == 200
-        # Log out using the same admin session (cookie is set on login_res but httpx
-        # stores it in the client jar automatically).
-        client.post("/api/auth/logout")
+        # The client fixture always sends the admin Bearer token, so we must
+        # call logout with audit_logout_user's own token to log their LOGOUT.
+        user = get_user_by_username(engine, "audit_logout_user")
+        token = create_token(str(user["id"]), "audit_logout_user", is_admin=False)
+        client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
         with engine.connect() as conn:
             row = conn.execute(text(
                 "SELECT action FROM _system.audit_log "
