@@ -33,9 +33,19 @@ def _no_auth_headers():
 
 
 def _non_admin_headers():
-    """Return headers with a valid but non-admin token."""
-    from app.core.auth import create_token
-    token = create_token("00000000-0000-0000-0000-000000000002", "plain_user", is_admin=False)
+    """Return headers with a valid but non-admin token.
+
+    Creates 'plain_user' in the database on first call so is_user_active() passes.
+    """
+    from app.core.auth import create_token, create_user, get_user_by_username
+    engine = _get_engine()
+    user = get_user_by_username(engine, "plain_user")
+    if not user:
+        result = create_user(engine, "plain_user", "plain_password")
+        user_id = result["id"]
+    else:
+        user_id = str(user["id"])
+    token = create_token(user_id, "plain_user", is_admin=False)
     return {"Authorization": f"Bearer {token}"}
 
 
