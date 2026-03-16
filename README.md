@@ -9,10 +9,13 @@ A minimal, lightweight, open-source **Master Data Management** application with 
 - Full record versioning with the ability to view and revert to any historical version
 - Complete audit log: what changed, who changed it, when, and why
 - JWT-based authentication with role-based access control (admin / user)
+- Schema-based access control: grant read and/or write access per schema per user
 - User management UI and API for creating and managing accounts
-- Bulk import/export (CSV, TSV, JSON)
+- Bulk import/export (CSV, TSV, JSON) with optional upsert by key
 - Full-text search within any object
 - Cross-object references and parent-child hierarchies
+- Related-record panels on the detail view: child records and back-references displayed inline
+- Sortable column headers in the record list; sorted dropdowns on forms
 - Auto-generated OpenAPI documentation
 - Responsive web interface (desktop and mobile)
 
@@ -43,7 +46,7 @@ cp .env.example .env
 # Edit .env with your PostgreSQL connection string
 
 # Copy and edit the config file
-cp config/minimdm.yaml config/minimdm.yaml
+cp config/minimdm.example.yaml config/minimdm.yaml
 
 # Start the server
 uv run uvicorn app.main:app --reload

@@ -32,6 +32,15 @@ SAMPLE_CONFIG = {
                         "code": {"name": "Code", "type": "string", "required": True, "reference": None},
                     },
                 },
+                "contact": {
+                    "name": "Contact",
+                    "description": "Test contact with a reference to company",
+                    "parent": None,
+                    "attributes": {
+                        "name": {"name": "Name", "type": "string", "required": True, "reference": None},
+                        "company": {"name": "Company", "type": "string", "required": False, "reference": "company"},
+                    },
+                },
             }
         }
     }
@@ -75,6 +84,8 @@ def clean_records(client):
     from app.main import app as fastapi_app
     tm = fastapi_app.state.table_manager
     with tm.engine.connect() as conn:
+        conn.execute(text('DELETE FROM "test"."contact_history"'))
+        conn.execute(text('DELETE FROM "test"."contact"'))
         conn.execute(text('DELETE FROM "test"."division_history"'))
         conn.execute(text('DELETE FROM "test"."division"'))
         conn.execute(text('DELETE FROM "test"."company_history"'))

@@ -118,6 +118,16 @@ def list_users(engine) -> list[dict]:
         ]
 
 
+def is_user_active(engine, user_id: str) -> bool:
+    """Return True if the user exists and is_active. Used by auth middleware."""
+    tbl = _users_table(engine)
+    with Session(engine) as s:
+        row = s.execute(
+            select(tbl.c.is_active).where(tbl.c.id == uuid.UUID(user_id))
+        ).first()
+        return bool(row and row[0])
+
+
 def get_user_by_id(engine, user_id: str) -> Optional[dict]:
     tbl = _users_table(engine)
     with Session(engine) as s:
