@@ -15,17 +15,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Reference and parent dropdowns on the record form are now sorted alphabetically by display label, making long lists easier to navigate
 - `GET /api/records/{schema}/{obj}` now accepts `ref_field` and `ref_id` query parameters to filter records by an arbitrary reference attribute value (used for reference back-panels)
 - `GET /api/records/{schema}/{obj}` now accepts `sort_by` and `sort_dir` (`asc`|`desc`) query parameters; the default sort is the first non-reference attribute in the object config
-
-### Fixed
-- Deleted parent record in the detail view showed a raw UUID instead of the display name; the parent fetch now includes `include_deleted=true` and renders the display name with a red "deleted" badge (no link) when the parent has been soft-deleted
-- Numeric field validation errors only appeared on form submit; errors now also appear immediately when leaving an invalid number field (blur event)
-
 - Schema-based access control: non-admin users have no access to any schema by default; admins grant read and/or write access per schema on the User Management page; admins always retain full access regardless of permission rows
 - Permission management endpoints: `GET /api/admin/users/{user_id}/permissions`, `PUT /api/admin/users/{user_id}/permissions/{schema_name}`, `DELETE /api/admin/users/{user_id}/permissions/{schema_name}` (admin-only)
 - Inline permissions panel on the User Management page: clicking the expand arrow on any non-admin user opens a per-schema read/write toggle table with a Revoke button; changes take effect immediately without a page reload
 - Sidebar schemas filtered by user permissions: non-admin users see only the schemas they have read access to; admins see all schemas
 - Audit log API results filtered by permissions: non-admin users can only see audit entries for schemas they have read access to
-- 18 integration tests in `tests/test_api_permissions.py` covering permission CRUD, access enforcement (no permission, read-only, read+write), and admin bypass
 - JWT-based authentication: all routes are protected; users log in at `/login` and receive an httpOnly `access_token` cookie; API clients may alternatively pass `Authorization: Bearer <token>`
 - First-run setup: if no users exist at startup, an admin user is created automatically using `ADMIN_USERNAME` / `ADMIN_PASSWORD` from the environment (defaults: `admin` / `admin`)
 - User management UI at `/admin/users` (admin-only): create users, change passwords, toggle active/inactive status, toggle admin role
@@ -35,14 +29,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Admin and Audit Log links in the header navigation (visible to admin users only); username and logout button shown to all authenticated users
 - Audit log page split into two tabs: **Data Changes** (INSERT/UPDATE/DELETE/REVERT, excluding system schemas) and **Auth Events** (LOGIN/LOGIN_FAILED/LOGOUT with User and IP Address columns); Data Changes tab gains a User column
 - `GET /api/audit` accepts a new `exclude_system` boolean parameter to omit entries from schemas whose name starts with `_`
-- 19 integration tests in `tests/test_api_auth.py` (added `exclude_system` filter tests and inactive-user message assertion)
+- 18 integration tests in `tests/test_api_permissions.py` covering permission CRUD, access enforcement (no permission, read-only, read+write), and admin bypass
+- 19 integration tests in `tests/test_api_auth.py` covering login/logout, inactive user, audit log entries, user management, and the `exclude_system` filter
 
 ### Fixed
+- Deleted parent record in the detail view showed a raw UUID instead of the display name; the parent fetch now includes `include_deleted=true` and renders the display name with a red "deleted" badge (no link) when the parent has been soft-deleted
+- Numeric field validation errors only appeared on form submit; errors now also appear immediately when leaving an invalid number field (blur event)
 - `Authorization: Bearer` header now takes priority over the `access_token` cookie in the auth middleware — correct semantics; browser sessions are unaffected (they never send an Authorization header)
 - Inactive users now receive "Account is disabled. Contact an administrator." (401) instead of the generic wrong-password message
 - Deactivate button in the user management table was rendered with a solid red background due to two conflicting `.btn-danger` CSS rules; consolidated to a single outline style
 - Login page password field was unstyled because `input[type="password"]` was missing from the global CSS input selector
 - Audit log record links for `_system` schema entries (LOGIN/LOGOUT events) pointed to a non-existent UI route; system-schema record IDs are now rendered as plain text
+
+### Security
+- Login `?next=` redirect target is now validated to be a relative path; external URLs are rejected and replaced with `/` to prevent open redirect attacks
+- Auth middleware now checks `is_active` against the database on every authenticated request; tokens belonging to deactivated users are rejected immediately rather than remaining valid until expiry
+- `/admin/audit` page now requires admin access; previously any authenticated user could reach the URL directly
+- A startup error is logged when `SECRET_KEY` is set to the default placeholder value, prompting operators to configure a secure key before deploying
 
 ## [0.1.2] – 2026-03-14
 

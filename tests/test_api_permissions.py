@@ -32,8 +32,11 @@ def _non_admin_headers():
 
 
 def _admin_headers():
-    from app.core.auth import create_token
-    token = create_token("00000000-0000-0000-0000-000000000001", "test_admin", is_admin=True)
+    from app.core.auth import create_token, get_user_by_username
+    engine = _get_engine()
+    user = get_user_by_username(engine, "test_admin")
+    user_id = str(user["id"]) if user else "00000000-0000-0000-0000-000000000001"
+    token = create_token(user_id, "test_admin", is_admin=True)
     return {"Authorization": f"Bearer {token}"}
 
 

@@ -32,6 +32,15 @@ SAMPLE_CONFIG = {
                         "code": {"name": "Code", "type": "string", "required": True, "reference": None},
                     },
                 },
+                "contact": {
+                    "name": "Contact",
+                    "description": "Test contact with a reference to company",
+                    "parent": None,
+                    "attributes": {
+                        "name": {"name": "Name", "type": "string", "required": True, "reference": None},
+                        "company": {"name": "Company", "type": "string", "required": False, "reference": "company"},
+                    },
+                },
             }
         }
     }
@@ -53,19 +62,28 @@ def client():
     from app.core.auth import create_token
 
     with TestClient(fastapi_app) as c:
-        # Inject a test admin token so all requests pass through AuthMiddleware.
-        token = create_token("00000000-0000-0000-0000-000000000001", "test_admin", is_admin=True)
-        c.headers.update({"Authorization": f"Bearer {token}"})
-
         tm = fastapi_app.state.table_manager
         # Replace whatever config was loaded from YAML with the test config.
         tm.sync_schema(SAMPLE_CONFIG)
         fastapi_app.state.app_config = SAMPLE_CONFIG
+
+        # Create a real test_admin user so is_user_active() passes in the auth middleware.
+        from app.core.auth import create_user, get_user_by_username
+        existing = get_user_by_username(tm.engine, "test_admin")
+        if existing:
+            admin_id = str(existing["id"])
+        else:
+            result = create_user(tm.engine, "test_admin", "test_password", is_admin=True)
+            admin_id = result["id"]
+        token = create_token(admin_id, "test_admin", is_admin=True)
+        c.headers.update({"Authorization": f"Bearer {token}"})
+
         yield c
 
-        # Teardown: remove the test schema from the database.
+        # Teardown: remove the test schema and the test admin user.
         with tm.engine.connect() as conn:
             conn.execute(text('DROP SCHEMA IF EXISTS "test" CASCADE'))
+            conn.execute(text("DELETE FROM _system.users WHERE username = 'test_admin'"))
             conn.commit()
 
 
@@ -75,6 +93,8 @@ def clean_records(client):
     from app.main import app as fastapi_app
     tm = fastapi_app.state.table_manager
     with tm.engine.connect() as conn:
+        conn.execute(text('DELETE FROM "test"."contact_history"'))
+        conn.execute(text('DELETE FROM "test"."contact"'))
         conn.execute(text('DELETE FROM "test"."division_history"'))
         conn.execute(text('DELETE FROM "test"."division"'))
         conn.execute(text('DELETE FROM "test"."company_history"'))

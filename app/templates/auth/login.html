@@ -48,7 +48,9 @@
         });
 
         if (res.ok) {
-          const next = new URLSearchParams(window.location.search).get("next") || "/";
+          const rawNext = new URLSearchParams(window.location.search).get("next") || "/";
+          // Reject external redirects: must start with "/" but not "//" (protocol-relative)
+          const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
           window.location.href = next;
         } else {
           const data = await res.json().catch(() => ({}));

@@ -49,6 +49,14 @@ Issues marked **Fixed** are resolved in the current codebase. Issues marked **Im
 
 ---
 
+## Planned Features
+
+### Audit logging for user management actions
+**Context:** Currently only authentication events (LOGIN, LOGIN_FAILED, LOGOUT) are written to the audit log and shown on the Auth Events tab. Administrative actions taken on user accounts are not logged: creating a user, changing a password, toggling admin role, activating/deactivating an account, and granting or revoking schema permissions all go unrecorded.
+**Planned behaviour:** Each of these actions should write an entry to `_system.audit_log` (action: e.g. `USER_CREATED`, `USER_DEACTIVATED`, `PERMISSION_GRANTED`, etc.) and appear on the Auth Events tab so that a full administrative trail is available alongside the login history.
+
+---
+
 ## Open Issues
 
 ### Sorting by parent/reference columns is limited to the current page

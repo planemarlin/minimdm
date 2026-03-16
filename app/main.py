@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
-from app.core.auth import count_users, create_user, decode_token, ensure_users_table
+from app.core.auth import count_users, create_user, decode_token, ensure_users_table, is_user_active
 from app.core.permissions import ensure_permissions_table, get_accessible_schemas
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
@@ -20,9 +20,17 @@ from app.database import engine
 logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
 logger = logging.getLogger(__name__)
 
+_DEFAULT_SECRET_KEY = "change-me-in-production-use-a-long-random-string"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.secret_key == _DEFAULT_SECRET_KEY:
+        logger.error(
+            "SECRET_KEY is set to the default placeholder value. "
+            "JWTs can be trivially forged. Set SECRET_KEY in your .env file before deploying."
+        )
+
     tm = TableManager(engine)
 
     # Create _system schema first, then system tables
@@ -103,11 +111,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if token:
             payload = decode_token(token)
             if payload:
-                user = {
-                    "user_id": payload.get("user_id"),
-                    "username": payload.get("sub"),
-                    "is_admin": payload.get("is_admin", False),
-                }
+                user_id = payload.get("user_id")
+                engine = request.app.state.table_manager.engine
+                if user_id and is_user_active(engine, user_id):
+                    user = {
+                        "user_id": user_id,
+                        "username": payload.get("sub"),
+                        "is_admin": payload.get("is_admin", False),
+                    }
 
         request.state.current_user = user
 
@@ -186,6 +197,13 @@ async def admin_users(request: Request):
 
 @app.get("/admin/audit", response_class=HTMLResponse)
 async def admin_audit(request: Request):
+    user = getattr(request.state, "current_user", None)
+    if not user or not user.get("is_admin"):
+        return templates.TemplateResponse(
+            request, "error.html",
+            {"message": "Admin access required", "app_name": settings.app_name},
+            status_code=403,
+        )
     return templates.TemplateResponse(
         request,
         "admin/audit.html",

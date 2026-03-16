@@ -33,9 +33,19 @@ def _no_auth_headers():
 
 
 def _non_admin_headers():
-    """Return headers with a valid but non-admin token."""
-    from app.core.auth import create_token
-    token = create_token("00000000-0000-0000-0000-000000000002", "plain_user", is_admin=False)
+    """Return headers with a valid but non-admin token.
+
+    Creates 'plain_user' in the database on first call so is_user_active() passes.
+    """
+    from app.core.auth import create_token, create_user, get_user_by_username
+    engine = _get_engine()
+    user = get_user_by_username(engine, "plain_user")
+    if not user:
+        result = create_user(engine, "plain_user", "plain_password")
+        user_id = result["id"]
+    else:
+        user_id = str(user["id"])
+    token = create_token(user_id, "plain_user", is_admin=False)
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -228,6 +238,60 @@ def test_non_admin_cannot_access_user_management(client):
 def test_patch_nonexistent_user_returns_404(client):
     res = client.patch("/api/admin/users/00000000-0000-0000-0000-000000000099", json={"is_active": False})
     assert res.status_code == 404
+
+
+def test_logout_is_logged(client):
+    """A logout must write a LOGOUT entry to the audit log."""
+    from sqlalchemy import text
+    engine = _get_engine()
+    from app.core.auth import create_user, create_token, get_user_by_username
+    create_user(engine, "audit_logout_user", "pass123")
+    try:
+        # The client fixture always sends the admin Bearer token, so we must
+        # call logout with audit_logout_user's own token to log their LOGOUT.
+        user = get_user_by_username(engine, "audit_logout_user")
+        token = create_token(str(user["id"]), "audit_logout_user", is_admin=False)
+        client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+        with engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT action FROM _system.audit_log "
+                "WHERE object_name='users' AND user_name='audit_logout_user' AND action='LOGOUT' "
+                "ORDER BY timestamp DESC LIMIT 1"
+            )).fetchone()
+        assert row is not None
+    finally:
+        _delete_user(engine, "audit_logout_user")
+
+
+def test_deactivated_user_token_is_rejected(client):
+    """A valid JWT for a deactivated user must not grant access after deactivation."""
+    engine = _get_engine()
+    from app.core.auth import create_user, get_user_by_username, update_user, create_token
+    create_user(engine, "deact_token_user", "pass123")
+    user = get_user_by_username(engine, "deact_token_user")
+    uid = str(user["id"])
+    try:
+        # Create a valid token for the user while still active.
+        active_token = create_token(uid, "deact_token_user", is_admin=False)
+        # Confirm token works before deactivation (requires schema permission — use admin).
+        # Just verify /api/auth/me works since that doesn't need schema access.
+        pre_res = client.get("/api/auth/me", headers={"Authorization": f"Bearer {active_token}"})
+        assert pre_res.status_code == 200
+
+        # Deactivate the account server-side.
+        update_user(engine, uid, is_active=False)
+
+        # The same token must now be rejected.
+        post_res = client.get("/api/auth/me", headers={"Authorization": f"Bearer {active_token}"})
+        assert post_res.status_code == 401
+    finally:
+        _delete_user(engine, "deact_token_user")
+
+
+def test_audit_page_returns_403_for_non_admin(client):
+    """The /admin/audit UI page must return 403 when accessed by a non-admin user."""
+    res = client.get("/admin/audit", headers=_non_admin_headers())
+    assert res.status_code == 403
 
 
 # ---------------------------------------------------------------------------
