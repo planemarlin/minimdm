@@ -7,6 +7,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, GitHub issue templates, and PR template to support open-source contributions
+- `CONTRIBUTORS.md` listing project maintainer and contributors
+- `ruff` added as a dev dependency with lint configuration in `pyproject.toml`
 - Reference back-panels on the record detail page: any object that holds a reference attribute pointing to the current record type now appears as a collapsible panel listing all records that reference this record — matching the existing parent-child panel behaviour
 - Resolved display labels for parent and reference columns in the record list table: columns now show human-readable values (e.g. "Acme Corp") instead of raw UUIDs; the column header for the parent object is included automatically
 - Resolved display labels for parent and reference attributes in the record history view: version snapshots now show the display name of referenced records so that changes to reference fields are human-readable across versions
