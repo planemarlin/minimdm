@@ -1,6 +1,10 @@
 """Admin-only API endpoints for user management."""
-from fastapi import APIRouter, HTTPException, Request
+import uuid
 
+from fastapi import APIRouter, HTTPException, Request
+from sqlalchemy.orm import Session
+
+from app.core import audit as audit_svc
 from app.core.auth import create_user, get_user_by_id, list_users, update_user
 from app.core.permissions import delete_permission, get_user_permissions, set_permission
 
@@ -11,6 +15,33 @@ def _require_admin(request: Request):
     user = getattr(request.state, "current_user", None)
     if not user or not user.get("is_admin"):
         raise HTTPException(403, "Admin access required")
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _log_admin(request: Request, action: str, target_user_id: uuid.UUID, reason: str = None):
+    """Write an admin action entry to the audit log. Never raises."""
+    try:
+        actor = request.state.current_user
+        tm = request.app.state.table_manager
+        audit_table = tm.get_audit_table()
+        with Session(tm.engine) as s:
+            audit_svc.log_change(
+                s, audit_table,
+                schema_name="_system", object_name="users",
+                record_id=target_user_id, action=action,
+                old_values=None, new_values=None,
+                reason=reason, user_name=actor["username"],
+                ip_address=_client_ip(request),
+            )
+            s.commit()
+    except Exception:
+        pass
 
 
 @router.get("/admin/users")
@@ -38,6 +69,9 @@ async def add_user(request: Request):
         if "unique" in str(e).lower() or "duplicate" in str(e).lower():
             raise HTTPException(409, f"Username '{username}' already exists")
         raise HTTPException(500, "Failed to create user")
+    role = "admin" if is_admin else "user"
+    _log_admin(request, "USER_CREATED", uuid.UUID(user["id"]),
+               reason=f"Created {role} account '{username}'")
     return user
 
 
@@ -63,6 +97,19 @@ async def patch_user(user_id: str, request: Request):
         is_active=data.get("is_active"),
         password=data.get("password") or None,
     )
+    target_uuid = existing["id"]
+    target_name = existing["username"]
+    if "is_active" in data:
+        action = "USER_ACTIVATED" if data["is_active"] else "USER_DEACTIVATED"
+        verb = action.lower().replace("_", " ")
+        _log_admin(request, action, target_uuid, reason=f"Account '{target_name}' {verb}")
+    if "is_admin" in data:
+        role = "admin" if data["is_admin"] else "user"
+        _log_admin(request, "USER_ROLE_CHANGED", target_uuid,
+                   reason=f"Role of '{target_name}' changed to {role}")
+    if data.get("password"):
+        _log_admin(request, "USER_PASSWORD_CHANGED", target_uuid,
+                   reason=f"Password changed for '{target_name}'")
     return {"status": "ok"}
 
 
@@ -85,6 +132,13 @@ async def upsert_permission(user_id: str, schema_name: str, request: Request):
     if not get_user_by_id(engine, user_id):
         raise HTTPException(404, "User not found")
     set_permission(engine, user_id, schema_name, can_read=can_read, can_write=can_write)
+    perms = []
+    if can_read:
+        perms.append("read")
+    if can_write:
+        perms.append("write")
+    _log_admin(request, "PERMISSION_GRANTED", uuid.UUID(user_id),
+               reason=f"Granted {'+'.join(perms)} on schema '{schema_name}'")
     return {"status": "ok"}
 
 
@@ -95,3 +149,5 @@ def remove_permission(user_id: str, schema_name: str, request: Request):
     if not get_user_by_id(engine, user_id):
         raise HTTPException(404, "User not found")
     delete_permission(engine, user_id, schema_name)
+    _log_admin(request, "PERMISSION_REVOKED", uuid.UUID(user_id),
+               reason=f"Revoked access to schema '{schema_name}'")
