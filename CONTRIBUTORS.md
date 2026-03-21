@@ -6,13 +6,12 @@ Thank you to everyone who has contributed to miniMDM.
 
 | Name | GitHub |
 |---|---|
-| <!-- Your name --> | <!-- @your-handle --> |
+| planemarlin | [@planemarlin](https://github.com/planemarlin) |
 
 ## Contributors
 
 | Name | GitHub | Contribution |
 |---|---|---|
-| <!-- planemarlin --> | <!-- @planemarlin --> | Issues and pull requests |
 
 ---
 
