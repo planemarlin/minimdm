@@ -1,4 +1,3 @@
-import pytest
 from app.core.table_manager import TableManager, _topological_sort
 
 

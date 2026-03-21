@@ -2,7 +2,6 @@
 
 Requires TEST_DATABASE_URL to be set; the entire module is skipped otherwise.
 """
-import pytest
 
 
 # ---------------------------------------------------------------------------

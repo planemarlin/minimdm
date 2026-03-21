@@ -100,7 +100,8 @@ def validate_config(config: dict) -> list[str]:
                 ref = attr_body.get("reference")
                 if ref and ref not in objects:
                     errors.append(
-                        f"[{schema_name}.{obj_key}.{attr_key}] reference '{ref}' not found in schema"
+                        f"[{schema_name}.{obj_key}.{attr_key}]"
+                        f" reference '{ref}' not found in schema"
                     )
 
     return errors

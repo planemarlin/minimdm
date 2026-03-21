@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.core.permissions import get_accessible_schemas, require_schema_access

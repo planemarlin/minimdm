@@ -77,7 +77,9 @@ def test_login_success(client):
     from app.core.auth import create_user
     create_user(engine, "auth_test_user", "correct_password")
     try:
-        res = client.post("/api/auth/login", json={"username": "auth_test_user", "password": "correct_password"})
+        res = client.post(
+            "/api/auth/login", json={"username": "auth_test_user", "password": "correct_password"}
+        )
         assert res.status_code == 200
         data = res.json()
         assert data["username"] == "auth_test_user"
@@ -91,7 +93,9 @@ def test_login_wrong_password_returns_401(client):
     from app.core.auth import create_user
     create_user(engine, "auth_wp_user", "rightpass")
     try:
-        res = client.post("/api/auth/login", json={"username": "auth_wp_user", "password": "wrongpass"})
+        res = client.post(
+            "/api/auth/login", json={"username": "auth_wp_user", "password": "wrongpass"}
+        )
         assert res.status_code == 401
     finally:
         _delete_user(engine, "auth_wp_user")
@@ -104,13 +108,15 @@ def test_login_unknown_user_returns_401(client):
 
 def test_login_inactive_user_returns_401(client):
     engine = _get_engine()
-    from app.core.auth import create_user, update_user, list_users
+    from app.core.auth import create_user, list_users, update_user
     create_user(engine, "auth_inactive", "pass123")
     users = list_users(engine)
     uid = next(u["id"] for u in users if u["username"] == "auth_inactive")
     update_user(engine, uid, is_active=False)
     try:
-        res = client.post("/api/auth/login", json={"username": "auth_inactive", "password": "pass123"})
+        res = client.post(
+            "/api/auth/login", json={"username": "auth_inactive", "password": "pass123"}
+        )
         assert res.status_code == 401
         assert "disabled" in res.json()["detail"].lower()
     finally:
@@ -136,8 +142,9 @@ def test_me_endpoint_returns_current_user(client):
 
 def test_successful_login_is_logged(client):
     engine = _get_engine()
-    from app.core.auth import create_user
     from sqlalchemy import text
+
+    from app.core.auth import create_user
     create_user(engine, "audit_login_user", "pass123")
     try:
         client.post("/api/auth/login", json={"username": "audit_login_user", "password": "pass123"})
@@ -194,7 +201,9 @@ def test_create_duplicate_user_returns_409(client):
     from app.core.auth import create_user
     create_user(engine, "dup_user_test", "pass")
     try:
-        res = client.post("/api/admin/users", json={"username": "dup_user_test", "password": "pass"})
+        res = client.post(
+            "/api/admin/users", json={"username": "dup_user_test", "password": "pass"}
+        )
         assert res.status_code == 409
     finally:
         _delete_user(engine, "dup_user_test")
@@ -202,7 +211,7 @@ def test_create_duplicate_user_returns_409(client):
 
 def test_admin_can_toggle_user_active(client):
     engine = _get_engine()
-    from app.core.auth import create_user, get_user_by_username, get_user_by_id
+    from app.core.auth import create_user, get_user_by_id, get_user_by_username
     create_user(engine, "toggle_user", "pass123")
     user = get_user_by_username(engine, "toggle_user")
     uid = str(user["id"])
@@ -217,7 +226,7 @@ def test_admin_can_toggle_user_active(client):
 
 def test_admin_can_toggle_admin_role(client):
     engine = _get_engine()
-    from app.core.auth import create_user, get_user_by_username, get_user_by_id
+    from app.core.auth import create_user, get_user_by_id, get_user_by_username
     create_user(engine, "role_user", "pass123", is_admin=False)
     user = get_user_by_username(engine, "role_user")
     uid = str(user["id"])
@@ -236,7 +245,9 @@ def test_non_admin_cannot_access_user_management(client):
 
 
 def test_patch_nonexistent_user_returns_404(client):
-    res = client.patch("/api/admin/users/00000000-0000-0000-0000-000000000099", json={"is_active": False})
+    res = client.patch(
+        "/api/admin/users/00000000-0000-0000-0000-000000000099", json={"is_active": False}
+    )
     assert res.status_code == 404
 
 
@@ -244,7 +255,7 @@ def test_logout_is_logged(client):
     """A logout must write a LOGOUT entry to the audit log."""
     from sqlalchemy import text
     engine = _get_engine()
-    from app.core.auth import create_user, create_token, get_user_by_username
+    from app.core.auth import create_token, create_user, get_user_by_username
     create_user(engine, "audit_logout_user", "pass123")
     try:
         # The client fixture always sends the admin Bearer token, so we must
@@ -266,7 +277,7 @@ def test_logout_is_logged(client):
 def test_deactivated_user_token_is_rejected(client):
     """A valid JWT for a deactivated user must not grant access after deactivation."""
     engine = _get_engine()
-    from app.core.auth import create_user, get_user_by_username, update_user, create_token
+    from app.core.auth import create_token, create_user, get_user_by_username, update_user
     create_user(engine, "deact_token_user", "pass123")
     user = get_user_by_username(engine, "deact_token_user")
     uid = str(user["id"])

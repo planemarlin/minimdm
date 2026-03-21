@@ -1,8 +1,9 @@
 import uuid
-from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import (
+    JSON,
+    Boolean,
     Column,
     DateTime,
     Integer,
@@ -10,14 +11,13 @@ from sqlalchemy import (
     Numeric,
     Table,
     Text,
-    Boolean,
-    JSON,
-    inspect as sa_inspect,
     text,
+)
+from sqlalchemy import (
+    inspect as sa_inspect,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.engine import Engine
-
 
 TYPE_MAP = {
     "string": Text,

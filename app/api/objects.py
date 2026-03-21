@@ -89,7 +89,8 @@ def list_records(
             if isinstance(c.type, String) and not c.name.startswith("_")
         ]
         if text_cols:
-            q = q.where(or_(*[c.ilike(f"%{search}%") for c in text_cols]))
+            escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            q = q.where(or_(*[c.ilike(f"%{escaped}%") for c in text_cols]))
 
     user_col_names = {c.name for c in table.c if not c.name.startswith("_")}
     if sort_by and sort_by in user_col_names:
@@ -242,7 +243,9 @@ def update_record(
 
     # Close current history version
     current_version_row = db.execute(
-        select(history_table).where(history_table.c._id == rid).where(history_table.c._valid_to.is_(None))
+        select(history_table)
+        .where(history_table.c._id == rid)
+        .where(history_table.c._valid_to.is_(None))
     ).mappings().first()
     current_version = current_version_row["_version"] if current_version_row else 0
 
@@ -313,7 +316,9 @@ def delete_record(
     now = datetime.now(timezone.utc)
 
     current_version_row = db.execute(
-        select(history_table).where(history_table.c._id == rid).where(history_table.c._valid_to.is_(None))
+        select(history_table)
+        .where(history_table.c._id == rid)
+        .where(history_table.c._valid_to.is_(None))
     ).mappings().first()
     current_version = current_version_row["_version"] if current_version_row else 0
 

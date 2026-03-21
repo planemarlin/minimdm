@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
@@ -13,8 +14,6 @@ from app.core.auth import count_users, create_user, decode_token, ensure_users_t
 from app.core.permissions import ensure_permissions_table, get_accessible_schemas
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
-from sqlalchemy import text
-
 from app.database import engine
 
 logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
@@ -140,7 +139,14 @@ app.add_middleware(AuthMiddleware)
 # -----------------------------------------------------------------
 # API routers
 # -----------------------------------------------------------------
-from app.api import admin_api, audit_api, auth_api, import_export, objects, schemas_api  # noqa: E402
+from app.api import (  # noqa: E402
+    admin_api,
+    audit_api,
+    auth_api,
+    import_export,
+    objects,
+    schemas_api,
+)
 
 # Import/export must be registered before objects to avoid /export being
 # matched by the /{record_id} wildcard route.
@@ -191,7 +197,11 @@ async def admin_users(request: Request):
     tm = request.app.state.table_manager
     return templates.TemplateResponse(
         request, "admin/users.html",
-        {"schemas": _sidebar_schemas(request), "all_schemas": tm.list_schemas(), "app_name": settings.app_name},
+        {
+            "schemas": _sidebar_schemas(request),
+            "all_schemas": tm.list_schemas(),
+            "app_name": settings.app_name,
+        },
     )
 
 

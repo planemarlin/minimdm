@@ -15,8 +15,12 @@ pytestmark = pytest.mark.usefixtures("clean_records")
 
 def test_ref_field_filter_returns_only_matching_records(client):
     """Records whose reference attribute matches ref_id are returned; others are not."""
-    co1 = client.post("/api/records/test/company", json={"code": "C01", "name": "Alpha"}).json()["id"]
-    co2 = client.post("/api/records/test/company", json={"code": "C02", "name": "Beta"}).json()["id"]
+    co1 = client.post(
+        "/api/records/test/company", json={"code": "C01", "name": "Alpha"}
+    ).json()["id"]
+    co2 = client.post(
+        "/api/records/test/company", json={"code": "C02", "name": "Beta"}
+    ).json()["id"]
 
     client.post("/api/records/test/contact", json={"name": "Alice", "company_id": co1})
     client.post("/api/records/test/contact", json={"name": "Bob", "company_id": co1})
@@ -31,7 +35,9 @@ def test_ref_field_filter_returns_only_matching_records(client):
 
 
 def test_ref_field_filter_returns_empty_when_no_match(client):
-    co = client.post("/api/records/test/company", json={"code": "C01", "name": "Alpha"}).json()["id"]
+    co = client.post(
+        "/api/records/test/company", json={"code": "C01", "name": "Alpha"}
+    ).json()["id"]
     client.post("/api/records/test/contact", json={"name": "Alice", "company_id": co})
 
     other_id = "00000000-0000-0000-0000-000000000099"
