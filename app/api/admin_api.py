@@ -129,7 +129,8 @@ async def upsert_permission(user_id: str, schema_name: str, request: Request):
     can_read = bool(data.get("can_read", True))
     can_write = bool(data.get("can_write", False))
     engine = request.app.state.table_manager.engine
-    if not get_user_by_id(engine, user_id):
+    target = get_user_by_id(engine, user_id)
+    if not target:
         raise HTTPException(404, "User not found")
     set_permission(engine, user_id, schema_name, can_read=can_read, can_write=can_write)
     perms = []
@@ -137,8 +138,9 @@ async def upsert_permission(user_id: str, schema_name: str, request: Request):
         perms.append("read")
     if can_write:
         perms.append("write")
+    target_name = target["username"]
     _log_admin(request, "PERMISSION_GRANTED", uuid.UUID(user_id),
-               reason=f"Granted {'+'.join(perms)} on schema '{schema_name}'")
+               reason=f"Granted {'+'.join(perms)} on schema '{schema_name}' to '{target_name}'")
     return {"status": "ok"}
 
 
@@ -146,8 +148,9 @@ async def upsert_permission(user_id: str, schema_name: str, request: Request):
 def remove_permission(user_id: str, schema_name: str, request: Request):
     _require_admin(request)
     engine = request.app.state.table_manager.engine
-    if not get_user_by_id(engine, user_id):
+    target = get_user_by_id(engine, user_id)
+    if not target:
         raise HTTPException(404, "User not found")
     delete_permission(engine, user_id, schema_name)
     _log_admin(request, "PERMISSION_REVOKED", uuid.UUID(user_id),
-               reason=f"Revoked access to schema '{schema_name}'")
+               reason=f"Revoked access to schema '{schema_name}' from '{target['username']}'")

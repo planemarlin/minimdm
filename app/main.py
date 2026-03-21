@@ -351,6 +351,8 @@ async def object_edit(request: Request, schema: str, obj: str, record_id: str):
 
 @app.get("/{schema}/{obj}/{record_id}/history", response_class=HTMLResponse)
 async def object_history(request: Request, schema: str, obj: str, record_id: str):
+    from app.core.permissions import check_permission
+
     tm = request.app.state.table_manager
     obj_config = tm.get_object_config(schema, obj)
     if not obj_config:
@@ -360,6 +362,13 @@ async def object_history(request: Request, schema: str, obj: str, record_id: str
             {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
+    user = getattr(request.state, "current_user", None)
+    if user and user.get("is_admin"):
+        can_write = True
+    elif user:
+        can_write = check_permission(tm.engine, user["user_id"], schema, write=True)
+    else:
+        can_write = False
     return templates.TemplateResponse(
         request,
         "objects/history.html",
@@ -368,6 +377,7 @@ async def object_history(request: Request, schema: str, obj: str, record_id: str
             "obj": obj,
             "obj_config": obj_config,
             "record_id": record_id,
+            "can_write": can_write,
             "schemas": _sidebar_schemas(request),
             "app_name": settings.app_name,
         },
