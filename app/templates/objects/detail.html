@@ -8,10 +8,13 @@
 
 <div class="page-header">
   <h1 class="page-title">{{ obj_config.name }}</h1>
+  {% if can_write %}
   <a class="btn btn-secondary" href="/{{ schema }}/{{ obj }}/{{ record_id }}/edit">Edit</a>
+  {% endif %}
   <a class="btn btn-secondary" href="/{{ schema }}/{{ obj }}/{{ record_id }}/history">History</a>
-  <button class="btn btn-danger"
-    onclick="confirmDelete('{{ schema }}','{{ obj }}','{{ record_id }}')">Delete</button>
+  {% if can_write %}
+  <button class="btn btn-danger" onclick="openDeleteModal()">Delete</button>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -23,21 +26,62 @@
 </div>
 
 <div id="related-container"></div>
+
+{% if can_write %}
+<div id="delete-modal-backdrop" class="modal-backdrop" style="display:none" onclick="closeDeleteModal(event)">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
+    <div class="modal__header">
+      <span class="modal__title" id="delete-modal-title">Delete record</span>
+      <button class="modal__close" onclick="closeDeleteModal()" aria-label="Close">&times;</button>
+    </div>
+    <p style="margin-bottom:1rem;color:var(--text-muted)">
+      This action can be undone via the record history.
+    </p>
+    <div class="form-group">
+      <label for="delete-reason">Reason <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+      <input type="text" id="delete-reason" placeholder="Why is this record being deleted?" />
+    </div>
+    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.25rem">
+      <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="submitDelete()">Delete</button>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
 loadRecordDetail("{{ schema }}", "{{ obj }}", "{{ record_id }}", {{ obj_config | tojson }});
 
-async function confirmDelete(schema, obj, id) {
-  if (!confirm("Delete this record? This action can be undone via history.")) return;
-  const reason = prompt("Reason for deletion (optional):") || "";
-  const res = await fetch(`/api/records/${schema}/${obj}/${id}?reason=${encodeURIComponent(reason)}`, { method: "DELETE" });
+{% if can_write %}
+function openDeleteModal() {
+  document.getElementById("delete-reason").value = "";
+  document.getElementById("delete-modal-backdrop").style.display = "flex";
+  document.getElementById("delete-reason").focus();
+}
+
+function closeDeleteModal(event) {
+  if (event && event.target !== document.getElementById("delete-modal-backdrop")) return;
+  document.getElementById("delete-modal-backdrop").style.display = "none";
+}
+
+async function submitDelete() {
+  const reason = document.getElementById("delete-reason").value.trim();
+  const url = `/api/records/{{ schema }}/{{ obj }}/{{ record_id }}` +
+    (reason ? `?reason=${encodeURIComponent(reason)}` : "");
+  const res = await fetch(url, { method: "DELETE" });
   if (res.ok || res.status === 204) {
-    window.location.href = `/${schema}/${obj}`;
+    window.location.href = `/{{ schema }}/{{ obj }}`;
   } else {
+    document.getElementById("delete-modal-backdrop").style.display = "none";
     alert("Failed to delete record.");
   }
 }
+
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Escape") document.getElementById("delete-modal-backdrop").style.display = "none";
+});
+{% endif %}
 </script>
 {% endblock %}

@@ -23,6 +23,6 @@
 
 {% block scripts %}
 <script>
-loadHistory("{{ schema }}", "{{ obj }}", "{{ record_id }}", {{ obj_config | tojson }});
+loadHistory("{{ schema }}", "{{ obj }}", "{{ record_id }}", {{ obj_config | tojson }}, {{ can_write | tojson }});
 </script>
 {% endblock %}

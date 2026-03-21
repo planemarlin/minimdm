@@ -653,7 +653,7 @@ async function populateRefSelects(schema, objConfig, record) {
 
 // ── History page ─────────────────────────────────────────────────────────────
 
-async function loadHistory(schema, obj, recordId, objConfig) {
+async function loadHistory(schema, obj, recordId, objConfig, canWrite) {
   const container = document.getElementById("history-container");
   if (!container) return;
   container.innerHTML = `<div style="text-align:center;padding:2rem"><span class="spinner"></span></div>`;
@@ -718,7 +718,7 @@ async function loadHistory(schema, obj, recordId, objConfig) {
           ${attrSnapshot(h)}
         </div>
         <div>
-          ${h._action !== "DELETE" ? `<button class="btn btn-secondary btn-sm"
+          ${canWrite && h._action !== "DELETE" ? `<button class="btn btn-secondary btn-sm"
             onclick="revertToVersion('${schema}','${obj}','${recordId}',${h._version})">Revert</button>` : ""}
         </div>
       </li>`

@@ -335,3 +335,88 @@ def test_audit_system_schema_filter_returns_auth_events(client):
         "schema=_system returned a non-system row"
     assert any(r["action"] in ("LOGIN", "LOGIN_FAILED", "LOGOUT") for r in records), \
         "No auth events found in _system schema"
+
+
+# ---------------------------------------------------------------------------
+# Audit log for user management actions
+# ---------------------------------------------------------------------------
+
+def _audit_row(engine, action: str, user_name: str):
+    """Return the most recent audit row matching action and user_name, or None."""
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        return conn.execute(text(
+            "SELECT action, reason FROM _system.audit_log "
+            "WHERE object_name='users' AND action=:action AND user_name=:uname "
+            "ORDER BY timestamp DESC LIMIT 1"
+        ), {"action": action, "uname": user_name}).fetchone()
+
+
+def test_user_created_is_logged(client):
+    engine = _get_engine()
+    res = client.post("/api/admin/users", json={"username": "log_created", "password": "pass"})
+    assert res.status_code == 201
+    try:
+        row = _audit_row(engine, "USER_CREATED", "test_admin")
+        assert row is not None
+    finally:
+        _delete_user(engine, "log_created")
+
+
+def test_user_deactivated_is_logged(client):
+    engine = _get_engine()
+    from app.core.auth import create_user, get_user_by_username
+    create_user(engine, "log_deact", "pass")
+    user = get_user_by_username(engine, "log_deact")
+    uid = str(user["id"])
+    try:
+        client.patch(f"/api/admin/users/{uid}", json={"is_active": False})
+        row = _audit_row(engine, "USER_DEACTIVATED", "test_admin")
+        assert row is not None
+    finally:
+        _delete_user(engine, "log_deact")
+
+
+def test_user_role_changed_is_logged(client):
+    engine = _get_engine()
+    from app.core.auth import create_user, get_user_by_username
+    create_user(engine, "log_role", "pass", is_admin=False)
+    user = get_user_by_username(engine, "log_role")
+    uid = str(user["id"])
+    try:
+        client.patch(f"/api/admin/users/{uid}", json={"is_admin": True})
+        row = _audit_row(engine, "USER_ROLE_CHANGED", "test_admin")
+        assert row is not None
+    finally:
+        _delete_user(engine, "log_role")
+
+
+def test_permission_granted_is_logged(client):
+    engine = _get_engine()
+    from app.core.auth import create_user, get_user_by_username
+    create_user(engine, "log_perm", "pass")
+    user = get_user_by_username(engine, "log_perm")
+    uid = str(user["id"])
+    try:
+        client.put(f"/api/admin/users/{uid}/permissions/test",
+                   json={"can_read": True, "can_write": False})
+        row = _audit_row(engine, "PERMISSION_GRANTED", "test_admin")
+        assert row is not None
+    finally:
+        _delete_user(engine, "log_perm")
+
+
+def test_permission_revoked_is_logged(client):
+    engine = _get_engine()
+    from app.core.auth import create_user, get_user_by_username
+    create_user(engine, "log_revoke", "pass")
+    user = get_user_by_username(engine, "log_revoke")
+    uid = str(user["id"])
+    try:
+        client.put(f"/api/admin/users/{uid}/permissions/test",
+                   json={"can_read": True, "can_write": False})
+        client.delete(f"/api/admin/users/{uid}/permissions/test")
+        row = _audit_row(engine, "PERMISSION_REVOKED", "test_admin")
+        assert row is not None
+    finally:
+        _delete_user(engine, "log_revoke")

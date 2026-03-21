@@ -7,10 +7,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Fixed
+- Revert button on the record history page is now hidden for users who lack write permission, consistent with the Edit and Delete buttons on the detail page
+- Permission audit entries (`PERMISSION_GRANTED`, `PERMISSION_REVOKED`) now include the target username in the reason field
+- Removing all access via the permissions panel (unchecking read) now logs `PERMISSION_REVOKED` instead of a misleading `PERMISSION_GRANTED` entry
 - Full-text search now treats `%` and `_` as literal characters instead of SQL LIKE wildcards, preventing unexpected wildcard matches and potential performance issues on large tables
 - Resolved all ruff lint violations across `app/` and `tests/` (E501, F401, I001, F841, E402)
 
 ### Added
+- Edit and Delete buttons on the record detail page are now hidden for users who lack write permission on the schema; admins always see both (closes #11)
+- Delete record action now uses an inline modal dialog instead of `confirm()` and `prompt()` browser popups, with an optional reason field and Escape/backdrop-click to dismiss (closes #12)
+- Audit log entries for all user management actions: `USER_CREATED`, `USER_ACTIVATED`, `USER_DEACTIVATED`, `USER_ROLE_CHANGED`, `USER_PASSWORD_CHANGED`, `PERMISSION_GRANTED`, `PERMISSION_REVOKED` — visible on the Auth Events tab
 - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, GitHub issue templates, and PR template to support open-source contributions
 - `CONTRIBUTORS.md` listing project maintainer and contributors
 - `ruff` added as a dev dependency with lint configuration in `pyproject.toml`
