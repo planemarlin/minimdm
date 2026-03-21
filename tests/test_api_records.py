@@ -88,6 +88,22 @@ def test_search_is_case_insensitive(client):
     assert data["total"] == 1
 
 
+def test_search_percent_wildcard_is_treated_as_literal(client):
+    """A bare '%' in the search term must not match every record."""
+    client.post("/api/records/test/company", json={"code": "C001", "name": "Alpha"})
+
+    data = client.get("/api/records/test/company?search=%").json()
+    assert data["total"] == 0
+
+
+def test_search_underscore_wildcard_is_treated_as_literal(client):
+    """A bare '_' in the search term must not act as a single-char wildcard."""
+    client.post("/api/records/test/company", json={"code": "C001", "name": "Alpha"})
+
+    data = client.get("/api/records/test/company?search=_").json()
+    assert data["total"] == 0
+
+
 def test_list_unknown_schema_returns_404(client):
     res = client.get("/api/records/nonexistent/object")
     assert res.status_code == 404
