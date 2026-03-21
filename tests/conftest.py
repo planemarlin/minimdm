@@ -6,10 +6,8 @@ _test_db_url = os.environ.get("TEST_DATABASE_URL")
 if _test_db_url:
     os.environ["DATABASE_URL"] = _test_db_url
 
-import pytest
-from sqlalchemy import text
-
-from app.core.table_manager import TableManager
+import pytest  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 SAMPLE_CONFIG = {
     "schemas": {
@@ -20,8 +18,8 @@ SAMPLE_CONFIG = {
                     "description": "Test company",
                     "parent": None,
                     "attributes": {
-                        "code": {"name": "Code", "type": "string", "required": True, "reference": None},
-                        "name": {"name": "Name", "type": "string", "required": False, "reference": None},
+                        "code": {"name": "Code", "type": "string", "required": True, "reference": None},  # noqa: E501
+                        "name": {"name": "Name", "type": "string", "required": False, "reference": None},  # noqa: E501
                     },
                 },
                 "division": {
@@ -29,7 +27,7 @@ SAMPLE_CONFIG = {
                     "description": "Test division",
                     "parent": "company",
                     "attributes": {
-                        "code": {"name": "Code", "type": "string", "required": True, "reference": None},
+                        "code": {"name": "Code", "type": "string", "required": True, "reference": None},  # noqa: E501
                     },
                 },
                 "contact": {
@@ -37,8 +35,8 @@ SAMPLE_CONFIG = {
                     "description": "Test contact with a reference to company",
                     "parent": None,
                     "attributes": {
-                        "name": {"name": "Name", "type": "string", "required": True, "reference": None},
-                        "company": {"name": "Company", "type": "string", "required": False, "reference": "company"},
+                        "name": {"name": "Name", "type": "string", "required": True, "reference": None},  # noqa: E501
+                        "company": {"name": "Company", "type": "string", "required": False, "reference": "company"},  # noqa: E501
                     },
                 },
             }
@@ -58,8 +56,9 @@ def client():
         pytest.skip("TEST_DATABASE_URL not set – skipping integration tests")
 
     from fastapi.testclient import TestClient
-    from app.main import app as fastapi_app
+
     from app.core.auth import create_token
+    from app.main import app as fastapi_app
 
     with TestClient(fastapi_app) as c:
         tm = fastapi_app.state.table_manager

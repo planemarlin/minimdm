@@ -1,6 +1,5 @@
 import json
 import tempfile
-from pathlib import Path
 
 import pytest
 import yaml
@@ -127,7 +126,12 @@ class TestValidateConfig:
                             "name": "Obj",
                             "parent": None,
                             "attributes": {
-                                "mgr": {"name": "Manager", "type": "string", "required": False, "reference": "ghost"}
+                                "mgr": {
+                                    "name": "Manager",
+                                    "type": "string",
+                                    "required": False,
+                                    "reference": "ghost",
+                                }
                             },
                         }
                     }

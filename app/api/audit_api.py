@@ -29,9 +29,15 @@ def list_audit_log(
     schema: str = Query(None),
     obj: str = Query(None),
     action: str = Query(None),
-    from_time: Optional[str] = Query(None, description="ISO datetime — include entries at or after this time"),
-    to_time: Optional[str] = Query(None, description="ISO datetime — include entries at or before this time"),
-    exclude_system: bool = Query(False, description="Exclude entries from system schemas (schema_name starting with '_')"),
+    from_time: Optional[str] = Query(
+        None, description="ISO datetime — include entries at or after this time"
+    ),
+    to_time: Optional[str] = Query(
+        None, description="ISO datetime — include entries at or before this time"
+    ),
+    exclude_system: bool = Query(
+        False, description="Exclude entries from system schemas (schema_name starting with '_')"
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),

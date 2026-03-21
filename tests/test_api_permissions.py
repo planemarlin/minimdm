@@ -71,7 +71,10 @@ def setup_non_admin_user(client):
 def _clear_permissions(engine):
     from sqlalchemy import text
     with engine.connect() as conn:
-        conn.execute(text("DELETE FROM _system.schema_permissions WHERE user_id = :id"), {"id": _NON_ADMIN_USER_ID})
+        conn.execute(
+            text("DELETE FROM _system.schema_permissions WHERE user_id = :id"),
+            {"id": _NON_ADMIN_USER_ID},
+        )
         conn.commit()
 
 
@@ -122,7 +125,6 @@ def test_set_permission_updates_existing_row(client):
 
 
 def test_delete_permission_removes_row(client):
-    engine = _get_engine()
     client.put(
         f"/api/admin/users/{_NON_ADMIN_USER_ID}/permissions/test",
         json={"can_read": True, "can_write": False},

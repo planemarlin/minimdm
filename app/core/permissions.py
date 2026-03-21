@@ -11,11 +11,9 @@ Admins always have full access and bypass all checks.
 Non-admins have no access unless a row explicitly grants it.
 """
 import uuid
-from typing import Optional
 
 from fastapi import HTTPException, Request
-from sqlalchemy import Boolean, Column, MetaData, Table, Text, select, text
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy import MetaData, Table, select, text
 from sqlalchemy.orm import Session
 
 
@@ -45,7 +43,14 @@ def get_user_permissions(engine, user_id: str) -> list[dict]:
         rows = s.execute(
             select(tbl).where(tbl.c.user_id == uuid.UUID(user_id)).order_by(tbl.c.schema_name)
         ).mappings().all()
-        return [{"schema_name": r["schema_name"], "can_read": r["can_read"], "can_write": r["can_write"]} for r in rows]
+        return [
+            {
+                "schema_name": r["schema_name"],
+                "can_read": r["can_read"],
+                "can_write": r["can_write"],
+            }
+            for r in rows
+        ]
 
 
 def set_permission(engine, user_id: str, schema_name: str, can_read: bool, can_write: bool) -> None:
@@ -127,4 +132,6 @@ def require_schema_access(request: Request, schema: str, write: bool = False) ->
     engine = request.app.state.table_manager.engine
     if not check_permission(engine, user["user_id"], schema, write=write):
         action = "write to" if write else "read"
-        raise HTTPException(403, f"Access denied: you do not have permission to {action} schema '{schema}'")
+        raise HTTPException(
+            403, f"Access denied: you do not have permission to {action} schema '{schema}'"
+        )

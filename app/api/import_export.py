@@ -119,7 +119,9 @@ async def import_records(
     if upsert_key:
         user_cols = {c.name for c in table.c if not c.name.startswith("_")}
         if upsert_key not in user_cols:
-            raise HTTPException(400, f"upsert_key '{upsert_key}' is not a valid column for this object")
+            raise HTTPException(
+                400, f"upsert_key '{upsert_key}' is not a valid column for this object"
+            )
 
     content = await file.read()
     text = content.decode("utf-8-sig")  # handle BOM
@@ -192,7 +194,9 @@ def _import_row(db, table, history_table, audit_table, row: dict, reason, reques
     )
 
 
-def _upsert_row(db, table, history_table, audit_table, row: dict, upsert_key: str, reason, request, schema, obj):
+def _upsert_row(
+    db, table, history_table, audit_table, row: dict, upsert_key: str, reason, request, schema, obj
+):
     from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
     user_cols = {c.name for c in table.c if not c.name.startswith("_")}

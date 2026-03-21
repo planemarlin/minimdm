@@ -4,9 +4,9 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core import audit as audit_svc
 from app.core.auth import create_token, get_user_by_username, verify_password
-from app.config import settings
 
 router = APIRouter()
 

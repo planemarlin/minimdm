@@ -242,7 +242,9 @@ def update_record(
 
     # Close current history version
     current_version_row = db.execute(
-        select(history_table).where(history_table.c._id == rid).where(history_table.c._valid_to.is_(None))
+        select(history_table)
+        .where(history_table.c._id == rid)
+        .where(history_table.c._valid_to.is_(None))
     ).mappings().first()
     current_version = current_version_row["_version"] if current_version_row else 0
 
@@ -313,7 +315,9 @@ def delete_record(
     now = datetime.now(timezone.utc)
 
     current_version_row = db.execute(
-        select(history_table).where(history_table.c._id == rid).where(history_table.c._valid_to.is_(None))
+        select(history_table)
+        .where(history_table.c._id == rid)
+        .where(history_table.c._valid_to.is_(None))
     ).mappings().first()
     current_version = current_version_row["_version"] if current_version_row else 0
 

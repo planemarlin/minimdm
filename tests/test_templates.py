@@ -5,7 +5,6 @@ properties (attribute order, injected variables) are correct.
 They use the same TestClient fixture as the API tests and require
 TEST_DATABASE_URL to be set.
 """
-import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +130,8 @@ def test_list_page_objconfig_json_preserves_attribute_order(client):
     assert res.status_code == 200
     html = res.text
 
-    # The embedded JSON is: objConfig: { "name": "Company", ..., "attributes": {"code": {...}, "name": {...}} }
+    # The embedded JSON is: objConfig: { "name": "Company", ...,
+    # "attributes": {"code": {...}, "name": {...}} }
     # If sort_keys was True, "name" would appear before "code" inside "attributes".
     # Note: obj_config has a top-level "name" key ("Company") that appears before "attributes",
     # so we must search for key order within the "attributes" section only.

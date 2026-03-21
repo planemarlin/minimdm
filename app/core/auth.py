@@ -5,8 +5,7 @@ from typing import Optional
 
 import bcrypt
 import jwt
-from sqlalchemy import Boolean, Column, DateTime, String, Table, MetaData, func, select, text
-from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy import MetaData, Table, func, select, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
