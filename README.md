@@ -70,6 +70,10 @@ uv run pytest
 | [docs/software.md](docs/software.md) | Open-source software used |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Common errors and solutions |
 
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the process, coding conventions, and PR requirements. See [CONTRIBUTORS.md](CONTRIBUTORS.md) for the list of contributors.
+
 ## License
 
 This project is open source. See [LICENSE](LICENSE) for details.
