@@ -1,6 +1,14 @@
 #!/bin/bash
 
 LOG_FILE="docker-build.log"
+DELETE_DATA=false
+
+for arg in "$@"; do
+  case $arg in
+    --rebuild) DELETE_DATA=true ;;
+    *) echo "Unknown option: $arg"; exit 1 ;;
+  esac
+done
 
 echo "miniMDM Docker Rebuild"
 echo "====================="
@@ -8,8 +16,13 @@ echo "Build log: $LOG_FILE"
 echo ""
 
 {
-  echo "Stopping and removing containers..."
-  docker compose down -v || true
+  if [ "$DELETE_DATA" = true ]; then
+    echo "Stopping and removing containers and data volume..."
+    docker compose down -v || true
+  else
+    echo "Stopping and removing containers (data volume preserved)..."
+    docker compose down || true
+  fi
 
   echo ""
   echo "Building Docker images..."

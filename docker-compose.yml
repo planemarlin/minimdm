@@ -4,7 +4,7 @@ services:
     container_name: minimdm-postgres
     environment:
       POSTGRES_USER: minimdm
-      POSTGRES_PASSWORD: minimdm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-minimdm}
       POSTGRES_DB: minimdm
     ports:
       - "5432:5432"
