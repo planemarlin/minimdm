@@ -13,8 +13,8 @@ from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
-from app.core.limiter import limiter
 from app.core.auth import count_users, create_user, decode_token, ensure_users_table, is_user_active
+from app.core.limiter import limiter
 from app.core.permissions import ensure_permissions_table, get_accessible_schemas
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
