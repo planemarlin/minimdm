@@ -8,12 +8,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
-
-from app.config import settings
-from app.core.limiter import limiter
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core import audit as audit_svc
+from app.core.limiter import limiter
 from app.core.permissions import require_schema_access
 from app.database import get_db
 
@@ -132,7 +131,8 @@ async def import_records(
     if len(content) > settings.max_upload_size:
         raise HTTPException(
             413,
-            f"File too large. Maximum upload size is {settings.max_upload_size // (1024 * 1024)} MB.",
+            f"File too large. "
+            f"Maximum upload size is {settings.max_upload_size // (1024 * 1024)} MB.",
         )
     text = content.decode("utf-8-sig")  # handle BOM
 
@@ -153,6 +153,9 @@ async def import_records(
     errors = []
 
     for i, row in enumerate(rows):
+        # In non-strict mode use a savepoint per row so a DB-level error on one row
+        # does not abort the whole transaction and prevents committing previous rows.
+        sp = db.begin_nested() if not strict else None
         try:
             if upsert_key:
                 action = _upsert_row(
@@ -169,8 +172,12 @@ async def import_records(
                     row, reason, request, schema, obj
                 )
                 inserted += 1
+            if sp:
+                sp.commit()
         except Exception as e:
             errors.append({"row": i + 1, "error": str(e)})
+            if sp:
+                sp.rollback()
 
     if errors and strict:
         db.rollback()
@@ -178,7 +185,8 @@ async def import_records(
             422,
             {
                 "detail": "Import rolled back: one or more rows failed. "
-                          "Fix the errors and retry, or use strict=false to commit valid rows only.",
+                          "Fix the errors and retry, or use strict=false to "
+                          "commit valid rows only.",
                 "errors": errors,
                 "total": len(rows),
             },

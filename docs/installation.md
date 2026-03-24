@@ -52,8 +52,9 @@ SECRET_KEY=change-me-to-a-long-random-secret
 TOKEN_EXPIRE_HOURS=24
 
 # First-run admin account (created automatically if no users exist)
+# Password must be at least 12 characters
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=change-me
+ADMIN_PASSWORD=change-me-now!
 ```
 
 ## Create a Config File
@@ -79,6 +80,8 @@ uv run uvicorn app.main:app --reload
 
 The web interface is available at `http://localhost:8000`.
 API documentation is at `http://localhost:8000/docs`.
+
+> **Production deployments** must run behind a reverse proxy with TLS. See [deployment.md](deployment.md) for nginx/Caddy configuration, required environment variables, and a security checklist.
 
 ## Running as a Service (systemd)
 

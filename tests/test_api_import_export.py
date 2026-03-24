@@ -213,3 +213,64 @@ def test_upsert_invalid_key_returns_400(client):
         files=files,
     )
     assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Upload size limit
+# ---------------------------------------------------------------------------
+
+def test_import_oversized_file_returns_413(client):
+    """Files exceeding MAX_UPLOAD_SIZE must be rejected with 413."""
+    import os
+    os.environ["MAX_UPLOAD_SIZE"] = "100"  # 100 bytes for this test
+    from importlib import reload
+
+    import app.config as cfg_mod
+    reload(cfg_mod)
+    import app.api.import_export as ie_mod
+    reload(ie_mod)
+
+    big_content = b"code,name\n" + b"X,Y\n" * 50  # well over 100 bytes
+    files = {"file": ("big.csv", big_content, "text/csv")}
+    res = client.post("/api/records/test/company/import?format=csv", files=files)
+    assert res.status_code == 413
+
+    # Restore default
+    os.environ.pop("MAX_UPLOAD_SIZE", None)
+    reload(cfg_mod)
+    reload(ie_mod)
+
+
+# ---------------------------------------------------------------------------
+# Strict mode rollback
+# ---------------------------------------------------------------------------
+
+def test_import_strict_mode_rolls_back_on_error(client):
+    """With strict=true (default), a row error rolls back all rows including valid ones."""
+    # contact has a company_id UUID reference column — passing a non-UUID string
+    # causes a PostgreSQL type error, which is a reliable way to trigger a row failure.
+    csv_content = "name,company_id\nAlice,\nBob,not-a-valid-uuid\n"
+    files = {"file": ("mixed.csv", csv_content.encode(), "text/csv")}
+    res = client.post("/api/records/test/contact/import?format=csv", files=files)
+    assert res.status_code == 422
+    data = res.json()
+    assert "errors" in data["detail"]
+    # Alice must NOT have been committed — the whole import was rolled back
+    records = client.get("/api/records/test/contact").json()
+    assert records["total"] == 0
+
+
+def test_import_non_strict_mode_commits_valid_rows(client):
+    """With strict=false, valid rows are committed even when some rows fail."""
+    csv_content = "name,company_id\nAlice,\nBob,not-a-valid-uuid\n"
+    files = {"file": ("mixed.csv", csv_content.encode(), "text/csv")}
+    res = client.post(
+        "/api/records/test/contact/import?format=csv&strict=false", files=files
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["inserted"] == 1
+    assert len(data["errors"]) == 1
+    # Alice must be present; Bob was skipped
+    records = client.get("/api/records/test/contact").json()
+    assert records["total"] == 1

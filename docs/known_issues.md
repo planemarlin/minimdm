@@ -59,43 +59,34 @@ Issues marked **Fixed** are resolved in the current codebase. Issues marked **Im
 
 ## Production Readiness — Blockers
 
-These issues must be resolved before miniMDM is suitable for a public-facing or multi-user production deployment.
+All blockers resolved in current branch.
 
-### 1. Rate limiting
-**Context:** No protection against brute-force login attacks, repeated failed authentication, or API abuse. A single client can hammer the login endpoint without restriction.
-**Planned fix:** Add per-IP rate limits on the login endpoint and a per-user limit on authenticated API endpoints using `slowapi` or equivalent FastAPI middleware.
+### 1. Rate limiting — **Resolved**
+10 req/min per IP on login; 10 req/min on import. Implemented with `slowapi`. Disabled in test environments via `RATE_LIMIT_ENABLED=false`.
 
-### 2. CSRF protection
-**Context:** Mutating endpoints (create, update, delete, import, user management) accept cookie-authenticated requests with no CSRF token. A logged-in user could be tricked into making unintended state changes via a crafted page.
-**Planned fix:** Add CSRF token middleware (e.g. `fastapi-csrf-protect`) to all non-GET endpoints, or enforce `SameSite=Strict` on the session cookie.
+### 2. CSRF protection — **Resolved**
+Session cookie changed from `SameSite=lax` to `SameSite=strict`.
 
-### 3. File upload size limit
-**Context:** The import endpoint (`POST /api/records/{schema}/{obj}/import`) accepts files of unlimited size. A large file could exhaust server memory or disk.
-**Planned fix:** Enforce a configurable `MAX_UPLOAD_SIZE` limit (default 10 MB) in the import endpoint.
+### 3. File upload size limit — **Resolved**
+Import endpoint reads at most `MAX_UPLOAD_SIZE+1` bytes and rejects with HTTP 413 if exceeded. Default 10 MB, configurable via `MAX_UPLOAD_SIZE`.
 
-### 4. Health check endpoint
-**Context:** No `GET /health` or `GET /healthz` endpoint exists. Load balancers, Docker health checks, and monitoring systems have no way to verify the app is up and the database is reachable.
-**Planned fix:** Implement `GET /health` returning 200 with a JSON body confirming database connectivity and app version.
+### 4. Health check endpoint — **Resolved**
+`GET /health` returns 200 `{"status": "ok", "version": "..."}` when DB is reachable, 503 otherwise. No authentication required.
 
-### 5. Startup validation
-**Context:** If `DATABASE_URL` is invalid or the database is unreachable at startup, the application starts without error and fails only on the first request. Required environment variables (`DATABASE_URL`, `SECRET_KEY`, `CONFIG_FILE`) are not validated at startup.
-**Planned fix:** Validate all required environment variables and test database connectivity in the FastAPI lifespan hook before accepting requests. Fail fast with a clear error message.
+### 5. Startup validation — **Resolved**
+Database connectivity is verified in the lifespan hook before the app accepts requests. Fails fast with a clear error if the DB is unreachable.
 
-### 6. Password policy
-**Context:** No minimum password length, complexity, or expiration is enforced. The default admin password (`admin`) is plaintext in `.env.docker` and must be changed manually.
-**Planned fix:** Enforce a minimum password length (12+ characters) at the API layer. Document the requirement to change the default admin password during initial setup.
+### 6. Password policy — **Resolved**
+Minimum 12-character password enforced on user creation and password change endpoints.
 
-### 7. History version atomicity
-**Context:** The history version counter is incremented in Python (`current_version + 1`) after reading the current maximum from the database. Concurrent updates to the same record can produce duplicate version numbers.
-**Planned fix:** Use a database-level sequence or a `SELECT … FOR UPDATE` lock on the history table during version increment to make the operation atomic.
+### 7. History version atomicity — **Resolved**
+`SELECT … FOR UPDATE` added to the current open history row before reading its version number. Concurrent updates queue rather than racing.
 
-### 8. Bulk import rollback
-**Context:** The import endpoint processes rows one by one and commits incrementally. If a row fails midway through, all previously processed rows are already committed and cannot be rolled back. The response reports an error but the data is left in a partial state.
-**Planned fix:** Wrap the entire import in a single transaction and roll back on the first error. Optionally support a `--strict` flag to choose between all-or-nothing and best-effort modes.
+### 8. Bulk import rollback — **Resolved**
+`strict=true` (default): any row error rolls back the entire import and returns all errors. `strict=false`: savepoints isolate each row so valid rows are committed even when others fail.
 
-### 9. HTTPS / TLS
-**Context:** miniMDM has no built-in TLS support and listens on plain HTTP. Credentials and data are transmitted in the clear.
-**Decision:** miniMDM should not handle TLS directly; instead, the deployment documentation should require a reverse proxy (nginx, Caddy, or equivalent) with a valid certificate in front of the application.
+### 9. HTTPS / TLS — **Resolved (documentation)**
+`docs/deployment.md` added with nginx and Caddy examples, required environment variables, and a pre-launch security checklist.
 
 ---
 

@@ -241,7 +241,7 @@ def update_record(
     old_values = dict(existing)
     now = datetime.now(timezone.utc)
 
-    # Close current history version — FOR UPDATE locks the row to prevent concurrent version conflicts
+    # Close current history version — FOR UPDATE prevents concurrent version conflicts
     current_version_row = db.execute(
         select(history_table)
         .where(history_table.c._id == rid)
