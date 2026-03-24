@@ -61,6 +61,8 @@ async def add_user(request: Request):
 
     if not username or not password:
         raise HTTPException(400, "Username and password are required")
+    if len(password) < 12:
+        raise HTTPException(400, "Password must be at least 12 characters")
 
     engine = request.app.state.table_manager.engine
     try:
@@ -84,6 +86,9 @@ async def patch_user(user_id: str, request: Request):
     existing = get_user_by_id(engine, user_id)
     if not existing:
         raise HTTPException(404, "User not found")
+
+    if data.get("password") and len(data["password"]) < 12:
+        raise HTTPException(400, "Password must be at least 12 characters")
 
     # Prevent the last admin from losing admin rights or being deactivated
     current_user = request.state.current_user

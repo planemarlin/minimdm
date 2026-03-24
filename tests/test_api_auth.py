@@ -186,7 +186,7 @@ def test_admin_can_create_user(client):
     engine = _get_engine()
     res = client.post("/api/admin/users", json={
         "username": "new_api_user",
-        "password": "secret123",
+        "password": "secret123abc!",
         "is_admin": False,
     })
     assert res.status_code == 201
@@ -196,13 +196,19 @@ def test_admin_can_create_user(client):
     _delete_user(engine, "new_api_user")
 
 
+def test_create_user_short_password_returns_400(client):
+    res = client.post("/api/admin/users", json={"username": "short_pw_user", "password": "tooshort"})
+    assert res.status_code == 400
+    assert "12 characters" in res.json()["detail"]
+
+
 def test_create_duplicate_user_returns_409(client):
     engine = _get_engine()
     from app.core.auth import create_user
-    create_user(engine, "dup_user_test", "pass")
+    create_user(engine, "dup_user_test", "pass123456789")
     try:
         res = client.post(
-            "/api/admin/users", json={"username": "dup_user_test", "password": "pass"}
+            "/api/admin/users", json={"username": "dup_user_test", "password": "pass123456789"}
         )
         assert res.status_code == 409
     finally:
@@ -354,7 +360,7 @@ def _audit_row(engine, action: str, user_name: str):
 
 def test_user_created_is_logged(client):
     engine = _get_engine()
-    res = client.post("/api/admin/users", json={"username": "log_created", "password": "pass"})
+    res = client.post("/api/admin/users", json={"username": "log_created", "password": "pass123456789"})
     assert res.status_code == 201
     try:
         row = _audit_row(engine, "USER_CREATED", "test_admin")
