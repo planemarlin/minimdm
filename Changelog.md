@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Security
+- Rate limiting: 10 requests/minute per IP on the login and import endpoints to prevent brute-force and API abuse attacks (`slowapi`)
+- Session cookie changed from `SameSite=lax` to `SameSite=strict` to prevent cross-site request forgery
+- File upload size limit: import endpoint now rejects files larger than `MAX_UPLOAD_SIZE` (default 10 MB) with HTTP 413
+- Minimum password length of 12 characters enforced on user creation and password change
+
+### Added
+- `GET /health` endpoint returns 200 when the database is reachable, 503 otherwise — suitable for load balancer and container health probes
+- Bulk import `strict` query parameter (default `true`): rolls back the entire import if any row fails and returns all row errors; set `strict=false` for best-effort mode that commits valid rows using per-row savepoints
+- `docs/deployment.md`: production deployment guide covering TLS termination with nginx/Caddy, required environment variables, and a pre-launch security checklist
+
+### Fixed
+- History version counter is now incremented atomically using `SELECT … FOR UPDATE` on the open history row, preventing duplicate version numbers under concurrent updates
+- Database connectivity is validated at startup; the application now fails fast with a clear error instead of silently starting with a broken DB connection
+
 ### Fixed
 - Revert button on the record history page is now hidden for users who lack write permission, consistent with the Edit and Delete buttons on the detail page
 - Permission audit entries (`PERMISSION_GRANTED`, `PERMISSION_REVOKED`) now include the target username in the reason field

@@ -49,11 +49,78 @@ Issues marked **Fixed** are resolved in the current codebase. Issues marked **Im
 
 ---
 
-## Planned Features
+## Implemented
 
 ### Audit logging for user management actions
-**Context:** Currently only authentication events (LOGIN, LOGIN_FAILED, LOGOUT) are written to the audit log and shown on the Auth Events tab. Administrative actions taken on user accounts are not logged: creating a user, changing a password, toggling admin role, activating/deactivating an account, and granting or revoking schema permissions all go unrecorded.
-**Planned behaviour:** Each of these actions should write an entry to `_system.audit_log` (action: e.g. `USER_CREATED`, `USER_DEACTIVATED`, `PERMISSION_GRANTED`, etc.) and appear on the Auth Events tab so that a full administrative trail is available alongside the login history.
+**Implemented in:** Unreleased (current branch).
+`USER_CREATED`, `USER_ACTIVATED`, `USER_DEACTIVATED`, `USER_ROLE_CHANGED`, `USER_PASSWORD_CHANGED`, `PERMISSION_GRANTED`, and `PERMISSION_REVOKED` are now written to `_system.audit_log` and visible on the Auth Events tab.
+
+---
+
+## Production Readiness — Blockers
+
+All blockers resolved in current branch.
+
+### 1. Rate limiting — **Resolved**
+10 req/min per IP on login; 10 req/min on import. Implemented with `slowapi`. Disabled in test environments via `RATE_LIMIT_ENABLED=false`.
+
+### 2. CSRF protection — **Resolved**
+Session cookie changed from `SameSite=lax` to `SameSite=strict`.
+
+### 3. File upload size limit — **Resolved**
+Import endpoint reads at most `MAX_UPLOAD_SIZE+1` bytes and rejects with HTTP 413 if exceeded. Default 10 MB, configurable via `MAX_UPLOAD_SIZE`.
+
+### 4. Health check endpoint — **Resolved**
+`GET /health` returns 200 `{"status": "ok", "version": "..."}` when DB is reachable, 503 otherwise. No authentication required.
+
+### 5. Startup validation — **Resolved**
+Database connectivity is verified in the lifespan hook before the app accepts requests. Fails fast with a clear error if the DB is unreachable.
+
+### 6. Password policy — **Resolved**
+Minimum 12-character password enforced on user creation and password change endpoints.
+
+### 7. History version atomicity — **Resolved**
+`SELECT … FOR UPDATE` added to the current open history row before reading its version number. Concurrent updates queue rather than racing.
+
+### 8. Bulk import rollback — **Resolved**
+`strict=true` (default): any row error rolls back the entire import and returns all errors. `strict=false`: savepoints isolate each row so valid rows are committed even when others fail.
+
+### 9. HTTPS / TLS — **Resolved (documentation)**
+`docs/deployment.md` added with nginx and Caddy examples, required environment variables, and a pre-launch security checklist.
+
+---
+
+## Production Readiness — High Priority
+
+These issues should be addressed before the first deployment with live users.
+
+### 10. Password reset flow
+**Context:** There is no self-service password reset. If a user forgets their password, an admin must reset it manually via the user management UI. This is not viable for deployments with many users.
+**Planned fix:** Implement a password reset flow — either email-based token or an admin-generated reset link.
+
+### 11. Token revocation on logout
+**Context:** JWT tokens remain valid until their expiry time even after the user logs out. If a token is stolen or an account is compromised, there is no way to immediately invalidate it short of changing `SECRET_KEY` (which invalidates all sessions).
+**Planned fix:** Maintain a server-side token blocklist (in the database or a cache) that is checked on every authenticated request. Entries expire naturally after the token's TTL.
+
+### 12. Database-level foreign key and unique constraints
+**Context:** Referential integrity and uniqueness are enforced in the application layer only. Direct database access or a bug in the application can produce orphaned records or duplicates.
+**Planned fix:** Add database-level `FOREIGN KEY` constraints for parent relationships and `NOT NULL` / `UNIQUE` constraints for required and unique attributes. Decide on cascade behaviour (restrict / set null) for parent deletes.
+
+### 13. Export pagination
+**Context:** Export endpoints load the entire result set into memory before streaming. On large tables this risks out-of-memory errors.
+**Planned fix:** Add `limit` / `offset` query parameters to export endpoints and stream results using server-side cursors.
+
+### 14. Structured logging with request IDs
+**Context:** Logs are plain text with no correlation IDs. In production it is difficult to trace a single request through multiple log lines or aggregate logs from multiple instances.
+**Planned fix:** Adopt JSON-structured logging; generate a unique request ID per request (via middleware) and include it in every log line.
+
+### 15. Database migrations (Alembic)
+**Context:** Schema changes are applied at runtime using `ALTER TABLE … ADD COLUMN IF NOT EXISTS`. There is no migration history, no rollback path, and no way to reproduce the exact database state from scratch other than running the application.
+**Planned fix:** Introduce Alembic for managing `_system` schema migrations. Application-managed data tables (user schemas) will continue to be handled dynamically but system tables should be version-controlled.
+
+### 16. Backup and restore documentation
+**Context:** miniMDM stores all data in PostgreSQL. There is no built-in backup or restore functionality, and no documentation on how to back up and restore the database.
+**Planned fix:** Add a `docs/backup-restore.md` guide covering `pg_dump` / `pg_restore` for full backups, point-in-time recovery considerations, and how to restore miniMDM from a backup including the `_system` schema.
 
 ---
 

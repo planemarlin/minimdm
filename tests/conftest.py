@@ -5,6 +5,7 @@ import os
 _test_db_url = os.environ.get("TEST_DATABASE_URL")
 if _test_db_url:
     os.environ["DATABASE_URL"] = _test_db_url
+    os.environ["RATE_LIMIT_ENABLED"] = "false"
 
 import pytest  # noqa: E402
 from sqlalchemy import text  # noqa: E402

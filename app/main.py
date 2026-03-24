@@ -6,11 +6,15 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.core.auth import count_users, create_user, decode_token, ensure_users_table, is_user_active
+from app.core.limiter import limiter
 from app.core.permissions import ensure_permissions_table, get_accessible_schemas
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
@@ -29,6 +33,14 @@ async def lifespan(app: FastAPI):
             "SECRET_KEY is set to the default placeholder value. "
             "JWTs can be trivially forged. Set SECRET_KEY in your .env file before deploying."
         )
+
+    # Validate database connectivity before accepting requests
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        logger.error("Cannot connect to the database: %s", exc)
+        raise RuntimeError(f"Database connection failed at startup: {exc}") from exc
 
     tm = TableManager(engine)
 
@@ -82,6 +94,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 templates.env.policies["json.dumps_kwargs"] = {"sort_keys": False}
@@ -90,7 +106,7 @@ templates.env.policies["json.dumps_kwargs"] = {"sort_keys": False}
 # Auth middleware
 # -----------------------------------------------------------------
 
-_PUBLIC_PATHS = {"/login", "/api/auth/login", "/docs", "/openapi.json", "/redoc"}
+_PUBLIC_PATHS = {"/login", "/api/auth/login", "/health", "/docs", "/openapi.json", "/redoc"}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -156,6 +172,24 @@ app.include_router(import_export.router, prefix="/api", tags=["Import / Export"]
 app.include_router(objects.router, prefix="/api", tags=["Records"])
 app.include_router(schemas_api.router, prefix="/api", tags=["Schemas"])
 app.include_router(audit_api.router, prefix="/api", tags=["Audit"])
+
+
+# -----------------------------------------------------------------
+# Health check
+# -----------------------------------------------------------------
+
+
+@app.get("/health", tags=["Health"])
+async def health(request: Request):
+    try:
+        engine = request.app.state.table_manager.engine
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "unhealthy", "detail": str(exc)}, status_code=503
+        )
+    return {"status": "ok", "version": settings.app_version}
 
 
 # -----------------------------------------------------------------

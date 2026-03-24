@@ -10,7 +10,9 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core import audit as audit_svc
+from app.core.limiter import limiter
 from app.core.permissions import require_schema_access
 from app.database import get_db
 
@@ -97,6 +99,7 @@ def export_records(
 # ---------------------------------------------------------------------------
 
 @router.post("/records/{schema}/{obj}/import")
+@limiter.limit("10/minute")
 async def import_records(
     schema: str,
     obj: str,
@@ -105,6 +108,7 @@ async def import_records(
     format: str = Query("csv", pattern="^(csv|tsv|json)$"),
     upsert_key: Optional[str] = Query(None),
     reason: Optional[str] = Query(None),
+    strict: bool = Query(True, description="Roll back all rows if any row fails (default: true)"),
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema, write=True)
@@ -123,7 +127,13 @@ async def import_records(
                 400, f"upsert_key '{upsert_key}' is not a valid column for this object"
             )
 
-    content = await file.read()
+    content = await file.read(settings.max_upload_size + 1)
+    if len(content) > settings.max_upload_size:
+        raise HTTPException(
+            413,
+            f"File too large. "
+            f"Maximum upload size is {settings.max_upload_size // (1024 * 1024)} MB.",
+        )
     text = content.decode("utf-8-sig")  # handle BOM
 
     if format == "json":
@@ -143,6 +153,9 @@ async def import_records(
     errors = []
 
     for i, row in enumerate(rows):
+        # In non-strict mode use a savepoint per row so a DB-level error on one row
+        # does not abort the whole transaction and prevents committing previous rows.
+        sp = db.begin_nested() if not strict else None
         try:
             if upsert_key:
                 action = _upsert_row(
@@ -159,8 +172,25 @@ async def import_records(
                     row, reason, request, schema, obj
                 )
                 inserted += 1
+            if sp:
+                sp.commit()
         except Exception as e:
             errors.append({"row": i + 1, "error": str(e)})
+            if sp:
+                sp.rollback()
+
+    if errors and strict:
+        db.rollback()
+        raise HTTPException(
+            422,
+            {
+                "detail": "Import rolled back: one or more rows failed. "
+                          "Fix the errors and retry, or use strict=false to "
+                          "commit valid rows only.",
+                "errors": errors,
+                "total": len(rows),
+            },
+        )
 
     db.commit()
 
@@ -219,6 +249,7 @@ def _upsert_row(
             select(history_table)
             .where(history_table.c._id == rid)
             .where(history_table.c._valid_to.is_(None))
+            .with_for_update()
         ).mappings().first()
         current_version = current_version_row["_version"] if current_version_row else 0
 

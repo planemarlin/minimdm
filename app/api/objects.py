@@ -241,11 +241,12 @@ def update_record(
     old_values = dict(existing)
     now = datetime.now(timezone.utc)
 
-    # Close current history version
+    # Close current history version — FOR UPDATE prevents concurrent version conflicts
     current_version_row = db.execute(
         select(history_table)
         .where(history_table.c._id == rid)
         .where(history_table.c._valid_to.is_(None))
+        .with_for_update()
     ).mappings().first()
     current_version = current_version_row["_version"] if current_version_row else 0
 
@@ -319,6 +320,7 @@ def delete_record(
         select(history_table)
         .where(history_table.c._id == rid)
         .where(history_table.c._valid_to.is_(None))
+        .with_for_update()
     ).mappings().first()
     current_version = current_version_row["_version"] if current_version_row else 0
 
@@ -433,6 +435,7 @@ def revert_record(
         .where(history_table.c._id == rid)
         .order_by(history_table.c._version.desc())
         .limit(1)
+        .with_for_update()
     ).mappings().first()
     current_version = current["_version"] if current else 0
 

@@ -16,6 +16,7 @@ dependencies = [
     "aiofiles>=24.0.0",
     "PyJWT>=2.8.0",
     "bcrypt>=4.0.0",
+    "slowapi>=0.1.9",
 ]
 
 [dependency-groups]
@@ -34,6 +35,11 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    # slowapi uses asyncio.iscoroutinefunction() which is deprecated since Python 3.12.
+    # This is a third-party issue; suppress until slowapi ships a fix.
+    "ignore::DeprecationWarning:slowapi",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

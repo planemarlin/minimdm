@@ -12,6 +12,7 @@ Thank you to everyone who has contributed to miniMDM.
 
 | Name | GitHub | Contribution |
 |---|---|---|
+| Johan Sebenius | [@SebeniusImplema](https://github.com/SebeniusImplema) | Docker and Docker Compose setup (#13) |
 
 ---
 
