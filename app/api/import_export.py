@@ -109,6 +109,7 @@ async def import_records(
     format: str = Query("csv", pattern="^(csv|tsv|json)$"),
     upsert_key: Optional[str] = Query(None),
     reason: Optional[str] = Query(None),
+    strict: bool = Query(True, description="Roll back all rows if any row fails (default: true)"),
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema, write=True)
@@ -170,6 +171,18 @@ async def import_records(
                 inserted += 1
         except Exception as e:
             errors.append({"row": i + 1, "error": str(e)})
+
+    if errors and strict:
+        db.rollback()
+        raise HTTPException(
+            422,
+            {
+                "detail": "Import rolled back: one or more rows failed. "
+                          "Fix the errors and retry, or use strict=false to commit valid rows only.",
+                "errors": errors,
+                "total": len(rows),
+            },
+        )
 
     db.commit()
 
