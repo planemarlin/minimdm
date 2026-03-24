@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
+from app.config import settings
 from app.core.limiter import limiter
 from sqlalchemy.orm import Session
 
@@ -126,7 +127,12 @@ async def import_records(
                 400, f"upsert_key '{upsert_key}' is not a valid column for this object"
             )
 
-    content = await file.read()
+    content = await file.read(settings.max_upload_size + 1)
+    if len(content) > settings.max_upload_size:
+        raise HTTPException(
+            413,
+            f"File too large. Maximum upload size is {settings.max_upload_size // (1024 * 1024)} MB.",
+        )
     text = content.decode("utf-8-sig")  # handle BOM
 
     if format == "json":

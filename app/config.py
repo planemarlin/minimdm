@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # Rate limiting (set to False in test environments)
     rate_limit_enabled: bool = True
 
+    # Maximum file upload size in bytes (default 10 MB)
+    max_upload_size: int = 10 * 1024 * 1024
+
     # Authentication
     secret_key: str = "change-me-in-production-use-a-long-random-string"
     token_expire_hours: int = 8
