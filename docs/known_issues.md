@@ -49,11 +49,87 @@ Issues marked **Fixed** are resolved in the current codebase. Issues marked **Im
 
 ---
 
-## Planned Features
+## Implemented
 
 ### Audit logging for user management actions
-**Context:** Currently only authentication events (LOGIN, LOGIN_FAILED, LOGOUT) are written to the audit log and shown on the Auth Events tab. Administrative actions taken on user accounts are not logged: creating a user, changing a password, toggling admin role, activating/deactivating an account, and granting or revoking schema permissions all go unrecorded.
-**Planned behaviour:** Each of these actions should write an entry to `_system.audit_log` (action: e.g. `USER_CREATED`, `USER_DEACTIVATED`, `PERMISSION_GRANTED`, etc.) and appear on the Auth Events tab so that a full administrative trail is available alongside the login history.
+**Implemented in:** Unreleased (current branch).
+`USER_CREATED`, `USER_ACTIVATED`, `USER_DEACTIVATED`, `USER_ROLE_CHANGED`, `USER_PASSWORD_CHANGED`, `PERMISSION_GRANTED`, and `PERMISSION_REVOKED` are now written to `_system.audit_log` and visible on the Auth Events tab.
+
+---
+
+## Production Readiness — Blockers
+
+These issues must be resolved before miniMDM is suitable for a public-facing or multi-user production deployment.
+
+### 1. Rate limiting
+**Context:** No protection against brute-force login attacks, repeated failed authentication, or API abuse. A single client can hammer the login endpoint without restriction.
+**Planned fix:** Add per-IP rate limits on the login endpoint and a per-user limit on authenticated API endpoints using `slowapi` or equivalent FastAPI middleware.
+
+### 2. CSRF protection
+**Context:** Mutating endpoints (create, update, delete, import, user management) accept cookie-authenticated requests with no CSRF token. A logged-in user could be tricked into making unintended state changes via a crafted page.
+**Planned fix:** Add CSRF token middleware (e.g. `fastapi-csrf-protect`) to all non-GET endpoints, or enforce `SameSite=Strict` on the session cookie.
+
+### 3. File upload size limit
+**Context:** The import endpoint (`POST /api/records/{schema}/{obj}/import`) accepts files of unlimited size. A large file could exhaust server memory or disk.
+**Planned fix:** Enforce a configurable `MAX_UPLOAD_SIZE` limit (default 10 MB) in the import endpoint.
+
+### 4. Health check endpoint
+**Context:** No `GET /health` or `GET /healthz` endpoint exists. Load balancers, Docker health checks, and monitoring systems have no way to verify the app is up and the database is reachable.
+**Planned fix:** Implement `GET /health` returning 200 with a JSON body confirming database connectivity and app version.
+
+### 5. Startup validation
+**Context:** If `DATABASE_URL` is invalid or the database is unreachable at startup, the application starts without error and fails only on the first request. Required environment variables (`DATABASE_URL`, `SECRET_KEY`, `CONFIG_FILE`) are not validated at startup.
+**Planned fix:** Validate all required environment variables and test database connectivity in the FastAPI lifespan hook before accepting requests. Fail fast with a clear error message.
+
+### 6. Password policy
+**Context:** No minimum password length, complexity, or expiration is enforced. The default admin password (`admin`) is plaintext in `.env.docker` and must be changed manually.
+**Planned fix:** Enforce a minimum password length (12+ characters) at the API layer. Document the requirement to change the default admin password during initial setup.
+
+### 7. History version atomicity
+**Context:** The history version counter is incremented in Python (`current_version + 1`) after reading the current maximum from the database. Concurrent updates to the same record can produce duplicate version numbers.
+**Planned fix:** Use a database-level sequence or a `SELECT … FOR UPDATE` lock on the history table during version increment to make the operation atomic.
+
+### 8. Bulk import rollback
+**Context:** The import endpoint processes rows one by one and commits incrementally. If a row fails midway through, all previously processed rows are already committed and cannot be rolled back. The response reports an error but the data is left in a partial state.
+**Planned fix:** Wrap the entire import in a single transaction and roll back on the first error. Optionally support a `--strict` flag to choose between all-or-nothing and best-effort modes.
+
+### 9. HTTPS / TLS
+**Context:** miniMDM has no built-in TLS support and listens on plain HTTP. Credentials and data are transmitted in the clear.
+**Decision:** miniMDM should not handle TLS directly; instead, the deployment documentation should require a reverse proxy (nginx, Caddy, or equivalent) with a valid certificate in front of the application.
+
+---
+
+## Production Readiness — High Priority
+
+These issues should be addressed before the first deployment with live users.
+
+### 10. Password reset flow
+**Context:** There is no self-service password reset. If a user forgets their password, an admin must reset it manually via the user management UI. This is not viable for deployments with many users.
+**Planned fix:** Implement a password reset flow — either email-based token or an admin-generated reset link.
+
+### 11. Token revocation on logout
+**Context:** JWT tokens remain valid until their expiry time even after the user logs out. If a token is stolen or an account is compromised, there is no way to immediately invalidate it short of changing `SECRET_KEY` (which invalidates all sessions).
+**Planned fix:** Maintain a server-side token blocklist (in the database or a cache) that is checked on every authenticated request. Entries expire naturally after the token's TTL.
+
+### 12. Database-level foreign key and unique constraints
+**Context:** Referential integrity and uniqueness are enforced in the application layer only. Direct database access or a bug in the application can produce orphaned records or duplicates.
+**Planned fix:** Add database-level `FOREIGN KEY` constraints for parent relationships and `NOT NULL` / `UNIQUE` constraints for required and unique attributes. Decide on cascade behaviour (restrict / set null) for parent deletes.
+
+### 13. Export pagination
+**Context:** Export endpoints load the entire result set into memory before streaming. On large tables this risks out-of-memory errors.
+**Planned fix:** Add `limit` / `offset` query parameters to export endpoints and stream results using server-side cursors.
+
+### 14. Structured logging with request IDs
+**Context:** Logs are plain text with no correlation IDs. In production it is difficult to trace a single request through multiple log lines or aggregate logs from multiple instances.
+**Planned fix:** Adopt JSON-structured logging; generate a unique request ID per request (via middleware) and include it in every log line.
+
+### 15. Database migrations (Alembic)
+**Context:** Schema changes are applied at runtime using `ALTER TABLE … ADD COLUMN IF NOT EXISTS`. There is no migration history, no rollback path, and no way to reproduce the exact database state from scratch other than running the application.
+**Planned fix:** Introduce Alembic for managing `_system` schema migrations. Application-managed data tables (user schemas) will continue to be handled dynamically but system tables should be version-controlled.
+
+### 16. Backup and restore documentation
+**Context:** miniMDM stores all data in PostgreSQL. There is no built-in backup or restore functionality, and no documentation on how to back up and restore the database.
+**Planned fix:** Add a `docs/backup-restore.md` guide covering `pg_dump` / `pg_restore` for full backups, point-in-time recovery considerations, and how to restore miniMDM from a backup including the `_system` schema.
 
 ---
 
