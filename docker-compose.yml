@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: minimdm-postgres
+    environment:
+      POSTGRES_USER: minimdm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-minimdm}
+      POSTGRES_DB: minimdm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U minimdm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - minimdm-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: minimdm-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://minimdm:minimdm@postgres:5432/minimdm
+      CONFIG_FILE: config/minimdm.yaml
+      APP_NAME: miniMDM
+      DEBUG: "false"
+      HOST: 0.0.0.0
+      PORT: 8000
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - minimdm-network
+
+volumes:
+  postgres_data:
+
+networks:
+  minimdm-network:
+    driver: bridge

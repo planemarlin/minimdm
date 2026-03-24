@@ -14,6 +14,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Resolved all ruff lint violations across `app/` and `tests/` (E501, F401, I001, F841, E402)
 
 ### Added
+- Docker and Docker Compose setup for local development: `Dockerfile`, `docker-compose.yml`, and helper scripts (`scripts/docker-setup.sh`, `scripts/docker-rebuild.sh`); see [docs/docker-setup.md](docs/docker-setup.md)
 - Edit and Delete buttons on the record detail page are now hidden for users who lack write permission on the schema; admins always see both (closes #11)
 - Delete record action now uses an inline modal dialog instead of `confirm()` and `prompt()` browser popups, with an optional reason field and Escape/backdrop-click to dismiss (closes #12)
 - Audit log entries for all user management actions: `USER_CREATED`, `USER_ACTIVATED`, `USER_DEACTIVATED`, `USER_ROLE_CHANGED`, `USER_PASSWORD_CHANGED`, `PERMISSION_GRANTED`, `PERMISSION_REVOKED` — visible on the Auth Events tab

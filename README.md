@@ -21,13 +21,15 @@ A minimal, lightweight, open-source **Master Data Management** application with 
 
 ## Quick Start
 
-See [docs/quickstart.md](docs/quickstart.md) for a step-by-step guide.
+See [docs/quickstart.md](docs/quickstart.md) for a step-by-step guide, or [docs/docker-setup.md](docs/docker-setup.md) to get started with Docker.
 
 ## Requirements
 
 - Python 3.11+
 - PostgreSQL 14+
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
+
+Or use Docker (no local Python or PostgreSQL installation required) — see [docs/docker-setup.md](docs/docker-setup.md).
 
 ## Installation
 
