@@ -34,6 +34,14 @@ async def lifespan(app: FastAPI):
             "JWTs can be trivially forged. Set SECRET_KEY in your .env file before deploying."
         )
 
+    # Validate database connectivity before accepting requests
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        logger.error("Cannot connect to the database: %s", exc)
+        raise RuntimeError(f"Database connection failed at startup: {exc}") from exc
+
     tm = TableManager(engine)
 
     # Create _system schema first, then system tables
