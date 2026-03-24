@@ -228,6 +228,7 @@ def _upsert_row(
             select(history_table)
             .where(history_table.c._id == rid)
             .where(history_table.c._valid_to.is_(None))
+            .with_for_update()
         ).mappings().first()
         current_version = current_version_row["_version"] if current_version_row else 0
 
