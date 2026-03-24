@@ -98,7 +98,7 @@ templates.env.policies["json.dumps_kwargs"] = {"sort_keys": False}
 # Auth middleware
 # -----------------------------------------------------------------
 
-_PUBLIC_PATHS = {"/login", "/api/auth/login", "/docs", "/openapi.json", "/redoc"}
+_PUBLIC_PATHS = {"/login", "/api/auth/login", "/health", "/docs", "/openapi.json", "/redoc"}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -164,6 +164,24 @@ app.include_router(import_export.router, prefix="/api", tags=["Import / Export"]
 app.include_router(objects.router, prefix="/api", tags=["Records"])
 app.include_router(schemas_api.router, prefix="/api", tags=["Schemas"])
 app.include_router(audit_api.router, prefix="/api", tags=["Audit"])
+
+
+# -----------------------------------------------------------------
+# Health check
+# -----------------------------------------------------------------
+
+
+@app.get("/health", tags=["Health"])
+async def health(request: Request):
+    try:
+        engine = request.app.state.table_manager.engine
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "unhealthy", "detail": str(exc)}, status_code=503
+        )
+    return {"status": "ok", "version": settings.app_version}
 
 
 # -----------------------------------------------------------------
