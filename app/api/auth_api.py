@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core import audit as audit_svc
 from app.core.auth import create_token, get_user_by_username, verify_password
+from app.core.limiter import limiter
 
 router = APIRouter()
 
@@ -42,6 +43,7 @@ def _log_auth(request: Request, action: str, user_id: uuid.UUID, username: str, 
 
 
 @router.post("/auth/login")
+@limiter.limit("10/minute")
 async def login(request: Request):
     data = await request.json()
     username = (data.get("username") or "").strip()

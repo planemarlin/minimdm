@@ -8,6 +8,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
+
+from app.core.limiter import limiter
 from sqlalchemy.orm import Session
 
 from app.core import audit as audit_svc
@@ -97,6 +99,7 @@ def export_records(
 # ---------------------------------------------------------------------------
 
 @router.post("/records/{schema}/{obj}/import")
+@limiter.limit("10/minute")
 async def import_records(
     schema: str,
     obj: str,
