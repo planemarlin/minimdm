@@ -73,7 +73,7 @@ async def login(request: Request):
         COOKIE_NAME,
         token,
         httponly=True,
-        samesite="lax",
+        samesite="strict",
         max_age=settings.token_expire_hours * 3600,
     )
     return response
