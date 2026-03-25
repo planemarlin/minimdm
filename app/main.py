@@ -18,15 +18,13 @@ from app.core.auth import (
     count_users,
     create_user,
     decode_token,
-    ensure_password_reset_tokens_table,
-    ensure_token_blocklist_table,
-    ensure_users_table,
     is_token_revoked,
     is_user_active,
 )
 from app.core.limiter import limiter
 from app.core.logging import RequestIdFilter, configure_logging, new_request_id
-from app.core.permissions import ensure_permissions_table, get_accessible_schemas
+from app.core.migrations import run_migrations
+from app.core.permissions import get_accessible_schemas
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
 from app.database import engine
@@ -55,17 +53,19 @@ async def lifespan(app: FastAPI):
 
     tm = TableManager(engine)
 
-    # Create _system schema first, then system tables
+    # _system schema must exist before Alembic can write its version table into it.
     with engine.connect() as conn:
         conn.execute(text("CREATE SCHEMA IF NOT EXISTS _system"))
         conn.commit()
 
-    tm._ensure_audit_log_table()
-    ensure_users_table(engine)
-    ensure_token_blocklist_table(engine)
-    ensure_password_reset_tokens_table(engine)
+    # Apply any pending _system schema migrations (creates tables on first run).
+    run_migrations(engine)
+
+    # Runtime cleanup: expired JWT blocklist entries and used/expired reset tokens.
     cleanup_expired_tokens(engine)
-    ensure_permissions_table(engine)
+
+    # Register the audit_log table in SQLAlchemy metadata so it can be queried.
+    tm._ensure_audit_log_table()
     tm.metadata.create_all(engine)
 
     # Auto-create first admin if credentials are configured and no users exist

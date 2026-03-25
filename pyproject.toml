@@ -17,6 +17,7 @@ dependencies = [
     "PyJWT>=2.8.0",
     "bcrypt>=4.0.0",
     "slowapi>=0.1.9",
+    "alembic>=1.18.4",
 ]
 
 [dependency-groups]
