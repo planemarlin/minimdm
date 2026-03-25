@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -45,6 +45,8 @@ def export_records(
     obj: str,
     request: Request,
     format: str = Query("csv", pattern="^(csv|tsv|json)$"),
+    limit: Optional[int] = Query(None, ge=1, description="Maximum number of rows to export"),
+    offset: int = Query(0, ge=0, description="Number of rows to skip"),
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema)
@@ -54,32 +56,38 @@ def export_records(
     except KeyError:
         raise HTTPException(404, f"Object '{schema}.{obj}' not found")
 
-    rows = db.execute(
-        select(table).where(table.c._deleted_at.is_(None)).order_by(table.c._created_at)
-    ).mappings().all()
+    base_query = select(table).where(table.c._deleted_at.is_(None)).order_by(table.c._created_at)
+    total = db.execute(select(func.count()).select_from(base_query.subquery())).scalar()
 
+    paginated = base_query.offset(offset)
+    if limit is not None:
+        paginated = paginated.limit(limit)
+
+    rows = db.execute(paginated).mappings().all()
     serialized = [_serialize_row(dict(r)) for r in rows]
+
+    extra_headers = {
+        "X-Total-Count": str(total),
+        "X-Offset": str(offset),
+    }
 
     if format == "json":
         content = json.dumps(serialized, indent=2, ensure_ascii=False)
-        media_type = "application/json"
         filename = f"{schema}_{obj}.json"
         return StreamingResponse(
             iter([content]),
-            media_type=media_type,
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"', **extra_headers},
         )
 
     delimiter = "\t" if format == "tsv" else ","
-    ext = format
-    filename = f"{schema}_{obj}.{ext}"
-    media_type = "text/plain"
+    filename = f"{schema}_{obj}.{format}"
 
     if not serialized:
         return StreamingResponse(
             iter([""]),
-            media_type=media_type,
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            media_type="text/plain",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"', **extra_headers},
         )
 
     output = io.StringIO()
@@ -89,8 +97,8 @@ def export_records(
 
     return StreamingResponse(
         iter([output.getvalue()]),
-        media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', **extra_headers},
     )
 
 
