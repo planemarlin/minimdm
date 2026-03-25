@@ -18,6 +18,7 @@ from app.core.auth import (
     count_users,
     create_user,
     decode_token,
+    ensure_password_reset_tokens_table,
     ensure_token_blocklist_table,
     ensure_users_table,
     is_token_revoked,
@@ -62,6 +63,7 @@ async def lifespan(app: FastAPI):
     tm._ensure_audit_log_table()
     ensure_users_table(engine)
     ensure_token_blocklist_table(engine)
+    ensure_password_reset_tokens_table(engine)
     cleanup_expired_tokens(engine)
     ensure_permissions_table(engine)
     tm.metadata.create_all(engine)
@@ -118,7 +120,11 @@ templates.env.policies["json.dumps_kwargs"] = {"sort_keys": False}
 # Auth middleware
 # -----------------------------------------------------------------
 
-_PUBLIC_PATHS = {"/login", "/api/auth/login", "/health", "/docs", "/openapi.json", "/redoc"}
+_PUBLIC_PATHS = {
+    "/login", "/reset-password",
+    "/api/auth/login", "/api/auth/reset-password",
+    "/health", "/docs", "/openapi.json", "/redoc",
+}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -252,6 +258,14 @@ def _sidebar_schemas(request: Request) -> list[dict]:
 async def login_page(request: Request):
     return templates.TemplateResponse(
         request, "auth/login.html", {"app_name": settings.app_name}
+    )
+
+
+@app.get("/reset-password", response_class=HTMLResponse)
+async def reset_password_page(request: Request, token: str = ""):
+    return templates.TemplateResponse(
+        request, "auth/reset_password.html",
+        {"app_name": settings.app_name, "token": token}
     )
 
 

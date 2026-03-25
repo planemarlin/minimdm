@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core import audit as audit_svc
-from app.core.auth import create_user, get_user_by_id, list_users, update_user
+from app.core.auth import create_reset_token, create_user, get_user_by_id, list_users, update_user
 from app.core.permissions import delete_permission, get_user_permissions, set_permission
 
 router = APIRouter()
@@ -116,6 +116,23 @@ async def patch_user(user_id: str, request: Request):
         _log_admin(request, "USER_PASSWORD_CHANGED", target_uuid,
                    reason=f"Password changed for '{target_name}'")
     return {"status": "ok"}
+
+
+@router.post("/admin/users/{user_id}/reset-link")
+def generate_reset_link(user_id: str, request: Request):
+    _require_admin(request)
+    engine = request.app.state.table_manager.engine
+    target = get_user_by_id(engine, user_id)
+    if not target:
+        raise HTTPException(404, "User not found")
+    token, expires_at = create_reset_token(engine, user_id)
+    _log_admin(request, "PASSWORD_RESET_LINK_CREATED", uuid.UUID(user_id),
+               reason=f"Password reset link generated for '{target['username']}'")
+    base_url = str(request.base_url).rstrip("/")
+    return {
+        "reset_url": f"{base_url}/reset-password?token={token}",
+        "expires_at": expires_at.isoformat(),
+    }
 
 
 @router.get("/admin/users/{user_id}/permissions")
