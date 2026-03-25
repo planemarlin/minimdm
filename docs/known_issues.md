@@ -118,9 +118,8 @@ These issues should be addressed before the first deployment with live users.
 **Context:** Schema changes are applied at runtime using `ALTER TABLE … ADD COLUMN IF NOT EXISTS`. There is no migration history, no rollback path, and no way to reproduce the exact database state from scratch other than running the application.
 **Planned fix:** Introduce Alembic for managing `_system` schema migrations. Application-managed data tables (user schemas) will continue to be handled dynamically but system tables should be version-controlled.
 
-### 16. Backup and restore documentation
-**Context:** miniMDM stores all data in PostgreSQL. There is no built-in backup or restore functionality, and no documentation on how to back up and restore the database.
-**Planned fix:** Add a `docs/backup-restore.md` guide covering `pg_dump` / `pg_restore` for full backups, point-in-time recovery considerations, and how to restore miniMDM from a backup including the `_system` schema.
+### 16. Backup and restore documentation — **Resolved**
+`docs/backup-restore.md` added covering `pg_dump` / `pg_restore` for full backups, Docker volume backup, cron automation, backup verification, and a note on point-in-time recovery.
 
 ---
 

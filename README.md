@@ -69,6 +69,7 @@ uv run pytest
 | [docs/installation.md](docs/installation.md) | System requirements and installation |
 | [docs/quickstart.md](docs/quickstart.md) | Getting started guide |
 | [docs/deployment.md](docs/deployment.md) | Production deployment (TLS, reverse proxy, security checklist) |
+| [docs/backup-restore.md](docs/backup-restore.md) | Database backup and restore procedures |
 | [docs/reference.md](docs/reference.md) | Feature and API reference |
 | [docs/software.md](docs/software.md) | Open-source software used |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Common errors and solutions |

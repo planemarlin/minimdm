@@ -108,4 +108,4 @@ See [docs/docker-setup.md](docker-setup.md) for running miniMDM with Docker Comp
 - [ ] Uvicorn binds to `127.0.0.1`, not `0.0.0.0`
 - [ ] PostgreSQL is not exposed on a public interface
 - [ ] `.env` file is not readable by other system users (`chmod 600 .env`)
-- [ ] Regular database backups are configured (see [docs/backup-restore.md](backup-restore.md))
+- [ ] Regular database backups are configured and verified (see [docs/backup-restore.md](backup-restore.md))
