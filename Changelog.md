@@ -6,37 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.2.0] – 2026-03-25
+
 ### Added
 - `docs/backup-restore.md`: database backup and restore guide covering `pg_dump`/`pg_restore`, Docker volume backups, cron automation, backup verification, and point-in-time recovery
 - Structured logging with request IDs: every request is assigned a UUID that appears in all log lines and is returned as the `X-Request-Id` response header; set `LOG_FORMAT=json` for single-line JSON output suitable for log aggregators; see `docs/logging.md`
 - DB-level `FOREIGN KEY` constraints on parent and reference columns (`ON DELETE SET NULL`); `UNIQUE` constraints for attributes marked `unique: true` in the config; `_ensure_constraints()` adds missing constraints to existing tables safely on each startup; create/update now returns 422 with a human-readable message on integrity violations
 - Admin-generated password reset link: admins click "Reset link" on the User Management page to generate a one-time URL (valid 24 h); user visits the link, sets a new password, and is redirected to login; tokens are single-use and pruned at startup
 - Alembic migrations for the `_system` schema: migration `0001` defines all five system tables; future changes use new numbered migrations; runs automatically at startup; legacy installs (tables exist without Alembic) are stamped to head transparently; see `docs/migrations.md`
-
-### Security
-- Rate limiting: 10 requests/minute per IP on the login and import endpoints to prevent brute-force and API abuse attacks (`slowapi`)
-- Session cookie changed from `SameSite=lax` to `SameSite=strict` to prevent cross-site request forgery
-- File upload size limit: import endpoint now rejects files larger than `MAX_UPLOAD_SIZE` (default 10 MB) with HTTP 413
-- Minimum password length of 12 characters enforced on user creation and password change
-- Token revocation on logout: JWTs now carry a `jti` claim; logout writes the JTI to `_system.token_blocklist` so the token is rejected immediately on subsequent requests even if it has not yet expired; expired blocklist entries are cleaned up at startup
-
-### Added
 - `GET /health` endpoint returns 200 when the database is reachable, 503 otherwise — suitable for load balancer and container health probes
 - Bulk import `strict` query parameter (default `true`): rolls back the entire import if any row fails and returns all row errors; set `strict=false` for best-effort mode that commits valid rows using per-row savepoints
 - `docs/deployment.md`: production deployment guide covering TLS termination with nginx/Caddy, required environment variables, and a pre-launch security checklist
-
-### Fixed
-- History version counter is now incremented atomically using `SELECT … FOR UPDATE` on the open history row, preventing duplicate version numbers under concurrent updates
-- Database connectivity is validated at startup; the application now fails fast with a clear error instead of silently starting with a broken DB connection
-
-### Fixed
-- Revert button on the record history page is now hidden for users who lack write permission, consistent with the Edit and Delete buttons on the detail page
-- Permission audit entries (`PERMISSION_GRANTED`, `PERMISSION_REVOKED`) now include the target username in the reason field
-- Removing all access via the permissions panel (unchecking read) now logs `PERMISSION_REVOKED` instead of a misleading `PERMISSION_GRANTED` entry
-- Full-text search now treats `%` and `_` as literal characters instead of SQL LIKE wildcards, preventing unexpected wildcard matches and potential performance issues on large tables
-- Resolved all ruff lint violations across `app/` and `tests/` (E501, F401, I001, F841, E402)
-
-### Added
 - Docker and Docker Compose setup for local development: `Dockerfile`, `docker-compose.yml`, and helper scripts (`scripts/docker-setup.sh`, `scripts/docker-rebuild.sh`); see [docs/docker-setup.md](docs/docker-setup.md)
 - Edit and Delete buttons on the record detail page are now hidden for users who lack write permission on the schema; admins always see both (closes #11)
 - Delete record action now uses an inline modal dialog instead of `confirm()` and `prompt()` browser popups, with an optional reason field and Escape/backdrop-click to dismiss (closes #12)
@@ -70,6 +50,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - 19 integration tests in `tests/test_api_auth.py` covering login/logout, inactive user, audit log entries, user management, and the `exclude_system` filter
 
 ### Fixed
+- History version counter is now incremented atomically using `SELECT … FOR UPDATE` on the open history row, preventing duplicate version numbers under concurrent updates
+- Database connectivity is validated at startup; the application now fails fast with a clear error instead of silently starting with a broken DB connection
+- Revert button on the record history page is now hidden for users who lack write permission, consistent with the Edit and Delete buttons on the detail page
+- Permission audit entries (`PERMISSION_GRANTED`, `PERMISSION_REVOKED`) now include the target username in the reason field
+- Removing all access via the permissions panel (unchecking read) now logs `PERMISSION_REVOKED` instead of a misleading `PERMISSION_GRANTED` entry
+- Full-text search now treats `%` and `_` as literal characters instead of SQL LIKE wildcards, preventing unexpected wildcard matches and potential performance issues on large tables
+- Resolved all ruff lint violations across `app/` and `tests/` (E501, F401, I001, F841, E402)
 - Deleted parent record in the detail view showed a raw UUID instead of the display name; the parent fetch now includes `include_deleted=true` and renders the display name with a red "deleted" badge (no link) when the parent has been soft-deleted
 - Numeric field validation errors only appeared on form submit; errors now also appear immediately when leaving an invalid number field (blur event)
 - `Authorization: Bearer` header now takes priority over the `access_token` cookie in the auth middleware — correct semantics; browser sessions are unaffected (they never send an Authorization header)
@@ -79,6 +66,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Audit log record links for `_system` schema entries (LOGIN/LOGOUT events) pointed to a non-existent UI route; system-schema record IDs are now rendered as plain text
 
 ### Security
+- Rate limiting: 10 requests/minute per IP on the login and import endpoints to prevent brute-force and API abuse attacks (`slowapi`)
+- Session cookie changed from `SameSite=lax` to `SameSite=strict` to prevent cross-site request forgery
+- File upload size limit: import endpoint now rejects files larger than `MAX_UPLOAD_SIZE` (default 10 MB) with HTTP 413
+- Minimum password length of 12 characters enforced on user creation and password change
+- Token revocation on logout: JWTs now carry a `jti` claim; logout writes the JTI to `_system.token_blocklist` so the token is rejected immediately on subsequent requests even if it has not yet expired; expired blocklist entries are cleaned up at startup
 - Login `?next=` redirect target is now validated to be a relative path; external URLs are rejected and replaced with `/` to prevent open redirect attacks
 - Auth middleware now checks `is_active` against the database on every authenticated request; tokens belonging to deactivated users are rejected immediately rather than remaining valid until expiry
 - `/admin/audit` page now requires admin access; previously any authenticated user could reach the URL directly

@@ -103,9 +103,8 @@ Each JWT now carries a `jti` (UUID). On logout the JTI is written to `_system.to
 ### 12. Database-level foreign key and unique constraints — **Resolved**
 `FOREIGN KEY (ON DELETE SET NULL)` constraints are created for parent and reference columns; `UNIQUE` constraints for attributes marked `unique: true`. `_ensure_constraints()` adds missing constraints to existing tables on each startup using `pg_constraint` checks. `IntegrityError` in create/update is caught and returned as 422.
 
-### 13. Export pagination
-**Context:** Export endpoints load the entire result set into memory before streaming. On large tables this risks out-of-memory errors.
-**Planned fix:** Add `limit` / `offset` query parameters to export endpoints and stream results using server-side cursors.
+### 13. Export pagination — **Resolved**
+Export endpoints now accept `limit` and `offset` query parameters. Results are streamed using server-side cursors so large tables do not cause out-of-memory errors.
 
 ### 14. Structured logging with request IDs — **Resolved**
 Each request is assigned a UUID in `RequestIdMiddleware`. The ID is injected into every log line via `RequestIdFilter` and returned as the `X-Request-Id` response header. `LOG_FORMAT=json` switches to single-line JSON output. See `docs/logging.md`.

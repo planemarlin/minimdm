@@ -8,7 +8,7 @@ Migrations run **automatically at startup**. When the application starts it call
 
 ### First-time setup on an existing database
 
-If you are upgrading a miniMDM installation that was running before Alembic was introduced (prior to version 0.1.3), the system tables already exist but Alembic has never tracked them. The application detects this automatically and **stamps** the database at the latest revision instead of re-running the DDL — no data is lost and no manual steps are required.
+If you are upgrading a miniMDM installation that was running before Alembic was introduced (prior to version 0.2.0), the system tables already exist but Alembic has never tracked them. The application detects this automatically and **stamps** the database at the latest revision instead of re-running the DDL — no data is lost and no manual steps are required.
 
 ## Migration files
 
