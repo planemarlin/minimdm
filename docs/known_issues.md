@@ -109,9 +109,8 @@ Each JWT now carries a `jti` (UUID). On logout the JTI is written to `_system.to
 **Context:** Export endpoints load the entire result set into memory before streaming. On large tables this risks out-of-memory errors.
 **Planned fix:** Add `limit` / `offset` query parameters to export endpoints and stream results using server-side cursors.
 
-### 14. Structured logging with request IDs
-**Context:** Logs are plain text with no correlation IDs. In production it is difficult to trace a single request through multiple log lines or aggregate logs from multiple instances.
-**Planned fix:** Adopt JSON-structured logging; generate a unique request ID per request (via middleware) and include it in every log line.
+### 14. Structured logging with request IDs — **Resolved**
+Each request is assigned a UUID in `RequestIdMiddleware`. The ID is injected into every log line via `RequestIdFilter` and returned as the `X-Request-Id` response header. `LOG_FORMAT=json` switches to single-line JSON output. See `docs/logging.md`.
 
 ### 15. Database migrations (Alembic)
 **Context:** Schema changes are applied at runtime using `ALTER TABLE … ADD COLUMN IF NOT EXISTS`. There is no migration history, no rollback path, and no way to reproduce the exact database state from scratch other than running the application.

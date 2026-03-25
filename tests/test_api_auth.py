@@ -76,6 +76,15 @@ def test_health_endpoint_returns_ok(client):
     assert "version" in data
 
 
+def test_request_id_header_present(client):
+    """Every response must carry an X-Request-Id header with a UUID value."""
+    import uuid
+    res = client.get("/health")
+    assert "x-request-id" in res.headers
+    # Must be a valid UUID
+    uuid.UUID(res.headers["x-request-id"])
+
+
 # ---------------------------------------------------------------------------
 # Login / logout
 # ---------------------------------------------------------------------------

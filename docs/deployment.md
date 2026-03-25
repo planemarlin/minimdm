@@ -86,6 +86,14 @@ Bind to `127.0.0.1`, not `0.0.0.0`, so the application is only reachable via the
 
 For production use a process manager such as systemd to keep the process running. See `docs/installation.md` for a systemd unit file template.
 
+## Logging
+
+By default miniMDM emits human-readable timestamped log lines. For production use set `LOG_FORMAT=json` in your environment to get one JSON object per line — suitable for log aggregators and easier to search.
+
+Every response carries an `X-Request-Id` header. Include this ID when reporting issues so the corresponding log lines can be found immediately.
+
+See [docs/logging.md](logging.md) for full details including field reference and log aggregator examples.
+
 ## Health check
 
 `GET /health` returns HTTP 200 when the application and database are ready, or HTTP 503 if the database is unreachable. Use this endpoint for load balancer health checks and container readiness probes.

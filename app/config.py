@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # Logging: "json" for structured output (production), "text" for human-readable (development)
+    log_format: str = "text"
+
     # Rate limiting (set to False in test environments)
     rate_limit_enabled: bool = True
 

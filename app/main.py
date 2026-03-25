@@ -24,12 +24,13 @@ from app.core.auth import (
     is_user_active,
 )
 from app.core.limiter import limiter
+from app.core.logging import RequestIdFilter, configure_logging, new_request_id
 from app.core.permissions import ensure_permissions_table, get_accessible_schemas
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
 from app.database import engine
 
-logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
+configure_logging(settings.log_format, settings.debug)
 logger = logging.getLogger(__name__)
 
 _DEFAULT_SECRET_KEY = "change-me-in-production-use-a-long-random-string"
@@ -166,6 +167,26 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(AuthMiddleware)
+
+
+# -----------------------------------------------------------------
+# Request ID middleware — must be outermost so every log line gets the ID
+# -----------------------------------------------------------------
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = new_request_id()
+        request.state.request_id = request_id
+        RequestIdFilter.set(request_id)
+        try:
+            response = await call_next(request)
+        finally:
+            RequestIdFilter.set(None)
+        response.headers["X-Request-Id"] = request_id
+        return response
+
+
+app.add_middleware(RequestIdMiddleware)
 
 # -----------------------------------------------------------------
 # API routers
