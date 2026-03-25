@@ -66,6 +66,7 @@ def _normalize(raw: dict) -> dict:
                     "name": attr_body.get("name", attr_key),
                     "type": attr_body.get("type", "string"),
                     "required": bool(attr_body.get("required", False)),
+                    "unique": bool(attr_body.get("unique", False)),
                     "reference": attr_body.get("reference"),
                 }
 

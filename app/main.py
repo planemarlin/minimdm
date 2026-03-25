@@ -13,14 +13,23 @@ from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
-from app.core.auth import count_users, create_user, decode_token, ensure_users_table, is_user_active
+from app.core.auth import (
+    cleanup_expired_tokens,
+    count_users,
+    create_user,
+    decode_token,
+    is_token_revoked,
+    is_user_active,
+)
 from app.core.limiter import limiter
-from app.core.permissions import ensure_permissions_table, get_accessible_schemas
+from app.core.logging import RequestIdFilter, configure_logging, new_request_id
+from app.core.migrations import run_migrations
+from app.core.permissions import get_accessible_schemas
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
 from app.database import engine
 
-logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
+configure_logging(settings.log_format, settings.debug)
 logger = logging.getLogger(__name__)
 
 _DEFAULT_SECRET_KEY = "change-me-in-production-use-a-long-random-string"
@@ -44,14 +53,19 @@ async def lifespan(app: FastAPI):
 
     tm = TableManager(engine)
 
-    # Create _system schema first, then system tables
+    # _system schema must exist before Alembic can write its version table into it.
     with engine.connect() as conn:
         conn.execute(text("CREATE SCHEMA IF NOT EXISTS _system"))
         conn.commit()
 
+    # Apply any pending _system schema migrations (creates tables on first run).
+    run_migrations(engine)
+
+    # Runtime cleanup: expired JWT blocklist entries and used/expired reset tokens.
+    cleanup_expired_tokens(engine)
+
+    # Register the audit_log table in SQLAlchemy metadata so it can be queried.
     tm._ensure_audit_log_table()
-    ensure_users_table(engine)
-    ensure_permissions_table(engine)
     tm.metadata.create_all(engine)
 
     # Auto-create first admin if credentials are configured and no users exist
@@ -106,7 +120,11 @@ templates.env.policies["json.dumps_kwargs"] = {"sort_keys": False}
 # Auth middleware
 # -----------------------------------------------------------------
 
-_PUBLIC_PATHS = {"/login", "/api/auth/login", "/health", "/docs", "/openapi.json", "/redoc"}
+_PUBLIC_PATHS = {
+    "/login", "/reset-password",
+    "/api/auth/login", "/api/auth/reset-password",
+    "/health", "/docs", "/openapi.json", "/redoc",
+}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -127,13 +145,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
             payload = decode_token(token)
             if payload:
                 user_id = payload.get("user_id")
+                jti = payload.get("jti")
                 engine = request.app.state.table_manager.engine
                 if user_id and is_user_active(engine, user_id):
-                    user = {
-                        "user_id": user_id,
-                        "username": payload.get("sub"),
-                        "is_admin": payload.get("is_admin", False),
-                    }
+                    if not jti or not is_token_revoked(engine, jti):
+                        user = {
+                            "user_id": user_id,
+                            "username": payload.get("sub"),
+                            "is_admin": payload.get("is_admin", False),
+                            "jti": jti,
+                            "exp": payload.get("exp"),
+                        }
 
         request.state.current_user = user
 
@@ -151,6 +173,26 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(AuthMiddleware)
+
+
+# -----------------------------------------------------------------
+# Request ID middleware — must be outermost so every log line gets the ID
+# -----------------------------------------------------------------
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = new_request_id()
+        request.state.request_id = request_id
+        RequestIdFilter.set(request_id)
+        try:
+            response = await call_next(request)
+        finally:
+            RequestIdFilter.set(None)
+        response.headers["X-Request-Id"] = request_id
+        return response
+
+
+app.add_middleware(RequestIdMiddleware)
 
 # -----------------------------------------------------------------
 # API routers
@@ -216,6 +258,14 @@ def _sidebar_schemas(request: Request) -> list[dict]:
 async def login_page(request: Request):
     return templates.TemplateResponse(
         request, "auth/login.html", {"app_name": settings.app_name}
+    )
+
+
+@app.get("/reset-password", response_class=HTMLResponse)
+async def reset_password_page(request: Request, token: str = ""):
+    return templates.TemplateResponse(
+        request, "auth/reset_password.html",
+        {"app_name": settings.app_name, "token": token}
     )
 
 

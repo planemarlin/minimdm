@@ -4,6 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import String, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import audit as audit_svc
@@ -186,7 +187,11 @@ def create_record(
     values["_created_at"] = now
     values["_updated_at"] = now
 
-    db.execute(table.insert().values(**values))
+    try:
+        db.execute(table.insert().values(**values))
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(422, _integrity_error_message(e)) from e
 
     full_row = {**values}
     audit_svc.write_history(
@@ -260,7 +265,11 @@ def update_record(
     updates = _filter_columns(body, table)
     updates["_updated_at"] = now
 
-    db.execute(table.update().where(table.c._id == rid).values(**updates))
+    try:
+        db.execute(table.update().where(table.c._id == rid).values(**updates))
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(422, _integrity_error_message(e)) from e
 
     new_values = {**old_values, **updates}
     audit_svc.write_history(
@@ -514,3 +523,16 @@ def _client_ip(request: Request) -> str:
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
+
+
+def _integrity_error_message(exc: IntegrityError) -> str:
+    """Extract a human-readable message from a SQLAlchemy IntegrityError."""
+    orig = getattr(exc, "orig", None)
+    if orig is not None:
+        msg = str(orig).splitlines()[0]
+        if "unique" in msg.lower() or "duplicate" in msg.lower():
+            return f"A record with this value already exists: {msg}"
+        if "foreign key" in msg.lower():
+            return f"Referenced record does not exist: {msg}"
+        return msg
+    return str(exc)

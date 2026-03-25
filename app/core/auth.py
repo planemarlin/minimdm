@@ -1,4 +1,5 @@
 """Authentication utilities: password hashing, JWT, user table management."""
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -37,6 +38,7 @@ def create_token(user_id: str, username: str, is_admin: bool) -> str:
         "user_id": user_id,
         "is_admin": is_admin,
         "exp": expire,
+        "jti": str(uuid.uuid4()),
     }
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
@@ -46,6 +48,106 @@ def decode_token(token: str) -> Optional[dict]:
         return jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
     except jwt.PyJWTError:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Token blocklist
+# ---------------------------------------------------------------------------
+
+def ensure_token_blocklist_table(engine) -> None:
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS _system.token_blocklist (
+                jti        UUID PRIMARY KEY,
+                expires_at TIMESTAMPTZ NOT NULL
+            )
+        """))
+        conn.commit()
+
+
+def revoke_token(engine, jti: str, expires_at: datetime) -> None:
+    with engine.connect() as conn:
+        conn.execute(text(
+            "INSERT INTO _system.token_blocklist (jti, expires_at) VALUES (:jti, :exp)"
+            " ON CONFLICT DO NOTHING"
+        ), {"jti": uuid.UUID(jti), "exp": expires_at})
+        conn.commit()
+
+
+def is_token_revoked(engine, jti: str) -> bool:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT 1 FROM _system.token_blocklist WHERE jti = :jti"),
+            {"jti": uuid.UUID(jti)},
+        ).first()
+        return row is not None
+
+
+def cleanup_expired_tokens(engine) -> None:
+    """Delete expired entries from the blocklist — called at startup."""
+    with engine.connect() as conn:
+        conn.execute(text(
+            "DELETE FROM _system.token_blocklist WHERE expires_at < NOW()"
+        ))
+        conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Password reset tokens
+# ---------------------------------------------------------------------------
+
+_RESET_TOKEN_EXPIRE_HOURS = 24
+
+
+def ensure_password_reset_tokens_table(engine) -> None:
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS _system.password_reset_tokens (
+                id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id    UUID NOT NULL,
+                token      TEXT NOT NULL UNIQUE,
+                expires_at TIMESTAMPTZ NOT NULL,
+                used_at    TIMESTAMPTZ
+            )
+        """))
+        # Prune expired / used tokens on every startup
+        conn.execute(text("""
+            DELETE FROM _system.password_reset_tokens
+            WHERE expires_at < NOW() OR used_at IS NOT NULL
+        """))
+        conn.commit()
+
+
+def create_reset_token(engine, user_id: str) -> tuple[str, datetime]:
+    """Create a one-time password reset token. Returns (token, expires_at)."""
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=_RESET_TOKEN_EXPIRE_HOURS)
+    with engine.connect() as conn:
+        conn.execute(text("""
+            INSERT INTO _system.password_reset_tokens (user_id, token, expires_at)
+            VALUES (:user_id, :token, :expires_at)
+        """), {"user_id": uuid.UUID(user_id), "token": token, "expires_at": expires_at})
+        conn.commit()
+    return token, expires_at
+
+
+def consume_reset_token(engine, token: str) -> Optional[str]:
+    """Validate a reset token and return the user_id string, or None if invalid/expired."""
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT id, user_id FROM _system.password_reset_tokens
+            WHERE token = :token
+              AND expires_at > NOW()
+              AND used_at IS NULL
+        """), {"token": token}).mappings().first()
+        if not row:
+            return None
+        conn.execute(text("""
+            UPDATE _system.password_reset_tokens
+            SET used_at = NOW() WHERE id = :id
+        """), {"id": row["id"]})
+        conn.commit()
+        return str(row["user_id"])
 
 
 # ---------------------------------------------------------------------------

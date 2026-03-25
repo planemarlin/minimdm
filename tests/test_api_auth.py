@@ -76,6 +76,15 @@ def test_health_endpoint_returns_ok(client):
     assert "version" in data
 
 
+def test_request_id_header_present(client):
+    """Every response must carry an X-Request-Id header with a UUID value."""
+    import uuid
+    res = client.get("/health")
+    assert "x-request-id" in res.headers
+    # Must be a valid UUID
+    uuid.UUID(res.headers["x-request-id"])
+
+
 # ---------------------------------------------------------------------------
 # Login / logout
 # ---------------------------------------------------------------------------
@@ -149,8 +158,17 @@ def test_login_inactive_user_returns_401(client):
 
 
 def test_logout_returns_200(client):
-    res = client.post("/api/auth/logout")
-    assert res.status_code == 200
+    # Use a dedicated token so we don't revoke the shared admin session token.
+    engine = _get_engine()
+    from app.core.auth import create_token, create_user, get_user_by_username
+    create_user(engine, "logout_200_user", "pass123")
+    try:
+        user = get_user_by_username(engine, "logout_200_user")
+        token = create_token(str(user["id"]), "logout_200_user", is_admin=False)
+        res = client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+        assert res.status_code == 200
+    finally:
+        _delete_user(engine, "logout_200_user")
 
 
 def test_me_endpoint_returns_current_user(client):
@@ -455,3 +473,156 @@ def test_permission_revoked_is_logged(client):
         assert row is not None
     finally:
         _delete_user(engine, "log_revoke")
+
+
+# ---------------------------------------------------------------------------
+# Token revocation
+# ---------------------------------------------------------------------------
+
+def test_revoked_token_is_rejected_after_logout(client):
+    """After logout the same JWT must be rejected with 401."""
+    engine = _get_engine()
+    from app.core.auth import create_token, create_user, get_user_by_username
+    create_user(engine, "revoke_test_user", "pass123")
+    try:
+        user = get_user_by_username(engine, "revoke_test_user")
+        token = create_token(str(user["id"]), "revoke_test_user", is_admin=False)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Token works before logout
+        assert client.get("/api/auth/me", headers=headers).status_code == 200
+
+        # Logout revokes the token
+        client.post("/api/auth/logout", headers=headers)
+
+        # Same token is now rejected
+        assert client.get("/api/auth/me", headers=headers).status_code == 401
+    finally:
+        _delete_user(engine, "revoke_test_user")
+
+
+def test_new_token_works_after_old_token_revoked(client):
+    """After logout a freshly issued token for the same user must still work."""
+    engine = _get_engine()
+    from app.core.auth import create_token, create_user, get_user_by_username
+    create_user(engine, "revoke_new_token_user", "pass123")
+    try:
+        user = get_user_by_username(engine, "revoke_new_token_user")
+        uid = str(user["id"])
+        old_token = create_token(uid, "revoke_new_token_user", is_admin=False)
+
+        # Revoke old token via logout
+        client.post("/api/auth/logout", headers={"Authorization": f"Bearer {old_token}"})
+
+        # New token (different jti) must still authenticate
+        new_token = create_token(uid, "revoke_new_token_user", is_admin=False)
+        assert client.get("/api/auth/me",
+                          headers={"Authorization": f"Bearer {new_token}"}).status_code == 200
+    finally:
+        _delete_user(engine, "revoke_new_token_user")
+
+
+# ---------------------------------------------------------------------------
+# Password reset flow
+# ---------------------------------------------------------------------------
+
+def test_generate_reset_link_returns_url(client):
+    """Admin can generate a reset link for a user; response contains a URL with a token."""
+    engine = _get_engine()
+    from app.core.auth import create_user, get_user_by_username
+    create_user(engine, "reset_link_user", "pass123456789")
+    try:
+        user = get_user_by_username(engine, "reset_link_user")
+        res = client.post(f"/api/admin/users/{user['id']}/reset-link")
+        assert res.status_code == 200
+        data = res.json()
+        assert "reset_url" in data
+        assert "/reset-password?token=" in data["reset_url"]
+        assert "expires_at" in data
+    finally:
+        _delete_user(engine, "reset_link_user")
+
+
+def test_reset_password_with_valid_token(client):
+    """A valid reset token lets a user set a new password."""
+    engine = _get_engine()
+    from app.core.auth import create_reset_token, create_user, get_user_by_username, verify_password
+    create_user(engine, "reset_pw_user", "oldpassword123!")
+    try:
+        user = get_user_by_username(engine, "reset_pw_user")
+        token, _ = create_reset_token(engine, str(user["id"]))
+
+        res = client.post("/api/auth/reset-password",
+                          json={"token": token, "password": "newpassword456!"})
+        assert res.status_code == 200
+
+        # Verify the new password actually works
+        updated = get_user_by_username(engine, "reset_pw_user")
+        assert verify_password("newpassword456!", updated["password_hash"])
+    finally:
+        _delete_user(engine, "reset_pw_user")
+
+
+def test_reset_token_can_only_be_used_once(client):
+    """A reset token is invalidated after first use."""
+    engine = _get_engine()
+    from app.core.auth import create_reset_token, create_user, get_user_by_username
+    create_user(engine, "reset_once_user", "oldpassword123!")
+    try:
+        user = get_user_by_username(engine, "reset_once_user")
+        token, _ = create_reset_token(engine, str(user["id"]))
+
+        client.post("/api/auth/reset-password",
+                    json={"token": token, "password": "newpassword456!"})
+        # Second use must fail
+        res = client.post("/api/auth/reset-password",
+                          json={"token": token, "password": "anotherpassword789!"})
+        assert res.status_code == 400
+    finally:
+        _delete_user(engine, "reset_once_user")
+
+
+def test_reset_invalid_token_returns_400(client):
+    """A bogus token returns 400."""
+    res = client.post("/api/auth/reset-password",
+                      json={"token": "not-a-real-token", "password": "somepassword123!"})
+    assert res.status_code == 400
+
+
+def test_reset_short_password_returns_400(client):
+    """Password shorter than 12 characters is rejected before the token is consumed."""
+    engine = _get_engine()
+    from app.core.auth import create_reset_token, create_user, get_user_by_username
+    create_user(engine, "reset_short_user", "oldpassword123!")
+    try:
+        user = get_user_by_username(engine, "reset_short_user")
+        token, _ = create_reset_token(engine, str(user["id"]))
+        res = client.post("/api/auth/reset-password",
+                          json={"token": token, "password": "short"})
+        assert res.status_code == 400
+        # Token must not have been consumed — a second attempt with a valid password works
+        res2 = client.post("/api/auth/reset-password",
+                           json={"token": token, "password": "validpassword123!"})
+        assert res2.status_code == 200
+    finally:
+        _delete_user(engine, "reset_short_user")
+
+
+def test_generate_reset_link_non_admin_returns_403(client):
+    """Non-admin users cannot generate reset links."""
+    engine = _get_engine()
+    from app.core.auth import create_user, get_user_by_username
+    create_user(engine, "reset_target_user", "pass123456789")
+    try:
+        user = get_user_by_username(engine, "reset_target_user")
+        res = client.post(f"/api/admin/users/{user['id']}/reset-link",
+                          headers=_non_admin_headers())
+        assert res.status_code == 403
+    finally:
+        _delete_user(engine, "reset_target_user")
+
+
+def test_reset_page_is_publicly_accessible(client):
+    """The /reset-password page must not require authentication."""
+    res = client.get("/reset-password?token=anytoken", headers=_no_auth_headers())
+    assert res.status_code == 200

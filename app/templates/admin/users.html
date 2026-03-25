@@ -77,6 +77,29 @@
     </form>
   </div>
 </div>
+<!-- Reset link modal -->
+<div class="modal-backdrop" id="reset-link-modal" style="display:none">
+  <div class="modal">
+    <div class="modal__header">
+      <h2 class="modal__title">Password Reset Link</h2>
+      <button class="modal__close" onclick="closeModal()">&times;</button>
+    </div>
+    <p style="margin-bottom:.75rem; font-size:.9rem; color:var(--text-muted)">
+      Copy this link and send it to the user. It expires in 24 hours and can only be used once.
+    </p>
+    <div style="display:flex; gap:.5rem; align-items:center">
+      <input class="input" type="text" id="reset-link-url" readonly
+             style="flex:1; font-size:.8rem; font-family:monospace" />
+      <button class="btn btn-primary" onclick="copyResetLink()">Copy</button>
+    </div>
+    <div id="reset-link-copied" style="display:none; font-size:.8rem; color:var(--success); margin-top:.4rem">
+      Copied to clipboard!
+    </div>
+    <div class="form-actions" style="margin-top:1rem">
+      <button class="btn" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -135,6 +158,7 @@ function renderUsers() {
       <td>${u.created_at ? u.created_at.slice(0,10) : '—'}</td>
       <td class="table__actions">
         <button class="btn btn-sm" onclick="openPasswordModal('${u.id}')">Password</button>
+        <button class="btn btn-sm" onclick="generateResetLink('${u.id}')">Reset link</button>
         <button class="btn btn-sm" onclick="toggleAdmin('${u.id}', ${u.is_admin})">${u.is_admin ? 'Remove admin' : 'Make admin'}</button>
         <button class="btn btn-sm ${u.is_active ? 'btn-danger' : ''}" onclick="toggleActive('${u.id}', ${u.is_active})">${u.is_active ? 'Deactivate' : 'Activate'}</button>
       </td>
@@ -331,6 +355,26 @@ async function toggleActive(userId, isActive) {
   });
   if (!res.ok) { const e = await res.json(); alert(e.detail || 'Failed'); return; }
   loadUsers();
+}
+
+async function generateResetLink(userId) {
+  const res = await fetch(`/api/admin/users/${userId}/reset-link`, { method: 'POST' });
+  if (!res.ok) { const e = await res.json(); alert(e.detail || 'Failed to generate reset link'); return; }
+  const data = await res.json();
+  document.getElementById('reset-link-url').value = data.reset_url;
+  document.getElementById('reset-link-copied').style.display = 'none';
+  document.getElementById('reset-link-modal').style.display = 'flex';
+}
+
+function copyResetLink() {
+  const input = document.getElementById('reset-link-url');
+  navigator.clipboard.writeText(input.value).then(() => {
+    document.getElementById('reset-link-copied').style.display = 'block';
+  }).catch(() => {
+    input.select();
+    document.execCommand('copy');
+    document.getElementById('reset-link-copied').style.display = 'block';
+  });
 }
 
 document.addEventListener('click', e => {

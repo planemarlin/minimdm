@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    ForeignKey,
     Integer,
     MetaData,
     Numeric,
@@ -77,6 +78,9 @@ class TableManager:
         # Create tables that don't exist yet (existing ones are left intact).
         self.metadata.create_all(self.engine)
 
+        # Add FK and UNIQUE constraints to tables that already existed.
+        self._ensure_constraints()
+
     def get_table(self, schema: str, obj: str) -> Table:
         key = f"{schema}.{obj}"
         if key not in self._tables:
@@ -139,14 +143,35 @@ class TableManager:
 
         parent = obj_body.get("parent")
         if parent:
-            columns.append(
-                Column(f"_{parent}_id", PGUUID(as_uuid=True), nullable=True)
-            )
+            columns.append(Column(
+                f"_{parent}_id",
+                PGUUID(as_uuid=True),
+                ForeignKey(
+                    f"{schema_name}.{parent}._id",
+                    ondelete="SET NULL",
+                    name=f"fk_{obj_key}_{parent}",
+                ),
+                nullable=True,
+            ))
 
         for attr_key, attr_body in obj_body.get("attributes", {}).items():
-            col = self._make_column(attr_key, attr_body)
-            if col is not None:
-                columns.append(col)
+            ref_obj = attr_body.get("reference")
+            if ref_obj:
+                columns.append(Column(
+                    f"{attr_key}_id",
+                    PGUUID(as_uuid=True),
+                    ForeignKey(
+                        f"{schema_name}.{ref_obj}._id",
+                        ondelete="SET NULL",
+                        name=f"fk_{obj_key}_{attr_key}",
+                    ),
+                    nullable=True,
+                    comment=attr_body.get("name", attr_key),
+                ))
+            else:
+                col = self._make_column(attr_key, attr_body)
+                if col is not None:
+                    columns.append(col)
 
         table = Table(obj_key, self.metadata, *columns, schema=schema)
         self._tables[table_key] = table
@@ -238,6 +263,66 @@ class TableManager:
                         ))
             conn.commit()
 
+    def _ensure_constraints(self) -> None:
+        """Add FK and UNIQUE constraints to existing tables where missing.
+
+        PostgreSQL does not support ADD CONSTRAINT IF NOT EXISTS for FK/UNIQUE,
+        so we query pg_constraint to discover what already exists and only issue
+        ALTER TABLE for genuinely absent constraints. Safe to call on every startup.
+        """
+        schemas = self._config.get("schemas", {})
+        with self.engine.connect() as conn:
+            for schema_name, schema_body in schemas.items():
+                for obj_key, obj_body in schema_body.get("objects", {}).items():
+                    existing = self._existing_constraint_names(conn, schema_name, obj_key)
+
+                    parent = obj_body.get("parent")
+                    if parent:
+                        cname = f"fk_{obj_key}_{parent}"
+                        if cname not in existing:
+                            conn.execute(text(
+                                f'ALTER TABLE "{schema_name}"."{obj_key}" '
+                                f'ADD CONSTRAINT "{cname}" '
+                                f'FOREIGN KEY ("_{parent}_id") '
+                                f'REFERENCES "{schema_name}"."{parent}"("_id") '
+                                f'ON DELETE SET NULL'
+                            ))
+
+                    for attr_key, attr_body in obj_body.get("attributes", {}).items():
+                        ref_obj = attr_body.get("reference")
+                        if ref_obj:
+                            cname = f"fk_{obj_key}_{attr_key}"
+                            if cname not in existing:
+                                conn.execute(text(
+                                    f'ALTER TABLE "{schema_name}"."{obj_key}" '
+                                    f'ADD CONSTRAINT "{cname}" '
+                                    f'FOREIGN KEY ("{attr_key}_id") '
+                                    f'REFERENCES "{schema_name}"."{ref_obj}"("_id") '
+                                    f'ON DELETE SET NULL'
+                                ))
+
+                        if attr_body.get("unique"):
+                            cname = f"uq_{obj_key}_{attr_key}"
+                            if cname not in existing:
+                                conn.execute(text(
+                                    f'ALTER TABLE "{schema_name}"."{obj_key}" '
+                                    f'ADD CONSTRAINT "{cname}" '
+                                    f'UNIQUE ("{attr_key}")'
+                                ))
+            conn.commit()
+
+    @staticmethod
+    def _existing_constraint_names(conn, schema: str, table: str) -> set[str]:
+        """Return the names of all constraints on a given table."""
+        rows = conn.execute(text("""
+            SELECT c.conname
+            FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            WHERE n.nspname = :schema AND t.relname = :table
+        """), {"schema": schema, "table": table})
+        return {row[0] for row in rows}
+
     @staticmethod
     def _make_column(attr_key: str, attr_body: dict) -> Optional[Column]:
         if attr_body.get("reference"):
@@ -252,6 +337,7 @@ class TableManager:
             attr_key,
             col_type,
             nullable=not attr_body.get("required", False),
+            unique=attr_body.get("unique", False),
             comment=attr_body.get("name", attr_key),
         )
 

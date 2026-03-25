@@ -69,6 +69,34 @@ def test_export_unknown_object_returns_404(client):
     assert res.status_code == 404
 
 
+def test_export_returns_total_count_header(client):
+    """X-Total-Count header reports the full dataset size regardless of pagination."""
+    for code in ["C001", "C002", "C003"]:
+        client.post("/api/records/test/company", json={"code": code})
+    res = client.get("/api/records/test/company/export?format=csv")
+    assert res.status_code == 200
+    assert res.headers["x-total-count"] == "3"
+
+
+def test_export_limit_restricts_rows(client):
+    """limit parameter caps the number of rows returned."""
+    for code in ["C001", "C002", "C003"]:
+        client.post("/api/records/test/company", json={"code": code})
+    res = client.get("/api/records/test/company/export?format=json&limit=2")
+    assert res.status_code == 200
+    assert len(res.json()) == 2
+    assert res.headers["x-total-count"] == "3"
+
+
+def test_export_offset_skips_rows(client):
+    """offset parameter skips the specified number of rows."""
+    for code in ["C001", "C002", "C003"]:
+        client.post("/api/records/test/company", json={"code": code})
+    res = client.get("/api/records/test/company/export?format=json&offset=2")
+    assert res.status_code == 200
+    assert len(res.json()) == 1
+
+
 # ---------------------------------------------------------------------------
 # Import – insert only
 # ---------------------------------------------------------------------------

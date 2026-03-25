@@ -94,33 +94,26 @@ Minimum 12-character password enforced on user creation and password change endp
 
 These issues should be addressed before the first deployment with live users.
 
-### 10. Password reset flow
-**Context:** There is no self-service password reset. If a user forgets their password, an admin must reset it manually via the user management UI. This is not viable for deployments with many users.
-**Planned fix:** Implement a password reset flow — either email-based token or an admin-generated reset link.
+### 10. Password reset flow — **Resolved**
+Admins generate a one-time reset link from the User Management page (Reset link button). The link contains a URL-safe token valid for 24 hours. The user visits the link, enters a new password, and is redirected to the login page. Tokens are single-use; expired and used entries are pruned at startup.
 
-### 11. Token revocation on logout
-**Context:** JWT tokens remain valid until their expiry time even after the user logs out. If a token is stolen or an account is compromised, there is no way to immediately invalidate it short of changing `SECRET_KEY` (which invalidates all sessions).
-**Planned fix:** Maintain a server-side token blocklist (in the database or a cache) that is checked on every authenticated request. Entries expire naturally after the token's TTL.
+### 11. Token revocation on logout — **Resolved**
+Each JWT now carries a `jti` (UUID). On logout the JTI is written to `_system.token_blocklist` with the token's expiry timestamp. The auth middleware rejects any token whose JTI appears in the blocklist. Expired blocklist entries are pruned at startup.
 
-### 12. Database-level foreign key and unique constraints
-**Context:** Referential integrity and uniqueness are enforced in the application layer only. Direct database access or a bug in the application can produce orphaned records or duplicates.
-**Planned fix:** Add database-level `FOREIGN KEY` constraints for parent relationships and `NOT NULL` / `UNIQUE` constraints for required and unique attributes. Decide on cascade behaviour (restrict / set null) for parent deletes.
+### 12. Database-level foreign key and unique constraints — **Resolved**
+`FOREIGN KEY (ON DELETE SET NULL)` constraints are created for parent and reference columns; `UNIQUE` constraints for attributes marked `unique: true`. `_ensure_constraints()` adds missing constraints to existing tables on each startup using `pg_constraint` checks. `IntegrityError` in create/update is caught and returned as 422.
 
-### 13. Export pagination
-**Context:** Export endpoints load the entire result set into memory before streaming. On large tables this risks out-of-memory errors.
-**Planned fix:** Add `limit` / `offset` query parameters to export endpoints and stream results using server-side cursors.
+### 13. Export pagination — **Resolved**
+Export endpoints now accept `limit` and `offset` query parameters. Results are streamed using server-side cursors so large tables do not cause out-of-memory errors.
 
-### 14. Structured logging with request IDs
-**Context:** Logs are plain text with no correlation IDs. In production it is difficult to trace a single request through multiple log lines or aggregate logs from multiple instances.
-**Planned fix:** Adopt JSON-structured logging; generate a unique request ID per request (via middleware) and include it in every log line.
+### 14. Structured logging with request IDs — **Resolved**
+Each request is assigned a UUID in `RequestIdMiddleware`. The ID is injected into every log line via `RequestIdFilter` and returned as the `X-Request-Id` response header. `LOG_FORMAT=json` switches to single-line JSON output. See `docs/logging.md`.
 
-### 15. Database migrations (Alembic)
-**Context:** Schema changes are applied at runtime using `ALTER TABLE … ADD COLUMN IF NOT EXISTS`. There is no migration history, no rollback path, and no way to reproduce the exact database state from scratch other than running the application.
-**Planned fix:** Introduce Alembic for managing `_system` schema migrations. Application-managed data tables (user schemas) will continue to be handled dynamically but system tables should be version-controlled.
+### 15. Database migrations (Alembic) — **Resolved**
+Alembic manages all `_system` schema tables. Migration `0001` creates the five system tables; future changes to system tables get new numbered migrations. Migrations run automatically at startup. Legacy installs (tables exist without Alembic) are detected and stamped to head transparently. See `docs/migrations.md`.
 
-### 16. Backup and restore documentation
-**Context:** miniMDM stores all data in PostgreSQL. There is no built-in backup or restore functionality, and no documentation on how to back up and restore the database.
-**Planned fix:** Add a `docs/backup-restore.md` guide covering `pg_dump` / `pg_restore` for full backups, point-in-time recovery considerations, and how to restore miniMDM from a backup including the `_system` schema.
+### 16. Backup and restore documentation — **Resolved**
+`docs/backup-restore.md` added covering `pg_dump` / `pg_restore` for full backups, Docker volume backup, cron automation, backup verification, and a note on point-in-time recovery.
 
 ---
 

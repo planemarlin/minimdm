@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -6,7 +7,15 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import audit as audit_svc
-from app.core.auth import create_token, get_user_by_username, verify_password
+from app.core.auth import (
+    consume_reset_token,
+    create_token,
+    get_user_by_id,
+    get_user_by_username,
+    revoke_token,
+    update_user,
+    verify_password,
+)
 from app.core.limiter import limiter
 
 router = APIRouter()
@@ -83,10 +92,39 @@ async def login(request: Request):
 async def logout(request: Request):
     user = getattr(request.state, "current_user", None)
     if user:
+        jti = user.get("jti")
+        exp = user.get("exp")
+        if jti and exp:
+            engine = request.app.state.table_manager.engine
+            expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
+            revoke_token(engine, jti, expires_at)
         _log_auth(request, "LOGOUT", uuid.UUID(user["user_id"]), user["username"])
     response = JSONResponse({"status": "ok"})
     response.delete_cookie(COOKIE_NAME)
     return response
+
+
+@router.post("/auth/reset-password")
+async def reset_password(request: Request):
+    data = await request.json()
+    token = (data.get("token") or "").strip()
+    password = data.get("password") or ""
+
+    if not token:
+        raise HTTPException(400, "Token is required")
+    if len(password) < 12:
+        raise HTTPException(400, "Password must be at least 12 characters")
+
+    engine = request.app.state.table_manager.engine
+    user_id = consume_reset_token(engine, token)
+    if not user_id:
+        raise HTTPException(400, "Reset link is invalid or has expired")
+
+    user = get_user_by_id(engine, user_id)
+    update_user(engine, user_id, password=password)
+    _log_auth(request, "USER_PASSWORD_CHANGED", uuid.UUID(user_id), user["username"],
+              reason=f"Password reset via reset link for '{user['username']}'")
+    return {"status": "ok"}
 
 
 @router.get("/auth/me")
