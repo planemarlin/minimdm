@@ -94,9 +94,8 @@ Minimum 12-character password enforced on user creation and password change endp
 
 These issues should be addressed before the first deployment with live users.
 
-### 10. Password reset flow
-**Context:** There is no self-service password reset. If a user forgets their password, an admin must reset it manually via the user management UI. This is not viable for deployments with many users.
-**Planned fix:** Implement a password reset flow — either email-based token or an admin-generated reset link.
+### 10. Password reset flow — **Resolved**
+Admins generate a one-time reset link from the User Management page (Reset link button). The link contains a URL-safe token valid for 24 hours. The user visits the link, enters a new password, and is redirected to the login page. Tokens are single-use; expired and used entries are pruned at startup.
 
 ### 11. Token revocation on logout — **Resolved**
 Each JWT now carries a `jti` (UUID). On logout the JTI is written to `_system.token_blocklist` with the token's expiry timestamp. The auth middleware rejects any token whose JTI appears in the blocklist. Expired blocklist entries are pruned at startup.

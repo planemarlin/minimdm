@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - `docs/backup-restore.md`: database backup and restore guide covering `pg_dump`/`pg_restore`, Docker volume backups, cron automation, backup verification, and point-in-time recovery
 - Structured logging with request IDs: every request is assigned a UUID that appears in all log lines and is returned as the `X-Request-Id` response header; set `LOG_FORMAT=json` for single-line JSON output suitable for log aggregators; see `docs/logging.md`
 - DB-level `FOREIGN KEY` constraints on parent and reference columns (`ON DELETE SET NULL`); `UNIQUE` constraints for attributes marked `unique: true` in the config; `_ensure_constraints()` adds missing constraints to existing tables safely on each startup; create/update now returns 422 with a human-readable message on integrity violations
+- Admin-generated password reset link: admins click "Reset link" on the User Management page to generate a one-time URL (valid 24 h); user visits the link, sets a new password, and is redirected to login; tokens are single-use and pruned at startup
 
 ### Security
 - Rate limiting: 10 requests/minute per IP on the login and import endpoints to prevent brute-force and API abuse attacks (`slowapi`)
