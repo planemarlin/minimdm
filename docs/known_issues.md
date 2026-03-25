@@ -98,9 +98,8 @@ These issues should be addressed before the first deployment with live users.
 **Context:** There is no self-service password reset. If a user forgets their password, an admin must reset it manually via the user management UI. This is not viable for deployments with many users.
 **Planned fix:** Implement a password reset flow — either email-based token or an admin-generated reset link.
 
-### 11. Token revocation on logout
-**Context:** JWT tokens remain valid until their expiry time even after the user logs out. If a token is stolen or an account is compromised, there is no way to immediately invalidate it short of changing `SECRET_KEY` (which invalidates all sessions).
-**Planned fix:** Maintain a server-side token blocklist (in the database or a cache) that is checked on every authenticated request. Entries expire naturally after the token's TTL.
+### 11. Token revocation on logout — **Resolved**
+Each JWT now carries a `jti` (UUID). On logout the JTI is written to `_system.token_blocklist` with the token's expiry timestamp. The auth middleware rejects any token whose JTI appears in the blocklist. Expired blocklist entries are pruned at startup.
 
 ### 12. Database-level foreign key and unique constraints
 **Context:** Referential integrity and uniqueness are enforced in the application layer only. Direct database access or a bug in the application can produce orphaned records or duplicates.

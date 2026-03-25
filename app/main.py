@@ -13,7 +13,16 @@ from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
-from app.core.auth import count_users, create_user, decode_token, ensure_users_table, is_user_active
+from app.core.auth import (
+    cleanup_expired_tokens,
+    count_users,
+    create_user,
+    decode_token,
+    ensure_token_blocklist_table,
+    ensure_users_table,
+    is_token_revoked,
+    is_user_active,
+)
 from app.core.limiter import limiter
 from app.core.permissions import ensure_permissions_table, get_accessible_schemas
 from app.core.schema_loader import load_config, validate_config
@@ -51,6 +60,8 @@ async def lifespan(app: FastAPI):
 
     tm._ensure_audit_log_table()
     ensure_users_table(engine)
+    ensure_token_blocklist_table(engine)
+    cleanup_expired_tokens(engine)
     ensure_permissions_table(engine)
     tm.metadata.create_all(engine)
 
@@ -127,13 +138,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
             payload = decode_token(token)
             if payload:
                 user_id = payload.get("user_id")
+                jti = payload.get("jti")
                 engine = request.app.state.table_manager.engine
                 if user_id and is_user_active(engine, user_id):
-                    user = {
-                        "user_id": user_id,
-                        "username": payload.get("sub"),
-                        "is_admin": payload.get("is_admin", False),
-                    }
+                    if not jti or not is_token_revoked(engine, jti):
+                        user = {
+                            "user_id": user_id,
+                            "username": payload.get("sub"),
+                            "is_admin": payload.get("is_admin", False),
+                            "jti": jti,
+                            "exp": payload.get("exp"),
+                        }
 
         request.state.current_user = user
 

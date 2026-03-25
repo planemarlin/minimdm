@@ -14,6 +14,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Session cookie changed from `SameSite=lax` to `SameSite=strict` to prevent cross-site request forgery
 - File upload size limit: import endpoint now rejects files larger than `MAX_UPLOAD_SIZE` (default 10 MB) with HTTP 413
 - Minimum password length of 12 characters enforced on user creation and password change
+- Token revocation on logout: JWTs now carry a `jti` claim; logout writes the JTI to `_system.token_blocklist` so the token is rejected immediately on subsequent requests even if it has not yet expired; expired blocklist entries are cleaned up at startup
 
 ### Added
 - `GET /health` endpoint returns 200 when the database is reachable, 503 otherwise — suitable for load balancer and container health probes

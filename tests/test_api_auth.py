@@ -149,8 +149,17 @@ def test_login_inactive_user_returns_401(client):
 
 
 def test_logout_returns_200(client):
-    res = client.post("/api/auth/logout")
-    assert res.status_code == 200
+    # Use a dedicated token so we don't revoke the shared admin session token.
+    engine = _get_engine()
+    from app.core.auth import create_token, create_user, get_user_by_username
+    create_user(engine, "logout_200_user", "pass123")
+    try:
+        user = get_user_by_username(engine, "logout_200_user")
+        token = create_token(str(user["id"]), "logout_200_user", is_admin=False)
+        res = client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
+        assert res.status_code == 200
+    finally:
+        _delete_user(engine, "logout_200_user")
 
 
 def test_me_endpoint_returns_current_user(client):
@@ -455,3 +464,50 @@ def test_permission_revoked_is_logged(client):
         assert row is not None
     finally:
         _delete_user(engine, "log_revoke")
+
+
+# ---------------------------------------------------------------------------
+# Token revocation
+# ---------------------------------------------------------------------------
+
+def test_revoked_token_is_rejected_after_logout(client):
+    """After logout the same JWT must be rejected with 401."""
+    engine = _get_engine()
+    from app.core.auth import create_token, create_user, get_user_by_username
+    create_user(engine, "revoke_test_user", "pass123")
+    try:
+        user = get_user_by_username(engine, "revoke_test_user")
+        token = create_token(str(user["id"]), "revoke_test_user", is_admin=False)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Token works before logout
+        assert client.get("/api/auth/me", headers=headers).status_code == 200
+
+        # Logout revokes the token
+        client.post("/api/auth/logout", headers=headers)
+
+        # Same token is now rejected
+        assert client.get("/api/auth/me", headers=headers).status_code == 401
+    finally:
+        _delete_user(engine, "revoke_test_user")
+
+
+def test_new_token_works_after_old_token_revoked(client):
+    """After logout a freshly issued token for the same user must still work."""
+    engine = _get_engine()
+    from app.core.auth import create_token, create_user, get_user_by_username
+    create_user(engine, "revoke_new_token_user", "pass123")
+    try:
+        user = get_user_by_username(engine, "revoke_new_token_user")
+        uid = str(user["id"])
+        old_token = create_token(uid, "revoke_new_token_user", is_admin=False)
+
+        # Revoke old token via logout
+        client.post("/api/auth/logout", headers={"Authorization": f"Bearer {old_token}"})
+
+        # New token (different jti) must still authenticate
+        new_token = create_token(uid, "revoke_new_token_user", is_admin=False)
+        assert client.get("/api/auth/me",
+                          headers={"Authorization": f"Bearer {new_token}"}).status_code == 200
+    finally:
+        _delete_user(engine, "revoke_new_token_user")

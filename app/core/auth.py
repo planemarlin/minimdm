@@ -37,6 +37,7 @@ def create_token(user_id: str, username: str, is_admin: bool) -> str:
         "user_id": user_id,
         "is_admin": is_admin,
         "exp": expire,
+        "jti": str(uuid.uuid4()),
     }
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
@@ -46,6 +47,48 @@ def decode_token(token: str) -> Optional[dict]:
         return jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
     except jwt.PyJWTError:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Token blocklist
+# ---------------------------------------------------------------------------
+
+def ensure_token_blocklist_table(engine) -> None:
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS _system.token_blocklist (
+                jti        UUID PRIMARY KEY,
+                expires_at TIMESTAMPTZ NOT NULL
+            )
+        """))
+        conn.commit()
+
+
+def revoke_token(engine, jti: str, expires_at: datetime) -> None:
+    with engine.connect() as conn:
+        conn.execute(text(
+            "INSERT INTO _system.token_blocklist (jti, expires_at) VALUES (:jti, :exp)"
+            " ON CONFLICT DO NOTHING"
+        ), {"jti": uuid.UUID(jti), "exp": expires_at})
+        conn.commit()
+
+
+def is_token_revoked(engine, jti: str) -> bool:
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT 1 FROM _system.token_blocklist WHERE jti = :jti"),
+            {"jti": uuid.UUID(jti)},
+        ).first()
+        return row is not None
+
+
+def cleanup_expired_tokens(engine) -> None:
+    """Delete expired entries from the blocklist — called at startup."""
+    with engine.connect() as conn:
+        conn.execute(text(
+            "DELETE FROM _system.token_blocklist WHERE expires_at < NOW()"
+        ))
+        conn.commit()
 
 
 # ---------------------------------------------------------------------------
