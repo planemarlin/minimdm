@@ -110,9 +110,8 @@ Each JWT now carries a `jti` (UUID). On logout the JTI is written to `_system.to
 ### 14. Structured logging with request IDs — **Resolved**
 Each request is assigned a UUID in `RequestIdMiddleware`. The ID is injected into every log line via `RequestIdFilter` and returned as the `X-Request-Id` response header. `LOG_FORMAT=json` switches to single-line JSON output. See `docs/logging.md`.
 
-### 15. Database migrations (Alembic)
-**Context:** Schema changes are applied at runtime using `ALTER TABLE … ADD COLUMN IF NOT EXISTS`. There is no migration history, no rollback path, and no way to reproduce the exact database state from scratch other than running the application.
-**Planned fix:** Introduce Alembic for managing `_system` schema migrations. Application-managed data tables (user schemas) will continue to be handled dynamically but system tables should be version-controlled.
+### 15. Database migrations (Alembic) — **Resolved**
+Alembic manages all `_system` schema tables. Migration `0001` creates the five system tables; future changes to system tables get new numbered migrations. Migrations run automatically at startup. Legacy installs (tables exist without Alembic) are detected and stamped to head transparently. See `docs/migrations.md`.
 
 ### 16. Backup and restore documentation — **Resolved**
 `docs/backup-restore.md` added covering `pg_dump` / `pg_restore` for full backups, Docker volume backup, cron automation, backup verification, and a note on point-in-time recovery.
