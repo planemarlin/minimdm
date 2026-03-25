@@ -19,8 +19,8 @@ SAMPLE_CONFIG = {
                     "description": "Test company",
                     "parent": None,
                     "attributes": {
-                        "code": {"name": "Code", "type": "string", "required": True, "reference": None},  # noqa: E501
-                        "name": {"name": "Name", "type": "string", "required": False, "reference": None},  # noqa: E501
+                        "code": {"name": "Code", "type": "string", "required": True, "unique": True, "reference": None},  # noqa: E501
+                        "name": {"name": "Name", "type": "string", "required": False, "unique": False, "reference": None},  # noqa: E501
                     },
                 },
                 "division": {
@@ -28,7 +28,7 @@ SAMPLE_CONFIG = {
                     "description": "Test division",
                     "parent": "company",
                     "attributes": {
-                        "code": {"name": "Code", "type": "string", "required": True, "reference": None},  # noqa: E501
+                        "code": {"name": "Code", "type": "string", "required": True, "unique": False, "reference": None},  # noqa: E501
                     },
                 },
                 "contact": {
@@ -36,8 +36,8 @@ SAMPLE_CONFIG = {
                     "description": "Test contact with a reference to company",
                     "parent": None,
                     "attributes": {
-                        "name": {"name": "Name", "type": "string", "required": True, "reference": None},  # noqa: E501
-                        "company": {"name": "Company", "type": "string", "required": False, "reference": "company"},  # noqa: E501
+                        "name": {"name": "Name", "type": "string", "required": True, "unique": False, "reference": None},  # noqa: E501
+                        "company": {"name": "Company", "type": "string", "required": False, "unique": False, "reference": "company"},  # noqa: E501
                     },
                 },
             }

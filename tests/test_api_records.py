@@ -458,3 +458,50 @@ def test_audit_log_entries_contain_record_id(client):
     data = client.get("/api/audit?schema=test&obj=company").json()
     assert data["total"] >= 1
     assert all(r["record_id"] == rid for r in data["records"])
+
+
+# ---------------------------------------------------------------------------
+# DB-level constraint enforcement
+# ---------------------------------------------------------------------------
+
+def test_unique_constraint_rejects_duplicate_value(client):
+    """Inserting two records with the same value for a unique field must fail."""
+    client.post("/api/records/test/company", json={"code": "UNIQ01"})
+    res = client.post("/api/records/test/company", json={"code": "UNIQ01"})
+    assert res.status_code == 422
+
+
+def test_parent_fk_rejects_nonexistent_parent(client):
+    """Creating a division with a non-existent company ID must fail."""
+    fake_id = str(uuid.uuid4())
+    res = client.post(
+        "/api/records/test/division",
+        json={"code": "D001", "_company_id": fake_id},
+    )
+    assert res.status_code == 422
+
+
+def test_reference_fk_rejects_nonexistent_reference(client):
+    """Creating a contact with a non-existent company reference must fail."""
+    fake_id = str(uuid.uuid4())
+    res = client.post(
+        "/api/records/test/contact",
+        json={"name": "Alice", "company_id": fake_id},
+    )
+    assert res.status_code == 422
+
+
+def test_parent_fk_set_null_on_parent_delete(client):
+    """Soft-deleting a parent does not affect the child FK (hard delete sets it NULL)."""
+    company_id = client.post(
+        "/api/records/test/company", json={"code": "C-FK-01"}
+    ).json()["id"]
+    div_id = client.post(
+        "/api/records/test/division",
+        json={"code": "D-FK-01", "_company_id": company_id},
+    ).json()["id"]
+
+    # Soft-delete the parent — child FK must remain set (soft-delete doesn't remove the row)
+    client.delete(f"/api/records/test/company/{company_id}")
+    div = client.get(f"/api/records/test/division/{div_id}").json()
+    assert div["_company_id"] == company_id
