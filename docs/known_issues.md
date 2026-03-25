@@ -101,9 +101,8 @@ These issues should be addressed before the first deployment with live users.
 ### 11. Token revocation on logout — **Resolved**
 Each JWT now carries a `jti` (UUID). On logout the JTI is written to `_system.token_blocklist` with the token's expiry timestamp. The auth middleware rejects any token whose JTI appears in the blocklist. Expired blocklist entries are pruned at startup.
 
-### 12. Database-level foreign key and unique constraints
-**Context:** Referential integrity and uniqueness are enforced in the application layer only. Direct database access or a bug in the application can produce orphaned records or duplicates.
-**Planned fix:** Add database-level `FOREIGN KEY` constraints for parent relationships and `NOT NULL` / `UNIQUE` constraints for required and unique attributes. Decide on cascade behaviour (restrict / set null) for parent deletes.
+### 12. Database-level foreign key and unique constraints — **Resolved**
+`FOREIGN KEY (ON DELETE SET NULL)` constraints are created for parent and reference columns; `UNIQUE` constraints for attributes marked `unique: true`. `_ensure_constraints()` adds missing constraints to existing tables on each startup using `pg_constraint` checks. `IntegrityError` in create/update is caught and returned as 422.
 
 ### 13. Export pagination
 **Context:** Export endpoints load the entire result set into memory before streaming. On large tables this risks out-of-memory errors.
