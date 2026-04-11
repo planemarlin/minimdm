@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- `config/minimdm.example.yaml`: example config file showcasing all key features — required/unique attributes, parent relationships, cross-object references, and all attribute types
+- Sorting on parent and reference columns is intentionally not supported; column headers are non-clickable to reflect this; documented in `docs/reference.md` and `docs/known_issues.md`
+
 ### Fixed
 - `docs/installation.md`: config file copy command used `minimdm.yaml` as both source and destination; corrected to `minimdm.example.yaml`
 - `docs/deployment.md`: health check example showed stale version `0.1.0`; updated to `0.2.0`; added missing `LOG_FORMAT` environment variable to the env vars table

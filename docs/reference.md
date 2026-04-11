@@ -189,8 +189,10 @@ Grants are managed in the User Management UI (`/admin/users`) via the inline per
 | `parent_id` | — | Filter records by parent UUID (requires `parent` to be set on the object) |
 | `ref_field` | — | Attribute key of a reference field to filter by (use together with `ref_id`) |
 | `ref_id` | — | UUID value to match against `ref_field`; returns only records where `{ref_field}_id` equals this value |
-| `sort_by` | first non-reference attribute | Column key to sort by; must be a non-system, non-reference attribute of the object |
+| `sort_by` | first non-reference attribute | Column key to sort by; must be a non-system, non-reference, non-parent attribute of the object |
 | `sort_dir` | `asc` | Sort direction: `asc` or `desc` |
+
+> **Note:** Sorting is intentionally not supported on parent or reference columns. These values are resolved from other tables client-side; a server-side sort would require a SQL JOIN per relationship, adding significant complexity. In the UI, parent and reference column headers are intentionally non-clickable to reflect this. Sort on the underlying data attributes instead.
 
 ### Query Parameters (Import)
 

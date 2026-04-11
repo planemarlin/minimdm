@@ -117,9 +117,13 @@ Alembic manages all `_system` schema tables. Migration `0001` creates the five s
 
 ---
 
+## Design Decisions
+
+### Sorting on parent and reference columns is not supported
+**Decision:** Parent and reference column headers are intentionally non-sortable. These values are resolved from other tables client-side; a correct global sort would require a SQL JOIN per relationship at query time, adding significant complexity for limited benefit. Sort on the underlying data attributes instead. This is documented in [reference.md](reference.md).
+
+---
+
 ## Open Issues
 
-### Sorting by parent/reference columns is limited to the current page
-**Context:** The record list table resolves parent and reference column values client-side using label maps. Clicking a parent or reference column header to sort would only sort the records already loaded on the current page — records on other pages would not be considered. True cross-page sorting requires a SQL JOIN to the referenced table at query time.
-**Options:** (1) Client-side sort within the page — easy but potentially confusing since the sort does not apply globally. (2) Backend JOIN sort — correct behaviour across all pages but meaningfully more complex to implement.
-**Decision needed:** Whether the simpler per-page sort is acceptable or whether the full JOIN-based approach is warranted.
+There are no open issues at this time.
