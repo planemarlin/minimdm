@@ -94,6 +94,17 @@ All changes are recorded in `_system.audit_log`:
 
 All routes require authentication. The web UI uses an httpOnly cookie (`access_token`) set at login. API clients should pass `Authorization: Bearer <token>` on every request.
 
+## Browser storage
+
+miniMDM stores the following data in the browser:
+
+| Storage | Key | Value | Purpose |
+|---|---|---|---|
+| Cookie (`httpOnly`) | `access_token` | JWT authentication token | Maintains the login session. Set on login, cleared on logout. Required for the application to function — no consent banner is shown since this is a strictly necessary cookie under EU ePrivacy rules. |
+| `localStorage` | `theme` | `"light"` or `"dark"` | Remembers your light/dark mode preference across sessions. Contains no personal data. Stays in the browser until you clear site data. |
+
+No analytics, tracking, or advertising cookies or storage keys are used.
+
 Tokens are JWTs signed with `SECRET_KEY` and expire after `TOKEN_EXPIRE_HOURS` (default: 24 hours).
 
 On first startup, if no users exist, an admin account is created automatically from `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables (defaults: `admin` / `admin`). **Change the default password immediately after first login.**
@@ -189,8 +200,10 @@ Grants are managed in the User Management UI (`/admin/users`) via the inline per
 | `parent_id` | — | Filter records by parent UUID (requires `parent` to be set on the object) |
 | `ref_field` | — | Attribute key of a reference field to filter by (use together with `ref_id`) |
 | `ref_id` | — | UUID value to match against `ref_field`; returns only records where `{ref_field}_id` equals this value |
-| `sort_by` | first non-reference attribute | Column key to sort by; must be a non-system, non-reference attribute of the object |
+| `sort_by` | first non-reference attribute | Column key to sort by; must be a non-system, non-reference, non-parent attribute of the object |
 | `sort_dir` | `asc` | Sort direction: `asc` or `desc` |
+
+> **Note:** Sorting is intentionally not supported on parent or reference columns. These values are resolved from other tables client-side; a server-side sort would require a SQL JOIN per relationship, adding significant complexity. In the UI, parent and reference column headers are intentionally non-clickable to reflect this. Sort on the underlying data attributes instead.
 
 ### Query Parameters (Import)
 

@@ -719,6 +719,7 @@ async function loadHistory(schema, obj, recordId, objConfig, canWrite) {
         </div>
         <div>
           ${canWrite && h._action !== "DELETE" ? `<button class="btn btn-secondary btn-sm"
+            title="Restore this record to the values shown in this version."
             onclick="revertToVersion('${schema}','${obj}','${recordId}',${h._version})">Revert</button>` : ""}
         </div>
       </li>`
@@ -814,7 +815,7 @@ async function loadAuditLog(page) {
 
   if (!data.records.length) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted)">No entries found.</td></tr>`;
-    _renderAuditPagination(paginationEl, data.pages);
+    _renderAuditPagination(paginationEl, data.pages, "loadAuditLog");
     return;
   }
 
@@ -844,7 +845,7 @@ async function loadAuditLog(page) {
     </tr>`;
   }).join("");
 
-  _renderAuditPagination(paginationEl, data.pages);
+  _renderAuditPagination(paginationEl, data.pages, "loadAuditLog");
 }
 
 async function loadAuthLog(page) {
@@ -876,7 +877,7 @@ async function loadAuthLog(page) {
 
   if (!data.records.length) {
     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted)">No entries found.</td></tr>`;
-    _renderAuditPagination(paginationEl, data.pages);
+    _renderAuditPagination(paginationEl, data.pages, "loadAuthLog");
     return;
   }
 
@@ -893,15 +894,15 @@ async function loadAuthLog(page) {
     <td style="color:var(--text-muted);font-size:.85rem">${escHtml(r.reason || "")}</td>
   </tr>`).join("");
 
-  _renderAuditPagination(paginationEl, data.pages);
+  _renderAuditPagination(paginationEl, data.pages, "loadAuthLog");
 }
 
-function _renderAuditPagination(el, pages) {
+function _renderAuditPagination(el, pages, fnName) {
   if (!el) return;
   if (pages <= 1) { el.innerHTML = ""; return; }
 
   let html = `<button class="page-btn" ${_auditPage === 1 ? "disabled" : ""}
-    onclick="loadAuditLog(${_auditPage - 1})">&#8592;</button>`;
+    onclick="${fnName}(${_auditPage - 1})">&#8592;</button>`;
 
   for (let p = 1; p <= pages; p++) {
     if (pages > 7 && Math.abs(p - _auditPage) > 2 && p !== 1 && p !== pages) {
@@ -909,10 +910,10 @@ function _renderAuditPagination(el, pages) {
       continue;
     }
     html += `<button class="page-btn ${p === _auditPage ? "page-btn--active" : ""}"
-      onclick="loadAuditLog(${p})">${p}</button>`;
+      onclick="${fnName}(${p})">${p}</button>`;
   }
 
   html += `<button class="page-btn" ${_auditPage === pages ? "disabled" : ""}
-    onclick="loadAuditLog(${_auditPage + 1})">&#8594;</button>`;
+    onclick="${fnName}(${_auditPage + 1})">&#8594;</button>`;
   el.innerHTML = html;
 }

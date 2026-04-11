@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <script>(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);})();</script>
   <link rel="stylesheet" href="/static/css/styles.css" />
   {% block head %}{% endblock %}
 </head>
@@ -20,12 +21,48 @@
       <a href="/admin/audit">Audit Log</a>
       {% endif %}
       <a href="/docs" target="_blank">API Docs</a>
+      <button class="header__help" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle light/dark mode"></button>
+      <button class="header__help" onclick="document.getElementById('help-modal').style.display='flex'" aria-label="Help">?</button>
       {% if current_user %}
       <span class="header__user">{{ current_user.username }}</span>
       <button class="header__logout" onclick="fetch('/api/auth/logout',{method:'POST'}).then(()=>location.href='/login')">Logout</button>
       {% endif %}
     </nav>
   </header>
+
+  <!-- Help modal -->
+  <div class="modal-backdrop" id="help-modal" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal" style="max-width:540px">
+      <div class="modal__header">
+        <span class="modal__title">miniMDM Quick Reference</span>
+        <button class="modal__close" onclick="document.getElementById('help-modal').style.display='none'" aria-label="Close">&times;</button>
+      </div>
+      <div class="help-body">
+        <h3>Records</h3>
+        <p>Create, edit, and delete records from the object list. Deleted records are <strong>soft-deleted</strong> — they are hidden from the list but not removed from the database. Use <em>Show deleted</em> to view them; their history page allows recovery via Revert.</p>
+
+        <h3>History &amp; Revert</h3>
+        <p>Every change to a record is saved as a new version. Click <em>History</em> on any record to see all versions, then <em>Revert</em> to restore a previous one. Reverts are themselves versioned and audited.</p>
+
+        <h3>Reason for change</h3>
+        <p>The optional <em>Reason</em> field on create, edit, and delete forms is stored in the audit log alongside the change. Use it to explain why a value was changed.</p>
+
+        <h3>Import &amp; Upsert</h3>
+        <p>Import records from CSV, TSV, or JSON. <em>Insert only</em> always adds a new record. <em>Upsert on &lt;attribute&gt;</em> updates existing records whose value matches on that attribute and inserts the rest.</p>
+
+        <h3>Audit log</h3>
+        <p>All data changes and authentication events (login, logout, user management) are recorded in the audit log, available from the header navigation (admin only).</p>
+
+        <h3>Access control</h3>
+        <p>Admins have full access. Non-admin users have no access by default — an admin must grant read and/or write access per schema from the User Management page.</p>
+
+        <p style="margin-top:1.25rem;font-size:.8rem;color:var(--text-muted)">
+          Full documentation: <a href="/docs" target="_blank">API reference</a> &mdash;
+          <a href="https://github.com/planemarlin/minimdm" target="_blank">Project docs on GitHub</a>
+        </p>
+      </div>
+    </div>
+  </div>
 
   <!-- Sidebar -->
   <nav class="sidebar" id="sidebar">
@@ -53,6 +90,13 @@
   </main>
 
   <script src="/static/js/app.js"></script>
+  <script>
+    function toggleTheme() {
+      var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+    }
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

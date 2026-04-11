@@ -6,10 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- `config/minimdm.example.yaml`: example config file showcasing all key features — required/unique attributes, parent relationships, cross-object references, and all attribute types
+- Sorting on parent and reference columns is intentionally not supported; column headers are non-clickable to reflect this; documented in `docs/reference.md` and `docs/known_issues.md`
+- Light/dark mode toggle (☾/☀) in header; follows OS preference (`prefers-color-scheme`) on first visit; choice persisted in `localStorage`; no flash of wrong theme on page load
+- In-app help: `?` button in header opens a Quick Reference modal covering records, history/revert, reason for change, import/upsert, audit log, and access control
+- Tooltips on non-obvious UI elements: Show deleted, upsert dropdown, Import, History, Delete, Revert, and Reset link buttons
+- Cookie notice on login page; browser storage section added to `docs/reference.md` documenting the `access_token` cookie and `theme` localStorage key
+- `config/minimdm.yaml` and `config/minimdm.json` added to `.gitignore` — these are deployment-specific and should not be committed
+
 ### Fixed
 - `docs/installation.md`: config file copy command used `minimdm.yaml` as both source and destination; corrected to `minimdm.example.yaml`
 - `docs/deployment.md`: health check example showed stale version `0.1.0`; updated to `0.2.0`; added missing `LOG_FORMAT` environment variable to the env vars table
 - `README.md`: docs table was missing `docker-setup.md`, `logging.md`, `migrations.md`, and `testing.md`
+- Audit log Auth Events tab: pagination buttons called `loadAuditLog` instead of `loadAuthLog`, causing the Data Changes tab to reload on page navigation
 
 ## [0.2.0] – 2026-03-25
 

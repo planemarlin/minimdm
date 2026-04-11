@@ -11,9 +11,9 @@
   {% if can_write %}
   <a class="btn btn-secondary" href="/{{ schema }}/{{ obj }}/{{ record_id }}/edit">Edit</a>
   {% endif %}
-  <a class="btn btn-secondary" href="/{{ schema }}/{{ obj }}/{{ record_id }}/history">History</a>
+  <a class="btn btn-secondary" href="/{{ schema }}/{{ obj }}/{{ record_id }}/history" title="View all versions of this record and revert to any previous one.">History</a>
   {% if can_write %}
-  <button class="btn btn-danger" onclick="openDeleteModal()">Delete</button>
+  <button class="btn btn-danger" onclick="openDeleteModal()" title="Soft-delete this record. It remains in the database and can be recovered from the record history.">Delete</button>
   {% endif %}
 </div>
 
