@@ -68,9 +68,13 @@ uv run pytest
 |---|---|
 | [docs/installation.md](docs/installation.md) | System requirements and installation |
 | [docs/quickstart.md](docs/quickstart.md) | Getting started guide |
+| [docs/docker-setup.md](docs/docker-setup.md) | Running miniMDM with Docker Compose |
 | [docs/deployment.md](docs/deployment.md) | Production deployment (TLS, reverse proxy, security checklist) |
+| [docs/logging.md](docs/logging.md) | Log formats, request IDs, and log aggregator setup |
+| [docs/migrations.md](docs/migrations.md) | Database migrations and Alembic usage |
 | [docs/backup-restore.md](docs/backup-restore.md) | Database backup and restore procedures |
 | [docs/reference.md](docs/reference.md) | Feature and API reference |
+| [docs/testing.md](docs/testing.md) | Running tests and test suite overview |
 | [docs/software.md](docs/software.md) | Open-source software used |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Common errors and solutions |
 

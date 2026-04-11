@@ -36,6 +36,7 @@ Set these in your `.env` file or via your process manager before starting miniMD
 | `ADMIN_PASSWORD` | First run only | Password for the initial admin account (min 12 chars) |
 | `TOKEN_EXPIRE_HOURS` | No | JWT lifetime in hours (default: 8) |
 | `MAX_UPLOAD_SIZE` | No | Max import file size in bytes (default: 10485760 = 10 MB) |
+| `LOG_FORMAT` | No | Log output format: `text` (default, human-readable) or `json` (one JSON object per line, recommended for production) |
 
 ## Nginx example
 
@@ -100,7 +101,7 @@ See [docs/logging.md](logging.md) for full details including field reference and
 
 ```bash
 curl https://mdm.example.com/health
-# {"status": "ok", "version": "0.1.0"}
+# {"status": "ok", "version": "0.2.0"}
 ```
 
 ## Docker
