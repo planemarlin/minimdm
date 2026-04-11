@@ -94,6 +94,17 @@ All changes are recorded in `_system.audit_log`:
 
 All routes require authentication. The web UI uses an httpOnly cookie (`access_token`) set at login. API clients should pass `Authorization: Bearer <token>` on every request.
 
+## Browser storage
+
+miniMDM stores the following data in the browser:
+
+| Storage | Key | Value | Purpose |
+|---|---|---|---|
+| Cookie (`httpOnly`) | `access_token` | JWT authentication token | Maintains the login session. Set on login, cleared on logout. Required for the application to function — no consent banner is shown since this is a strictly necessary cookie under EU ePrivacy rules. |
+| `localStorage` | `theme` | `"light"` or `"dark"` | Remembers your light/dark mode preference across sessions. Contains no personal data. Stays in the browser until you clear site data. |
+
+No analytics, tracking, or advertising cookies or storage keys are used.
+
 Tokens are JWTs signed with `SECRET_KEY` and expire after `TOKEN_EXPIRE_HOURS` (default: 24 hours).
 
 On first startup, if no users exist, an admin account is created automatically from `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables (defaults: `admin` / `admin`). **Change the default password immediately after first login.**
