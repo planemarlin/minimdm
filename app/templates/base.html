@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <script>(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);})();</script>
   <link rel="stylesheet" href="/static/css/styles.css" />
   {% block head %}{% endblock %}
 </head>
@@ -20,6 +21,7 @@
       <a href="/admin/audit">Audit Log</a>
       {% endif %}
       <a href="/docs" target="_blank">API Docs</a>
+      <button class="header__help" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle light/dark mode"></button>
       <button class="header__help" onclick="document.getElementById('help-modal').style.display='flex'" aria-label="Help">?</button>
       {% if current_user %}
       <span class="header__user">{{ current_user.username }}</span>
@@ -88,6 +90,13 @@
   </main>
 
   <script src="/static/js/app.js"></script>
+  <script>
+    function toggleTheme() {
+      var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+    }
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
