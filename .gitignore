@@ -205,3 +205,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# miniMDM local config (deployment-specific, like .env)
+config/minimdm.yaml
+config/minimdm.json

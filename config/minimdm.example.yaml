@@ -1,0 +1,74 @@
+minimdm:
+  schemas:
+    # Replace 'mycompany' with a short identifier for your organisation or domain.
+    # You can define multiple schemas in the same file.
+    mycompany:
+      objects:
+
+        # --- Supplier ---
+        # A standalone object with required fields, an optional field, and a unique code.
+        supplier:
+          name: Supplier
+          description: External suppliers and vendors
+          attributes:
+            code:
+              name: Supplier Code
+              type: string
+              required: true
+              unique: true
+            name:
+              name: Supplier Name
+              type: string
+              required: true
+            country:
+              name: Country
+              type: string
+            email:
+              name: Contact Email
+              type: email
+            active:
+              name: Active
+              type: boolean
+
+        # --- Product Category ---
+        # A standalone object used as a parent for products.
+        product_category:
+          name: Product Category
+          description: Top-level grouping for products
+          attributes:
+            code:
+              name: Category Code
+              type: string
+              required: true
+              unique: true
+            name:
+              name: Category Name
+              type: string
+              required: true
+
+        # --- Product ---
+        # A child of product_category (parent relationship) with a cross-object
+        # reference to supplier and a numeric attribute.
+        product:
+          name: Product
+          description: Products sourced from suppliers
+          parent: product_category
+          attributes:
+            sku:
+              name: SKU
+              type: string
+              required: true
+              unique: true
+            name:
+              name: Product Name
+              type: string
+              required: true
+            unit_price:
+              name: Unit Price
+              type: numeric
+            introduced_on:
+              name: Introduced On
+              type: date
+            preferred_supplier:
+              name: Preferred Supplier
+              reference: supplier

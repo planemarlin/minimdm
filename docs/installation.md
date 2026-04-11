@@ -60,7 +60,7 @@ ADMIN_PASSWORD=change-me-now!
 ## Create a Config File
 
 ```bash
-cp config/minimdm.yaml config/minimdm.yaml
+cp config/minimdm.example.yaml config/minimdm.yaml
 # Edit to define your schemas and objects
 ```
 
