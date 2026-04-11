@@ -719,6 +719,7 @@ async function loadHistory(schema, obj, recordId, objConfig, canWrite) {
         </div>
         <div>
           ${canWrite && h._action !== "DELETE" ? `<button class="btn btn-secondary btn-sm"
+            title="Restore this record to the values shown in this version."
             onclick="revertToVersion('${schema}','${obj}','${recordId}',${h._version})">Revert</button>` : ""}
         </div>
       </li>`

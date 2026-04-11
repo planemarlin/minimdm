@@ -80,6 +80,24 @@ a:hover { text-decoration: underline; }
   padding: .2rem .6rem;
 }
 .header__logout:hover { border-color: #94a3b8; color: #fff; }
+.header__help {
+  background: none;
+  border: 1px solid #475569;
+  border-radius: 50%;
+  color: var(--sidebar-text);
+  cursor: pointer;
+  font-size: .75rem;
+  font-weight: 600;
+  height: 1.4rem;
+  line-height: 1;
+  margin-left: 1rem;
+  padding: 0;
+  width: 1.4rem;
+}
+.header__help:hover { border-color: #94a3b8; color: #fff; }
+.help-body h3 { font-size: .9rem; margin: 1rem 0 .25rem; }
+.help-body p { font-size: .85rem; color: var(--text-muted); margin: 0; }
+.help-body { max-height: 70vh; overflow-y: auto; }
 .menu-btn {
   display: none;
   background: none;

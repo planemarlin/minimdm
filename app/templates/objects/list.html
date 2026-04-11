@@ -12,13 +12,13 @@
     <button class="btn btn-secondary btn-sm" onclick="exportRecords('{{ schema }}','{{ obj }}','csv')">Export CSV</button>
     <button class="btn btn-secondary btn-sm" onclick="exportRecords('{{ schema }}','{{ obj }}','tsv')">Export TSV</button>
     <button class="btn btn-secondary btn-sm" onclick="exportRecords('{{ schema }}','{{ obj }}','json')">Export JSON</button>
-    <select id="upsert-key" class="btn btn-secondary btn-sm" title="Upsert key: if set, rows matching an existing record on this attribute will be updated instead of inserted">
+    <select id="upsert-key" class="btn btn-secondary btn-sm" title="Insert only: always add as a new record. Upsert: update existing records that match the selected attribute, insert the rest.">
       <option value="">Insert only</option>
       {% for attr_key, attr in obj_config.attributes.items() %}
       {% if not attr.reference %}<option value="{{ attr_key }}">Upsert on: {{ attr.name }}</option>{% endif %}
       {% endfor %}
     </select>
-    <label class="btn btn-secondary btn-sm" style="cursor:pointer">
+    <label class="btn btn-secondary btn-sm" style="cursor:pointer" title="Import records from a CSV, TSV, or JSON file. Max 10 MB.">
       Import
       <input type="file" id="import-file" style="display:none" accept=".csv,.tsv,.json" onchange="importFile(this)" />
     </label>
@@ -35,7 +35,7 @@
     <input type="search" id="search-input" placeholder="Search..." />
   </div>
   <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.35rem; cursor:pointer; user-select:none">
-    <input type="checkbox" id="show-deleted-toggle" />
+    <input type="checkbox" id="show-deleted-toggle" title="Soft-deleted records are hidden by default. Check to include them in the list." />
     Show deleted
   </label>
   <span style="font-size:.8rem; color:var(--text-muted)"><span id="total-count">…</span> records</span>
