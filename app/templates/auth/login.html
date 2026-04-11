@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/css/styles.css" />
 </head>
 <body class="login-body">
+  <div style="display:flex;flex-direction:column;align-items:center">
   <div class="login-card">
     <div class="login-card__brand">{{ app_name }}</div>
     <h1 class="login-card__title">Sign in</h1>
@@ -32,6 +33,7 @@
     This application uses one session cookie (<code>access_token</code>) to maintain your login.<br>
     No tracking or analytics cookies are used.
   </p>
+  </div>
 
   <script>
     document.getElementById("login-form").addEventListener("submit", async (e) => {
