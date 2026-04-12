@@ -252,7 +252,7 @@ class TableManager:
                 tbl_name = table.name
                 try:
                     existing = {c["name"] for c in insp.get_columns(tbl_name, schema=schema)}
-                except Exception:
+                except Exception:  # nosec B112 — table not in DB yet, create_all will handle it
                     continue  # Table not in DB yet — create_all will handle it
                 for col in table.c:
                     if col.name not in existing:

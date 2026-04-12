@@ -100,7 +100,7 @@ miniMDM stores the following data in the browser:
 
 | Storage | Key | Value | Purpose |
 |---|---|---|---|
-| Cookie (`httpOnly`) | `access_token` | JWT authentication token | Maintains the login session. Set on login, cleared on logout. Required for the application to function — no consent banner is shown since this is a strictly necessary cookie under EU ePrivacy rules. |
+| Cookie (`httpOnly`) | `access_token` | JWT authentication token | Maintains the login session. Set on login, cleared on logout. Required for the application to function — no consent banner is shown since this is a strictly necessary cookie under EU ePrivacy rules. The cookie carries the `Secure` flag when `SECURE_COOKIE=true` is set (recommended in production over HTTPS). |
 | `localStorage` | `theme` | `"light"` or `"dark"` | Remembers your light/dark mode preference across sessions. Contains no personal data. Stays in the browser until you clear site data. |
 
 No analytics, tracking, or advertising cookies or storage keys are used.

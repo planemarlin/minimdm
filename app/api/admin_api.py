@@ -40,7 +40,7 @@ def _log_admin(request: Request, action: str, target_user_id: uuid.UUID, reason:
                 ip_address=_client_ip(request),
             )
             s.commit()
-    except Exception:
+    except Exception:  # nosec B110 — audit log must never block operations
         pass
 
 
