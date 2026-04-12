@@ -15,11 +15,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - Cookie notice on login page; browser storage section added to `docs/reference.md` documenting the `access_token` cookie and `theme` localStorage key
 - `config/minimdm.yaml` and `config/minimdm.json` added to `.gitignore` — these are deployment-specific and should not be committed
 
+### Added
+- GitHub Actions CI workflow (`.github/workflows/ci.yml`): three jobs run on every push — `Lint` (ruff), `Dependency security audit` (pip-audit against the OSV database), and `Test` (pytest against a real PostgreSQL 16 instance, matrix on Python 3.11 and 3.12)
+- `SecurityHeadersMiddleware`: every response now carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and a `Content-Security-Policy` header
+- `SECURE_COOKIE` environment variable (default `false`): when set to `true`, the `access_token` session cookie is issued with the `Secure` flag so browsers only transmit it over HTTPS; enable this in all production deployments; documented in `docs/deployment.md` and `docs/reference.md`
+- `LICENSE`: miniMDM is released under the MIT License
+
 ### Fixed
 - `docs/installation.md`: config file copy command used `minimdm.yaml` as both source and destination; corrected to `minimdm.example.yaml`
 - `docs/deployment.md`: health check example showed stale version `0.1.0`; updated to `0.2.0`; added missing `LOG_FORMAT` environment variable to the env vars table
 - `README.md`: docs table was missing `docker-setup.md`, `logging.md`, `migrations.md`, and `testing.md`
 - Audit log Auth Events tab: pagination buttons called `loadAuditLog` instead of `loadAuthLog`, causing the Data Changes tab to reload on page navigation
+
+### Security
+- Upgraded `pygments` from 2.19.2 to 2.20.0 to resolve CVE-2026-4539 (ReDoS via crafted input); `pygments` is a transitive dev dependency pulled in by pytest
+- All five bandit findings were assessed as intentional design decisions and annotated with `#nosec` with explanations: two `try/except/pass` guards that prevent audit log failures from blocking operations (B110), a `0.0.0.0` bind address controlled by the operator (B104), a `try/except/continue` for tables not yet created (B112), and a placeholder `SECRET_KEY` that already triggers a startup warning (B105)
 
 ## [0.2.0] – 2026-03-25
 

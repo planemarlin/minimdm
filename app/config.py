@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     app_name: str = "miniMDM"
     app_version: str = "0.2.0"
     debug: bool = False
-    host: str = "0.0.0.0"
+    host: str = "0.0.0.0"  # nosec B104 — intentional; bind address is configured by the operator
     port: int = 8000
 
     # Logging: "json" for structured output (production), "text" for human-readable (development)
@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     # Set these to auto-create the first admin on startup when no users exist
     admin_username: str = ""
     admin_password: str = ""
+    # Set to True when serving over HTTPS to add the Secure flag to the session cookie
+    secure_cookie: bool = False
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

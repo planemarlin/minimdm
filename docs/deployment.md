@@ -37,6 +37,7 @@ Set these in your `.env` file or via your process manager before starting miniMD
 | `TOKEN_EXPIRE_HOURS` | No | JWT lifetime in hours (default: 8) |
 | `MAX_UPLOAD_SIZE` | No | Max import file size in bytes (default: 10485760 = 10 MB) |
 | `LOG_FORMAT` | No | Log output format: `text` (default, human-readable) or `json` (one JSON object per line, recommended for production) |
+| `SECURE_COOKIE` | No | Set to `true` when serving over HTTPS to add the `Secure` flag to the session cookie (default: `false`). **Enable this in production.** |
 
 ## Nginx example
 
@@ -114,6 +115,7 @@ See [docs/docker-setup.md](docker-setup.md) for running miniMDM with Docker Comp
 - [ ] `ADMIN_PASSWORD` has been changed from the initial setup value
 - [ ] miniMDM is behind a reverse proxy with a valid TLS certificate
 - [ ] HTTP redirects to HTTPS
+- [ ] `SECURE_COOKIE=true` is set in your `.env` file
 - [ ] Uvicorn binds to `127.0.0.1`, not `0.0.0.0`
 - [ ] PostgreSQL is not exposed on a public interface
 - [ ] `.env` file is not readable by other system users (`chmod 600 .env`)

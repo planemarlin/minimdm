@@ -84,4 +84,4 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for th
 
 ## License
 
-This project is open source. See [LICENSE](LICENSE) for details.
+miniMDM is released under the [MIT License](LICENSE).

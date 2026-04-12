@@ -47,7 +47,7 @@ def _log_auth(request: Request, action: str, user_id: uuid.UUID, username: str, 
                 ip_address=_client_ip(request),
             )
             s.commit()
-    except Exception:
+    except Exception:  # nosec B110 — audit log must never block auth
         pass  # Never block auth on audit failure
 
 
@@ -83,6 +83,7 @@ async def login(request: Request):
         token,
         httponly=True,
         samesite="strict",
+        secure=settings.secure_cookie,
         max_age=settings.token_expire_hours * 3600,
     )
     return response

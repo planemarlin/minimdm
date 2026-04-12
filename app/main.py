@@ -32,7 +32,7 @@ from app.database import engine
 configure_logging(settings.log_format, settings.debug)
 logger = logging.getLogger(__name__)
 
-_DEFAULT_SECRET_KEY = "change-me-in-production-use-a-long-random-string"
+_DEFAULT_SECRET_KEY = "change-me-in-production-use-a-long-random-string"  # nosec B105 — intentional placeholder; startup warns operators to change it
 
 
 @asynccontextmanager
@@ -173,6 +173,34 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(AuthMiddleware)
+
+
+# -----------------------------------------------------------------
+# Security headers middleware
+# -----------------------------------------------------------------
+
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "font-src 'self'; "
+    "object-src 'none'; "
+    "frame-ancestors 'none'"
+)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = _CSP
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 # -----------------------------------------------------------------
