@@ -1,0 +1,13 @@
+code,name,industry,country,contact_email,annual_revenue,customer_since,active
+CUS-001,Bergström Retail AB,Retail,Sweden,procurement@bergstrom.se,24.5,2019-03-15,true
+CUS-002,Heinemann GmbH,Wholesale,Germany,einkauf@heinemann-gmbh.de,67.8,2018-06-01,true
+CUS-003,Larsen & Partners AS,Interior Design,Norway,orders@larsenpartners.no,8.2,2021-01-10,true
+CUS-004,De Vries Interieurs BV,Furniture Retail,Netherlands,inkoop@devries-interieurs.nl,31.4,2020-07-22,true
+CUS-005,Kowalski Meble Sp. z o.o.,Furniture Retail,Poland,zamowienia@kowalskimeble.pl,15.9,2022-02-28,true
+CUS-006,Fontaine Décoration SAS,Interior Design,France,achats@fontainedeco.fr,19.3,2019-11-05,true
+CUS-007,Nordic Home Stores OÜ,Retail Chain,Estonia,purchasing@nordichome.ee,11.7,2021-08-14,true
+CUS-008,Rossi Arredamenti SRL,Furniture Retail,Italy,acquisti@rossiarredamenti.it,28.6,2020-04-30,true
+CUS-009,Papadopoulos Trading SA,Wholesale,Greece,orders@papadopoulostrading.gr,9.4,2022-09-01,true
+CUS-010,Andersen Møbler ApS,Furniture Retail,Denmark,indkob@andersenmobler.dk,22.1,2018-12-17,true
+CUS-011,Silva Interiores Lda,Interior Design,Portugal,compras@silvainteriores.pt,6.8,2023-03-20,true
+CUS-012,Patel Home Solutions Ltd,Retail,United Kingdom,buying@patelhome.co.uk,41.2,2019-08-09,false

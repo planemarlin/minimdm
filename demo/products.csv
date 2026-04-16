@@ -1,0 +1,16 @@
+sku,name,unit_price,stock_qty,introduced_on,active
+PRD-001,Fjord Lounge Chair,349.00,42,2024-03-01,true
+PRD-002,Bergen Writing Desk,499.00,18,2024-01-15,true
+PRD-003,Oslo Shelf Unit,229.00,64,2023-11-01,true
+PRD-004,Lund Floor Lamp,149.00,31,2024-02-01,true
+PRD-005,Malmö Storage Box,79.00,95,2023-09-15,true
+PRD-006,Göteborg Sofa,1299.00,7,2024-04-01,true
+PRD-007,Uppsala Side Table,189.00,28,2024-01-01,true
+PRD-008,Visby Garden Chair,279.00,55,2023-12-01,true
+PRD-009,Västerås Desk Lamp,89.00,113,2024-03-15,true
+PRD-010,Sundsvall Bookcase,399.00,22,2023-10-01,true
+PRD-011,Örebro Display Cabinet,649.00,11,2024-02-15,true
+PRD-012,Kalmar Cushion Set,59.00,147,2024-01-20,true
+PRD-013,Falun Wool Rug 160x230,299.00,19,2023-08-01,true
+PRD-014,Kiruna Garden Table,549.00,8,2024-05-01,true
+PRD-015,Skövde Wardrobe,899.00,14,2023-07-15,false

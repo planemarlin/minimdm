@@ -190,9 +190,15 @@ _CSP = (
 )
 
 
+_DOCS_PATHS = {"/docs", "/redoc", "/openapi.json"}
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
+        if request.url.path in _DOCS_PATHS:
+            # Swagger/ReDoc load assets from cdn.jsdelivr.net — skip CSP for docs paths
+            return response
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"

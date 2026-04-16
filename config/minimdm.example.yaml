@@ -72,3 +72,114 @@ minimdm:
             preferred_supplier:
               name: Preferred Supplier
               reference: supplier
+
+    # --- Demo schema ---
+    # A fuller example showing more attribute types and a customer object.
+    # Sample import data for all four objects is provided in the demo/ folder.
+    nordkraft:
+      objects:
+
+        supplier:
+          name: Supplier
+          description: External suppliers and vendors
+          attributes:
+            code:
+              name: Supplier Code
+              type: string
+              required: true
+              unique: true
+            name:
+              name: Supplier Name
+              type: string
+              required: true
+            country:
+              name: Country
+              type: string
+            contact_email:
+              name: Contact Email
+              type: email
+            payment_terms:
+              name: Payment Terms
+              type: string
+            active:
+              name: Active
+              type: boolean
+
+        product_category:
+          name: Product Category
+          description: Top-level product grouping
+          attributes:
+            code:
+              name: Category Code
+              type: string
+              required: true
+              unique: true
+            name:
+              name: Category Name
+              type: string
+              required: true
+            description:
+              name: Description
+              type: string
+
+        product:
+          name: Product
+          description: Products in the catalog
+          parent: product_category
+          attributes:
+            sku:
+              name: SKU
+              type: string
+              required: true
+              unique: true
+            name:
+              name: Product Name
+              type: string
+              required: true
+            unit_price:
+              name: Unit Price
+              type: numeric
+            stock_qty:
+              name: Stock Quantity
+              type: integer
+            introduced_on:
+              name: Introduced On
+              type: date
+            active:
+              name: Active
+              type: boolean
+            preferred_supplier:
+              name: Preferred Supplier
+              reference: supplier
+
+        customer:
+          name: Customer
+          description: Business customers and accounts
+          attributes:
+            code:
+              name: Customer Code
+              type: string
+              required: true
+              unique: true
+            name:
+              name: Company Name
+              type: string
+              required: true
+            industry:
+              name: Industry
+              type: string
+            country:
+              name: Country
+              type: string
+            contact_email:
+              name: Contact Email
+              type: email
+            annual_revenue:
+              name: Annual Revenue (MEUR)
+              type: numeric
+            customer_since:
+              name: Customer Since
+              type: date
+            active:
+              name: Active
+              type: boolean

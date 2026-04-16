@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import String, func, or_, select
+from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -509,13 +510,44 @@ _SYSTEM_COLS = {"_id", "_created_at", "_updated_at", "_deleted_at", "_version"}
 
 
 def _filter_columns(body: dict, table) -> dict:
-    """Keep only keys that map to writable table columns.
+    """Keep only keys that map to writable table columns and coerce to the right type.
 
     System columns are excluded; parent FK columns (e.g. _division_id) are
     included because they start with _ but are legitimate user-settable fields.
     """
+    col_types = {c.name: c.type for c in table.c}
     col_names = {c.name for c in table.c if c.name not in _SYSTEM_COLS}
-    return {k: v for k, v in body.items() if k in col_names}
+    result = {}
+    for k, v in body.items():
+        if k not in col_names:
+            continue
+        if v is None or v == "":
+            result[k] = None
+            continue
+        col_type = col_types.get(k)
+        if isinstance(col_type, Boolean):
+            result[k] = v if isinstance(v, bool) else str(v).lower() in ("true", "1", "yes", "t")
+        elif isinstance(col_type, Integer):
+            try:
+                result[k] = int(v)
+            except (ValueError, TypeError):
+                result[k] = v
+        elif isinstance(col_type, Numeric):
+            try:
+                result[k] = Decimal(str(v))
+            except InvalidOperation:
+                result[k] = v
+        elif isinstance(col_type, DateTime):
+            if isinstance(v, str):
+                try:
+                    result[k] = datetime.fromisoformat(v)
+                except ValueError:
+                    result[k] = v
+            else:
+                result[k] = v
+        else:
+            result[k] = v
+    return result
 
 
 def _client_ip(request: Request) -> str:
