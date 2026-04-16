@@ -33,6 +33,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Security
 - Upgraded `pygments` from 2.19.2 to 2.20.0 to resolve CVE-2026-4539 (ReDoS via crafted input); `pygments` is a transitive dev dependency pulled in by pytest
+- Upgraded `pytest` from 9.0.2 to 9.0.3 to resolve CVE-2025-71176; dev dependency only
+- Upgraded `python-multipart` from 0.0.22 to 0.0.26 to resolve CVE-2026-40347; used for file upload handling in the import endpoint
 - All five bandit findings were assessed as intentional design decisions and annotated with `#nosec` with explanations: two `try/except/pass` guards that prevent audit log failures from blocking operations (B110), a `0.0.0.0` bind address controlled by the operator (B104), a `try/except/continue` for tables not yet created (B112), and a placeholder `SECRET_KEY` that already triggers a startup warning (B105)
 
 ## [0.2.0] – 2026-03-25
