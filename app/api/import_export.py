@@ -3,11 +3,12 @@ import io
 import json
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import Boolean, DateTime, Integer, Numeric, func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -135,6 +136,9 @@ async def import_records(
                 400, f"upsert_key '{upsert_key}' is not a valid column for this object"
             )
 
+    if not reason and file.filename:
+        reason = f"Import of file {file.filename}"
+
     content = await file.read(settings.max_upload_size + 1)
     if len(content) > settings.max_upload_size:
         raise HTTPException(
@@ -210,11 +214,46 @@ async def import_records(
     }
 
 
+def _coerce_value(val: str, col_type):
+    """Convert a CSV string to the appropriate Python type for a SQLAlchemy column."""
+    if val == "" or val is None:
+        return None
+    if isinstance(col_type, Boolean):
+        return val.strip().lower() in ("true", "1", "yes", "t")
+    if isinstance(col_type, Integer):
+        try:
+            return int(val)
+        except ValueError:
+            raise ValueError(f"'{val}' is not a valid integer")
+    if isinstance(col_type, Numeric):
+        try:
+            return Decimal(val)
+        except InvalidOperation:
+            raise ValueError(f"'{val}' is not a valid number")
+    if isinstance(col_type, DateTime):
+        try:
+            return datetime.fromisoformat(val)
+        except ValueError:
+            raise ValueError(f"'{val}' is not a valid date (expected ISO 8601, e.g. 2024-03-01)")
+    return val
+
+
+def _coerce_row(row: dict, table) -> dict:
+    """Apply type coercion to all values in a CSV row based on column types."""
+    col_types = {c.name: c.type for c in table.c}
+    user_cols = {c.name for c in table.c if not c.name.startswith("_")}
+    result = {}
+    for k, v in row.items():
+        if k not in user_cols:
+            continue
+        result[k] = _coerce_value(v, col_types[k]) if k in col_types else (v if v != "" else None)
+    return result
+
+
 def _import_row(db, table, history_table, audit_table, row: dict, reason, request, schema, obj):
     from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
-    user_cols = {c.name for c in table.c if not c.name.startswith("_")}
-    values = {k: (v if v != "" else None) for k, v in row.items() if k in user_cols}
+    values = _coerce_row(row, table)
     record_id = uuid.uuid4()
     values["_id"] = record_id
     values["_created_at"] = now
@@ -237,8 +276,7 @@ def _upsert_row(
 ):
     from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
-    user_cols = {c.name for c in table.c if not c.name.startswith("_")}
-    values = {k: (v if v != "" else None) for k, v in row.items() if k in user_cols}
+    values = _coerce_row(row, table)
 
     match_value = values.get(upsert_key)
     existing = None

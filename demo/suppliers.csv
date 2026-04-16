@@ -1,0 +1,11 @@
+code,name,country,contact_email,payment_terms,active
+SUP-001,Nordic Fabrics AB,Sweden,orders@nordicfabrics.se,Net 30,true
+SUP-002,Alpine Materials GmbH,Germany,procurement@alpinemat.de,Net 45,true
+SUP-003,Baltic Components OÜ,Estonia,sales@balticcomp.ee,Net 30,true
+SUP-004,Meridian Supplies Ltd,United Kingdom,supply@meridiansupplies.co.uk,Net 60,true
+SUP-005,Iberian Parts SL,Spain,ventas@iberianparts.es,Net 30,true
+SUP-006,Pacific Trade Co.,Japan,import@pacifictrade.jp,Net 45,true
+SUP-007,Coastal Goods Inc.,United States,orders@coastalgoods.com,Net 30,true
+SUP-008,Adriatic Works d.o.o.,Croatia,info@adriaticworks.hr,Net 30,true
+SUP-009,Vistula Trading sp. z o.o.,Poland,handel@vistulatrade.pl,Net 45,false
+SUP-010,Aurore Matériaux SAS,France,achats@auroremateriaux.fr,Net 30,true

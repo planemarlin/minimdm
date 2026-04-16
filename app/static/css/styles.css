@@ -284,6 +284,8 @@ tr:hover td { background: var(--primary-light); }
 /* ===== Forms ===== */
 .form-group { margin-bottom: 1rem; }
 label { display: block; font-size: .8rem; font-weight: 600; margin-bottom: .3rem; color: var(--text-muted); }
+label.checkbox-label { display: flex; align-items: center; gap: .45rem; font-size: .9rem; color: var(--text); cursor: pointer; margin-bottom: 0; }
+label.checkbox-label input[type="checkbox"] { width: 1rem; height: 1rem; cursor: pointer; }
 label .required { color: var(--danger); margin-left: .15rem; }
 input[type="text"],
 input[type="email"],

@@ -526,12 +526,22 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
           <div class="form-hint">References ${v.reference}</div>
         </div>`;
       }
+      if (v.type === "boolean") {
+        const checked = record[k] === true ? " checked" : "";
+        return `<div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" name="${k}"${checked} />
+            ${escHtml(v.name || k)}
+          </label>
+        </div>`;
+      }
       const inputType = v.type === "email" ? "email"
         : v.type === "numeric" || v.type === "integer" ? "number"
         : v.type === "date" ? "date"
         : "text";
       const step = v.type === "integer" ? ' step="1"' : v.type === "numeric" ? ' step="any"' : "";
-      const val = record[k] ?? "";
+      const rawVal = record[k] ?? "";
+      const val = v.type === "date" && rawVal ? rawVal.slice(0, 10) : rawVal;
       return `<div class="form-group">
         <label>${escHtml(v.name || k)}${v.required ? '<span class="required">*</span>' : ""}</label>
         <input type="${inputType}" name="${k}" value="${escHtml(val)}"
@@ -589,6 +599,11 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
     const body = {};
     for (const [k, v] of fd.entries()) {
       if (v !== "") body[k] = v;
+    }
+    // Checkboxes for boolean fields are absent from FormData when unchecked —
+    // explicitly set true/false so the API receives a JSON boolean, not a string.
+    for (const [k, v] of Object.entries(objConfig.attributes || {})) {
+      if (v.type === "boolean") body[k] = fd.has(k);
     }
 
     const method = recordId ? "PUT" : "POST";

@@ -107,7 +107,15 @@ async function importFile(input) {
     statusEl.innerHTML = `<div class="alert alert-success">${parts.join(", ") || "0 records"}.${errHtml}</div>`;
     recordList.load();
   } else {
-    statusEl.innerHTML = `<div class="alert alert-error">${data.detail || "Import failed."}</div>`;
+    const detail = data.detail;
+    let msg;
+    if (typeof detail === "object" && detail !== null) {
+      const errLines = (detail.errors || []).map(e => `Row ${e.row}: ${e.error}`).join("<br>");
+      msg = (detail.detail || "Import failed.") + (errLines ? `<br><br>${errLines}` : "");
+    } else {
+      msg = detail || "Import failed.";
+    }
+    statusEl.innerHTML = `<div class="alert alert-error">${msg}</div>`;
   }
   input.value = "";
 }
