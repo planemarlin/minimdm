@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.0] – 2026-04-16
+
 ### Added
 - `config/minimdm.example.yaml`: example config file showcasing all key features — required/unique attributes, parent relationships, cross-object references, and all attribute types
 - Sorting on parent and reference columns is intentionally not supported; column headers are non-clickable to reflect this; documented in `docs/reference.md` and `docs/known_issues.md`
