@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.1] – 2026-04-17
+
+### Security
+- Upgraded `mako` from 1.3.10 to 1.3.11 to resolve a path traversal vulnerability via double-slash URI prefix in `TemplateLookup` (GHSA); `mako` is a transitive dependency pulled in by Alembic — miniMDM does not use Mako templates directly
+
 ## [0.3.0] – 2026-04-16
 
 ### Added
