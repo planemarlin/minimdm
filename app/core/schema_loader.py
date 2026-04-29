@@ -74,6 +74,7 @@ def _normalize(raw: dict) -> dict:
                 "name": obj_body.get("name", obj_key),
                 "description": obj_body.get("description", ""),
                 "parent": obj_body.get("parent"),
+                "require_change_reason": bool(obj_body.get("require_change_reason", False)),
                 "attributes": attributes,
             }
 

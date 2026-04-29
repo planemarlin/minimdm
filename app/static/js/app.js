@@ -274,7 +274,12 @@ class RecordList {
 
   async confirmDelete(id) {
     if (!confirm("Delete this record? This action can be undone via history.")) return;
-    const reason = prompt("Reason for deletion (optional):") || "";
+    const requireReason = !!this.objConfig.require_change_reason;
+    const reason = prompt(`Reason for deletion (${requireReason ? "required" : "optional"}):`) || "";
+    if (requireReason && !reason.trim()) {
+      alert("A reason is required to delete this record.");
+      return;
+    }
     const res = await fetch(
       `/api/records/${this.schema}/${this.obj}/${id}?reason=${encodeURIComponent(reason)}`,
       { method: "DELETE" }
@@ -595,9 +600,10 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
       </div>`
     : "";
 
+  const reasonRequired = !!objConfig.require_change_reason;
   const reasonField = `<div class="form-group">
-    <label>Reason for change</label>
-    <input type="text" name="_reason" placeholder="Optional: why is this record being changed?" />
+    <label>Reason for change${reasonRequired ? ' <span style="color:var(--danger)">*</span>' : ''}</label>
+    <input type="text" name="_reason" ${reasonRequired ? 'required' : ''} placeholder="${reasonRequired ? 'Required: why is this record being changed?' : 'Optional: why is this record being changed?'}" />
     <div class="form-hint">Stored in the audit log</div>
   </div>`;
 
@@ -771,7 +777,7 @@ async function loadHistory(schema, obj, recordId, objConfig, canWrite) {
         <div>
           ${canWrite && h._action !== "DELETE" ? `<button class="btn btn-secondary btn-sm"
             title="Restore this record to the values shown in this version."
-            onclick="revertToVersion('${schema}','${obj}','${recordId}',${h._version})">Revert</button>` : ""}
+            onclick="revertToVersion('${schema}','${obj}','${recordId}',${h._version},${!!objConfig.require_change_reason})">Revert</button>` : ""}
         </div>
       </li>`
     )
@@ -780,9 +786,13 @@ async function loadHistory(schema, obj, recordId, objConfig, canWrite) {
   container.innerHTML = `<ul class="history-list">${rows}</ul>`;
 }
 
-async function revertToVersion(schema, obj, recordId, version) {
-  const reason = prompt(`Revert to version ${version}? Enter reason (optional):`) ?? "";
+async function revertToVersion(schema, obj, recordId, version, requireReason = false) {
+  const reason = prompt(`Revert to version ${version}? Enter reason (${requireReason ? "required" : "optional"}):`) ?? "";
   if (reason === null) return; // cancelled
+  if (requireReason && !reason.trim()) {
+    alert("A reason is required to revert this record.");
+    return;
+  }
   const res = await fetch(
     `/api/records/${schema}/${obj}/${recordId}/revert/${version}?reason=${encodeURIComponent(reason)}`,
     { method: "POST" }

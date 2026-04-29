@@ -19,6 +19,11 @@ def _get_tm(request: Request):
     return request.app.state.table_manager
 
 
+def _check_reason(reason: Optional[str], obj_config: Optional[dict]) -> None:
+    if obj_config and obj_config.get("require_change_reason") and not (reason or "").strip():
+        raise HTTPException(422, "A reason for this change is required for this object.")
+
+
 def _get_username(request: Request) -> Optional[str]:
     user = getattr(request.state, "current_user", None)
     return user["username"] if user else None
@@ -184,6 +189,8 @@ def create_record(
     except KeyError:
         raise HTTPException(404, f"Object '{schema}.{obj}' not found")
 
+    _check_reason(body.get("_reason"), tm.get_object_config(schema, obj))
+
     now = datetime.now(timezone.utc)
     record_id = uuid.uuid4()
     values = _filter_columns(body, table)
@@ -247,6 +254,8 @@ def update_record(
 
     if not existing:
         raise HTTPException(404, "Record not found")
+
+    _check_reason(body.get("_reason"), tm.get_object_config(schema, obj))
 
     now = datetime.now(timezone.utc)
     record_state = existing["_state"] if "_state" in existing.keys() else "active"
@@ -414,6 +423,8 @@ def delete_record(
     if not existing:
         raise HTTPException(404, "Record not found")
 
+    _check_reason(reason, tm.get_object_config(schema, obj))
+
     now = datetime.now(timezone.utc)
 
     current_version_row = db.execute(
@@ -524,6 +535,8 @@ def revert_record(
 
     if not existing:
         raise HTTPException(404, "Record not found")
+
+    _check_reason(reason, tm.get_object_config(schema, obj))
 
     old_values = dict(existing)
     now = datetime.now(timezone.utc)
@@ -648,6 +661,8 @@ def publish_record(
     if not active:
         raise HTTPException(404, "Linked active record not found")
 
+    _check_reason(reason, tm.get_object_config(schema, obj))
+
     now = datetime.now(timezone.utc)
 
     # Build the set of user-writable column names (no system cols)
@@ -752,6 +767,8 @@ def retire_record(
     ).mappings().first()
     if not existing:
         raise HTTPException(404, "Active record not found (only active records can be retired)")
+
+    _check_reason(reason, tm.get_object_config(schema, obj))
 
     now = datetime.now(timezone.utc)
     old_values = dict(existing)

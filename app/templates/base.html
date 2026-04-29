@@ -49,7 +49,7 @@
         <p>Every change to a record is saved as a new version. Click <em>History</em> on any record to see all versions, then <em>Revert</em> to restore a previous one. Reverts are themselves versioned and audited.</p>
 
         <h3>Reason for change</h3>
-        <p>The optional <em>Reason</em> field on create, edit, and delete forms is stored in the audit log alongside the change. Use it to explain why a value was changed.</p>
+        <p>The <em>Reason</em> field on create, edit, and delete forms is stored in the audit log alongside the change. Use it to explain why a value was changed. If an object is configured with <code>require_change_reason: true</code>, the field is mandatory — the form and all API operations will reject the change without it.</p>
 
         <h3>Import &amp; Upsert</h3>
         <p>Import records from CSV, TSV, or JSON. <em>Insert only</em> always adds a new record. <em>Upsert on &lt;attribute&gt;</em> updates existing records whose value matches on that attribute and inserts the rest. The import respects the active state filter — select Draft in the list before importing to import records as drafts.</p>

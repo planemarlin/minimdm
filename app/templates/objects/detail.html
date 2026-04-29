@@ -42,7 +42,7 @@
       This action can be undone via the record history.
     </p>
     <div class="form-group">
-      <label for="delete-reason">Reason <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+      <label for="delete-reason">Reason{% if obj_config.require_change_reason %} <span style="color:var(--danger)">*</span>{% else %} <span style="font-weight:400;color:var(--text-muted)">(optional)</span>{% endif %}</label>
       <input type="text" id="delete-reason" placeholder="Why is this record being deleted?" />
     </div>
     <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.25rem">
@@ -64,7 +64,7 @@
       The draft will be applied to the active record. This action is recorded in the audit log.
     </p>
     <div class="form-group">
-      <label for="publish-reason">Reason <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+      <label for="publish-reason">Reason{% if obj_config.require_change_reason %} <span style="color:var(--danger)">*</span>{% else %} <span style="font-weight:400;color:var(--text-muted)">(optional)</span>{% endif %}</label>
       <input type="text" id="publish-reason" placeholder="Why is this draft being published?" />
     </div>
     <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.25rem">
@@ -84,7 +84,7 @@
       The record will be moved to the retired state and excluded from default API responses. This action is recorded in the audit log.
     </p>
     <div class="form-group">
-      <label for="retire-reason">Reason <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+      <label for="retire-reason">Reason{% if obj_config.require_change_reason %} <span style="color:var(--danger)">*</span>{% else %} <span style="font-weight:400;color:var(--text-muted)">(optional)</span>{% endif %}</label>
       <input type="text" id="retire-reason" placeholder="Why is this record being retired?" />
     </div>
     <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.25rem">
@@ -101,6 +101,8 @@
 loadRecordDetail("{{ schema }}", "{{ obj }}", "{{ record_id }}", {{ obj_config | tojson }},
   { canPublish: {{ 'true' if can_publish else 'false' }}, canWrite: {{ 'true' if can_write else 'false' }} });
 
+const requireReason = {{ 'true' if obj_config.require_change_reason else 'false' }};
+
 {% if can_write %}
 function openDeleteModal() {
   document.getElementById("delete-reason").value = "";
@@ -115,6 +117,10 @@ function closeDeleteModal(event) {
 
 async function submitDelete() {
   const reason = document.getElementById("delete-reason").value.trim();
+  if (requireReason && !reason) {
+    alert("A reason is required to delete this record.");
+    return;
+  }
   const url = `/api/records/{{ schema }}/{{ obj }}/{{ record_id }}` +
     (reason ? `?reason=${encodeURIComponent(reason)}` : "");
   const res = await fetch(url, { method: "DELETE" });
@@ -139,6 +145,10 @@ function closePublishModal(event) {
 }
 async function submitPublish() {
   const reason = document.getElementById("publish-reason").value.trim();
+  if (requireReason && !reason) {
+    alert("A reason is required to publish this record.");
+    return;
+  }
   const url = `/api/records/{{ schema }}/{{ obj }}/{{ record_id }}/publish` +
     (reason ? `?reason=${encodeURIComponent(reason)}` : "");
   const res = await fetch(url, { method: "POST" });
@@ -163,6 +173,10 @@ function closeRetireModal(event) {
 }
 async function submitRetire() {
   const reason = document.getElementById("retire-reason").value.trim();
+  if (requireReason && !reason) {
+    alert("A reason is required to retire this record.");
+    return;
+  }
   const url = `/api/records/{{ schema }}/{{ obj }}/{{ record_id }}/retire` +
     (reason ? `?reason=${encodeURIComponent(reason)}` : "");
   const res = await fetch(url, { method: "POST" });

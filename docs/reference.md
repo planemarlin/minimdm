@@ -45,6 +45,25 @@ Setting `parent: <object_key>` adds a `_{parent}_id` UUID column to the table. U
 
 Use `reference: <object_key>` instead of `type` to create a foreign-key style link. The column stored is `{attribute_key}_id` (UUID). The UI renders a dropdown populated from the referenced object.
 
+### Object-Level Flags
+
+| Flag | Type | Description |
+|---|---|---|
+| `require_change_reason` | `true`/`false` | When `true`, a non-empty `_reason` is required on every create, update, delete, revert, publish, and retire operation. The API returns HTTP 422 if the reason is missing. The UI marks the Reason field as required with a red asterisk. |
+
+Example:
+
+```yaml
+objects:
+  product:
+    name: Product
+    require_change_reason: true
+    attributes:
+      code:
+        name: Code
+        type: string
+```
+
 ## System Columns
 
 Every object table includes these system-managed columns (not in the config):
