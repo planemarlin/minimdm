@@ -139,6 +139,8 @@ class TableManager:
             Column("_updated_at", DateTime(timezone=True), nullable=False),
             Column("_created_by", Text, nullable=True),
             Column("_deleted_at", DateTime(timezone=True), nullable=True),
+            Column("_state", Text, nullable=False, server_default="'active'"),
+            Column("_draft_of_id", PGUUID(as_uuid=True), nullable=True),
         ]
 
         parent = obj_body.get("parent")
@@ -201,6 +203,7 @@ class TableManager:
             Column("_action", Text, nullable=False),  # INSERT | UPDATE | DELETE
             Column("_created_at", DateTime(timezone=True), nullable=True),
             Column("_created_by", Text, nullable=True),
+            Column("_state", Text, nullable=True),
         ]
 
         parent = obj_body.get("parent")
@@ -257,10 +260,23 @@ class TableManager:
                 for col in table.c:
                     if col.name not in existing:
                         col_type = col.type.compile(dialect=self.engine.dialect)
+                        default_clause = ""
+                        sd = col.server_default
+                        if sd is not None and hasattr(sd, "arg") and isinstance(sd.arg, str):
+                            default_clause = f" DEFAULT {sd.arg}"
                         conn.execute(text(
                             f'ALTER TABLE "{schema}"."{tbl_name}" '
-                            f'ADD COLUMN IF NOT EXISTS "{col.name}" {col_type}'
+                            f'ADD COLUMN IF NOT EXISTS "{col.name}" {col_type}{default_clause}'
                         ))
+                    else:
+                        # Backfill NULLs for columns that already exist but were added
+                        # without a DEFAULT (e.g. _state added by an earlier migration).
+                        sd = col.server_default
+                        if sd is not None and hasattr(sd, "arg") and isinstance(sd.arg, str):
+                            conn.execute(text(
+                                f'UPDATE "{schema}"."{tbl_name}" '
+                                f'SET "{col.name}" = {sd.arg} WHERE "{col.name}" IS NULL'
+                            ))
             conn.commit()
 
     def _ensure_constraints(self) -> None:
@@ -302,12 +318,28 @@ class TableManager:
                                 ))
 
                         if attr_body.get("unique"):
-                            cname = f"uq_{obj_key}_{attr_key}"
-                            if cname not in existing:
+                            idx_name = f"uq_{obj_key}_{attr_key}"
+                            # Drop any old full unique constraints that predate the partial-index
+                            # design (named convention or PostgreSQL auto-generated name).
+                            for old_cname in (idx_name, f"{obj_key}_{attr_key}_key"):
+                                if old_cname in existing:
+                                    conn.execute(text(
+                                        f'ALTER TABLE "{schema_name}"."{obj_key}" '
+                                        f'DROP CONSTRAINT "{old_cname}"'
+                                    ))
+                            # Partial unique index: only active records participate.
+                            # Drafts may share a value with their master active record.
+                            idx_row = conn.execute(text("""
+                                SELECT 1 FROM pg_indexes
+                                WHERE schemaname = :s
+                                  AND tablename  = :t
+                                  AND indexname  = :i
+                            """), {"s": schema_name, "t": obj_key, "i": idx_name}).first()
+                            if not idx_row:
                                 conn.execute(text(
-                                    f'ALTER TABLE "{schema_name}"."{obj_key}" '
-                                    f'ADD CONSTRAINT "{cname}" '
-                                    f'UNIQUE ("{attr_key}")'
+                                    f'CREATE UNIQUE INDEX "{idx_name}" '
+                                    f'ON "{schema_name}"."{obj_key}" ("{attr_key}") '
+                                    f"WHERE _state = 'active'"
                                 ))
             conn.commit()
 
@@ -337,7 +369,9 @@ class TableManager:
             attr_key,
             col_type,
             nullable=not attr_body.get("required", False),
-            unique=attr_body.get("unique", False),
+            # unique= intentionally omitted: uniqueness is enforced as a partial index
+            # on _state='active' in _ensure_constraints(), so drafts can share values
+            # with their master active record without violating the constraint.
             comment=attr_body.get("name", attr_key),
         )
 

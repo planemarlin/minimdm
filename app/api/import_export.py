@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core import audit as audit_svc
 from app.core.limiter import limiter
-from app.core.permissions import require_schema_access
+from app.core.permissions import check_permission, require_schema_access
 from app.database import get_db
 
 router = APIRouter()
@@ -46,6 +46,7 @@ def export_records(
     obj: str,
     request: Request,
     format: str = Query("csv", pattern="^(csv|tsv|json)$"),
+    state: str = Query("active", pattern="^(active|draft|retired|all)$"),
     limit: Optional[int] = Query(None, ge=1, description="Maximum number of rows to export"),
     offset: int = Query(0, ge=0, description="Number of rows to skip"),
     db: Session = Depends(get_db),
@@ -58,6 +59,8 @@ def export_records(
         raise HTTPException(404, f"Object '{schema}.{obj}' not found")
 
     base_query = select(table).where(table.c._deleted_at.is_(None)).order_by(table.c._created_at)
+    if state != "all":
+        base_query = base_query.where(table.c._state == state)
     total = db.execute(select(func.count()).select_from(base_query.subquery())).scalar()
 
     paginated = base_query.offset(offset)
@@ -117,10 +120,27 @@ async def import_records(
     format: str = Query("csv", pattern="^(csv|tsv|json)$"),
     upsert_key: Optional[str] = Query(None),
     reason: Optional[str] = Query(None),
+    initial_state: str = Query(
+        "active",
+        pattern="^(active|draft)$",
+        description="State for newly inserted records (active or draft). "
+                    "Importing as active requires Publisher or Admin.",
+    ),
     strict: bool = Query(True, description="Roll back all rows if any row fails (default: true)"),
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema, write=True)
+
+    if initial_state == "active":
+        user = getattr(request.state, "current_user", None)
+        if user and not user.get("is_admin"):
+            engine = request.app.state.table_manager.engine
+            if not check_permission(engine, user["user_id"], schema, publish=True):
+                raise HTTPException(
+                    403,
+                    "Importing records as 'active' requires Publisher or Admin role. "
+                    "Use initial_state=draft to import as drafts instead."
+                )
     tm = _get_tm(request)
     try:
         table = tm.get_table(schema, obj)
@@ -172,7 +192,7 @@ async def import_records(
             if upsert_key:
                 action = _upsert_row(
                     db, table, history_table, audit_table,
-                    row, upsert_key, reason, request, schema, obj
+                    row, upsert_key, reason, request, schema, obj, initial_state
                 )
                 if action == "updated":
                     updated += 1
@@ -181,7 +201,7 @@ async def import_records(
             else:
                 _import_row(
                     db, table, history_table, audit_table,
-                    row, reason, request, schema, obj
+                    row, reason, request, schema, obj, initial_state
                 )
                 inserted += 1
             if sp:
@@ -250,7 +270,8 @@ def _coerce_row(row: dict, table) -> dict:
     return result
 
 
-def _import_row(db, table, history_table, audit_table, row: dict, reason, request, schema, obj):
+def _import_row(db, table, history_table, audit_table, row: dict, reason, request, schema, obj,
+                initial_state: str = "active"):
     from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
     values = _coerce_row(row, table)
@@ -258,6 +279,7 @@ def _import_row(db, table, history_table, audit_table, row: dict, reason, reques
     values["_id"] = record_id
     values["_created_at"] = now
     values["_updated_at"] = now
+    values["_state"] = initial_state
 
     db.execute(table.insert().values(**values))
     audit_svc.write_history(
@@ -272,7 +294,8 @@ def _import_row(db, table, history_table, audit_table, row: dict, reason, reques
 
 
 def _upsert_row(
-    db, table, history_table, audit_table, row: dict, upsert_key: str, reason, request, schema, obj
+    db, table, history_table, audit_table, row: dict, upsert_key: str, reason, request, schema, obj,
+    initial_state: str = "active",
 ):
     from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
@@ -289,7 +312,71 @@ def _upsert_row(
 
     if existing:
         rid = existing["_id"]
+        existing_state = existing["_state"] if "_state" in existing.keys() else "active"
         old_values = dict(existing)
+
+        if initial_state == "draft" and existing_state == "active":
+            # Draft-copy-on-edit: leave the active record unchanged; create/update a draft.
+            existing_draft = db.execute(
+                select(table)
+                .where(table.c._draft_of_id == rid)
+                .where(table.c._state == "draft")
+                .where(table.c._deleted_at.is_(None))
+            ).mappings().first()
+
+            if existing_draft:
+                draft_id = existing_draft["_id"]
+                draft_updates = {**values, "_updated_at": now}
+                db.execute(table.update().where(table.c._id == draft_id).values(**draft_updates))
+                current_version_row = db.execute(
+                    select(history_table)
+                    .where(history_table.c._id == draft_id)
+                    .where(history_table.c._valid_to.is_(None))
+                    .with_for_update()
+                ).mappings().first()
+                current_version = current_version_row["_version"] if current_version_row else 0
+                if current_version_row:
+                    db.execute(
+                        history_table.update()
+                        .where(history_table.c._history_id == current_version_row["_history_id"])
+                        .values(_valid_to=now)
+                    )
+                new_draft_values = {**dict(existing_draft), **draft_updates}
+                audit_svc.write_history(
+                    db, history_table, new_draft_values, version=current_version + 1,
+                    action="UPDATE", valid_from=now, reason=reason, user_name=_get_username(request)
+                )
+                audit_svc.log_change(
+                    db, audit_table, schema, obj, draft_id, "UPDATE",
+                    old_values=audit_svc._serialize(dict(existing_draft)),
+                    new_values=audit_svc._serialize(new_draft_values),
+                    reason=reason, ip_address=_client_ip(request), user_name=_get_username(request)
+                )
+            else:
+                draft_id = uuid.uuid4()
+                draft_values = {
+                    k: v for k, v in old_values.items()
+                    if k not in ("_id", "_created_at", "_updated_at", "_deleted_at",
+                                 "_state", "_draft_of_id")
+                }
+                draft_values.update(values)
+                draft_values["_id"] = draft_id
+                draft_values["_created_at"] = now
+                draft_values["_updated_at"] = now
+                draft_values["_deleted_at"] = None
+                draft_values["_state"] = "draft"
+                draft_values["_draft_of_id"] = rid
+                db.execute(table.insert().values(**draft_values))
+                audit_svc.write_history(
+                    db, history_table, draft_values, version=1,
+                    action="INSERT", valid_from=now, reason=reason, user_name=_get_username(request)
+                )
+                audit_svc.log_change(
+                    db, audit_table, schema, obj, draft_id, "DRAFT_CREATED",
+                    old_values=None, new_values=audit_svc._serialize(draft_values),
+                    reason=reason, ip_address=_client_ip(request), user_name=_get_username(request)
+                )
+            return "updated"
 
         current_version_row = db.execute(
             select(history_table)
@@ -326,6 +413,7 @@ def _upsert_row(
         values["_id"] = record_id
         values["_created_at"] = now
         values["_updated_at"] = now
+        values["_state"] = initial_state
         db.execute(table.insert().values(**values))
         audit_svc.write_history(
             db, history_table, values, version=1, action="INSERT", valid_from=now,

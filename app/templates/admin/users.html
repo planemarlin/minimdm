@@ -13,7 +13,7 @@
       <tr>
         <th style="width:2rem"></th>
         <th class="th-sortable" id="th-col-username" onclick="setUserSort('username')">Username <span class="th-sort-icon"></span></th>
-        <th class="th-sortable" id="th-col-role" onclick="setUserSort('role')">Role <span class="th-sort-icon"></span></th>
+        <th class="th-sortable" id="th-col-role" onclick="setUserSort('role')">Type <span class="th-sort-icon"></span></th>
         <th class="th-sortable" id="th-col-status" onclick="setUserSort('status')">Status <span class="th-sort-icon"></span></th>
         <th class="th-sortable" id="th-col-created" onclick="setUserSort('created')">Created <span class="th-sort-icon"></span></th>
         <th>Actions</th>
@@ -205,26 +205,40 @@ async function loadPermissions(userId) {
 
   const rows = _allSchemas.map(s => {
     const p = permMap[s] || null;
-    const hasRead = p ? p.can_read : false;
-    const hasWrite = p ? p.can_write : false;
-    const readId  = `perm-read-${userId}-${s}`;
-    const writeId = `perm-write-${userId}-${s}`;
+    const hasRead    = p ? p.can_read    : false;
+    const hasWrite   = p ? p.can_write   : false;
+    const hasPublish = p ? p.can_publish : false;
+    const readId    = `perm-read-${userId}-${s}`;
+    const writeId   = `perm-write-${userId}-${s}`;
+    const publishId = `perm-publish-${userId}-${s}`;
+    const roleLabel = hasPublish ? 'Publisher' : hasWrite ? 'Editor' : hasRead ? 'Viewer' : '—';
+    const roleCls   = hasPublish ? 'badge-insert' : hasWrite ? 'badge-update' : hasRead ? '' : '';
     return `
       <tr>
         <td style="padding:.3rem .6rem; font-family:monospace; font-size:.85rem">${escHtml(s)}</td>
         <td style="padding:.3rem .6rem">
           <label style="display:flex; align-items:center; gap:.3rem; font-size:.85rem; cursor:pointer">
             <input type="checkbox" id="${readId}" ${hasRead ? 'checked' : ''}
-              onchange="onReadChange('${userId}','${s}','${readId}','${writeId}')" />
-            Read
+              onchange="onReadChange('${userId}','${s}','${readId}','${writeId}','${publishId}')" />
+            Read (Viewer)
           </label>
         </td>
         <td style="padding:.3rem .6rem">
           <label style="display:flex; align-items:center; gap:.3rem; font-size:.85rem; cursor:pointer">
             <input type="checkbox" id="${writeId}" ${hasWrite ? 'checked' : ''}
-              onchange="onWriteChange('${userId}','${s}','${readId}','${writeId}')" />
-            Write
+              onchange="onWriteChange('${userId}','${s}','${readId}','${writeId}','${publishId}')" />
+            Write (Editor)
           </label>
+        </td>
+        <td style="padding:.3rem .6rem">
+          <label style="display:flex; align-items:center; gap:.3rem; font-size:.85rem; cursor:pointer">
+            <input type="checkbox" id="${publishId}" ${hasPublish ? 'checked' : ''}
+              onchange="onPublishChange('${userId}','${s}','${readId}','${writeId}','${publishId}')" />
+            Publish (Publisher)
+          </label>
+        </td>
+        <td style="padding:.3rem .6rem">
+          <span class="badge ${roleCls}" style="font-size:.7rem">${roleLabel}</span>
         </td>
         <td style="padding:.3rem .6rem">
           ${p ? `<button class="btn btn-sm btn-danger" onclick="revokePermission('${userId}','${s}')">Revoke</button>` : ''}
@@ -240,6 +254,8 @@ async function loadPermissions(userId) {
           <th style="padding:.3rem .6rem; text-align:left">Schema</th>
           <th style="padding:.3rem .6rem; text-align:left">Read</th>
           <th style="padding:.3rem .6rem; text-align:left">Write</th>
+          <th style="padding:.3rem .6rem; text-align:left">Publish</th>
+          <th style="padding:.3rem .6rem; text-align:left">Role</th>
           <th style="padding:.3rem .6rem"></th>
         </tr>
       </thead>
@@ -247,27 +263,36 @@ async function loadPermissions(userId) {
     </table>`;
 }
 
-function onReadChange(userId, schemaName, readId, writeId) {
-  const readEl  = document.getElementById(readId);
-  const writeEl = document.getElementById(writeId);
-  // Removing read also removes write
-  if (!readEl.checked) writeEl.checked = false;
-  _applyPermission(userId, schemaName, readEl.checked, writeEl.checked);
+function onReadChange(userId, schemaName, readId, writeId, publishId) {
+  const readEl    = document.getElementById(readId);
+  const writeEl   = document.getElementById(writeId);
+  const publishEl = document.getElementById(publishId);
+  if (!readEl.checked) { writeEl.checked = false; publishEl.checked = false; }
+  _applyPermission(userId, schemaName, readEl.checked, writeEl.checked, publishEl.checked);
 }
 
-function onWriteChange(userId, schemaName, readId, writeId) {
+function onWriteChange(userId, schemaName, readId, writeId, publishId) {
   const readEl  = document.getElementById(readId);
   const writeEl = document.getElementById(writeId);
-  // Granting write also grants read
+  const publishEl = document.getElementById(publishId);
   if (writeEl.checked) readEl.checked = true;
-  _applyPermission(userId, schemaName, readEl.checked, writeEl.checked);
+  if (!writeEl.checked) publishEl.checked = false;
+  _applyPermission(userId, schemaName, readEl.checked, writeEl.checked, publishEl.checked);
 }
 
-async function _applyPermission(userId, schemaName, canRead, canWrite) {
+function onPublishChange(userId, schemaName, readId, writeId, publishId) {
+  const readEl    = document.getElementById(readId);
+  const writeEl   = document.getElementById(writeId);
+  const publishEl = document.getElementById(publishId);
+  if (publishEl.checked) { readEl.checked = true; writeEl.checked = true; }
+  _applyPermission(userId, schemaName, readEl.checked, writeEl.checked, publishEl.checked);
+}
+
+async function _applyPermission(userId, schemaName, canRead, canWrite, canPublish) {
   await fetch(`/api/admin/users/${userId}/permissions/${schemaName}`, {
     method: 'PUT',
     headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ can_read: canRead, can_write: canWrite }),
+    body: JSON.stringify({ can_read: canRead, can_write: canWrite, can_publish: canPublish }),
   });
   await loadPermissions(userId);
 }

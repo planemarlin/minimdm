@@ -34,6 +34,12 @@
   <div class="search-box">
     <input type="search" id="search-input" placeholder="Search..." />
   </div>
+  <select id="state-filter" class="btn btn-secondary btn-sm" title="Filter records by lifecycle state">
+    <option value="active">Active</option>
+    <option value="draft">Draft</option>
+    <option value="retired">Retired</option>
+    <option value="all">All states</option>
+  </select>
   <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.35rem; cursor:pointer; user-select:none">
     <input type="checkbox" id="show-deleted-toggle" title="Soft-deleted records are hidden by default. Check to include them in the list." />
     Show deleted
@@ -91,7 +97,9 @@ async function importFile(input) {
   fd.append("file", file);
   const statusEl = document.getElementById("import-status");
   statusEl.innerHTML = `<div class="alert alert-info">Importing…</div>`;
-  const params = new URLSearchParams({ format });
+  const stateEl = document.getElementById("state-filter");
+  const initialState = stateEl?.value === "draft" ? "draft" : "active";
+  const params = new URLSearchParams({ format, initial_state: initialState });
   if (upsertKey) params.set("upsert_key", upsertKey);
   const res = await fetch(`/api/records/{{ schema }}/{{ obj }}/import?${params}`, {
     method: "POST", body: fd

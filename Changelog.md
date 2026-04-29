@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **Lifecycle states**: every record now carries a `_state` field with three values — `draft`, `active`, and `retired`; new records are created as `active`; history tables also snapshot the state
+- **Draft copy on edit**: editing an `active` record no longer modifies it in place; instead a new `draft` copy is created alongside the active record (`_draft_of_id` links them); the active record remains fully visible to API consumers while the draft is being prepared; editing a draft updates it in place
+- **Publish endpoint** (`POST /api/records/{schema}/{obj}/{draft_id}/publish`): promotes a `draft` to `active` by copying its data back to the stable master record and soft-deleting the draft; requires Publisher or Admin role
+- **Retire endpoint** (`POST /api/records/{schema}/{obj}/{record_id}/retire`): transitions an `active` record to `retired`; retired records are excluded from default API responses; requires Publisher or Admin role
+- **Publisher role**: `schema_permissions` table gains a `can_publish` column; four roles are now supported — Viewer (read), Editor (read + write), Publisher (read + write + publish lifecycle transitions), and Admin (everything); role label shown in the permissions panel
+- **State filtering** on `GET /api/records/{schema}/{obj}` and export: default is `active`; use `?state=draft`, `?state=retired`, or `?state=all` to broaden the filter
+- **State filter dropdown** in the record list UI (Active / Draft / Retired / All states)
+- **State badge** in record list rows and record detail metadata: draft records show an amber "draft" badge; retired records show a grey "retired" badge
+- **Publish and Retire buttons** on the record detail page: Publish appears for draft records (Publisher/Admin only); Retire appears for active records (Publisher/Admin only); Edit and Delete are hidden for retired records
+- **Import initial state**: `POST /api/records/{schema}/{obj}/import` accepts `initial_state=active` (default) or `initial_state=draft`; importing as `active` requires Publisher or Admin role — Editors can import as `draft` and publish later
+
+### Fixed
+- Export now respects the active state filter dropdown: exporting while viewing drafts exports drafts, not active records
+- Import now passes `initial_state=draft` automatically when the state filter is set to Draft, so imported records land in the correct state without manual API configuration
+- Import upsert with `initial_state=draft` now correctly follows the draft-copy-on-edit flow when the matched record is `active`: a draft copy is created (or the existing draft updated) rather than modifying the active record directly
+- Users page account-type column renamed from "Role" to "Type" to avoid confusion with the per-schema role (Viewer / Editor / Publisher) shown in the permissions panel
+
 ## [0.3.1] – 2026-04-17
 
 ### Security

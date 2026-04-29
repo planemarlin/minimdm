@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import audit as audit_svc
-from app.core.permissions import require_schema_access
+from app.core.permissions import require_publish_access, require_schema_access
 from app.database import get_db
 
 router = APIRouter()
@@ -49,6 +49,7 @@ def list_records(
     page_size: int = Query(50, ge=1, le=500),
     search: Optional[str] = Query(None),
     include_deleted: bool = Query(False),
+    state: str = Query("active", pattern="^(active|draft|retired|all)$"),
     parent_id: Optional[str] = Query(None),
     ref_field: Optional[str] = Query(None),
     ref_id: Optional[str] = Query(None),
@@ -68,6 +69,8 @@ def list_records(
     q = select(table)
     if not include_deleted:
         q = q.where(table.c._deleted_at.is_(None))
+    if state != "all":
+        q = q.where(table.c._state == state)
 
     if parent_id:
         parent_key = obj_cfg.get("parent")
@@ -187,6 +190,7 @@ def create_record(
     values["_id"] = record_id
     values["_created_at"] = now
     values["_updated_at"] = now
+    values["_state"] = "active"
 
     try:
         db.execute(table.insert().values(**values))
@@ -244,10 +248,96 @@ def update_record(
     if not existing:
         raise HTTPException(404, "Record not found")
 
-    old_values = dict(existing)
     now = datetime.now(timezone.utc)
+    record_state = existing["_state"] if "_state" in existing.keys() else "active"
 
-    # Close current history version — FOR UPDATE prevents concurrent version conflicts
+    if record_state == "active":
+        # Draft-copy-on-edit: leave the active record unchanged; create/update a draft alongside.
+        existing_draft = db.execute(
+            select(table)
+            .where(table.c._draft_of_id == rid)
+            .where(table.c._state == "draft")
+            .where(table.c._deleted_at.is_(None))
+        ).mappings().first()
+
+        user_updates = _filter_columns(body, table)
+
+        if existing_draft:
+            # Update the already-existing draft in place
+            draft_id = existing_draft["_id"]
+            draft_updates = {**user_updates, "_updated_at": now}
+            try:
+                db.execute(table.update().where(table.c._id == draft_id).values(**draft_updates))
+            except IntegrityError as e:
+                db.rollback()
+                raise HTTPException(422, _integrity_error_message(e)) from e
+
+            current_version_row = db.execute(
+                select(history_table)
+                .where(history_table.c._id == draft_id)
+                .where(history_table.c._valid_to.is_(None))
+                .with_for_update()
+            ).mappings().first()
+            current_version = current_version_row["_version"] if current_version_row else 0
+            if current_version_row:
+                db.execute(
+                    history_table.update()
+                    .where(history_table.c._history_id == current_version_row["_history_id"])
+                    .values(_valid_to=now)
+                )
+            new_draft_values = {**dict(existing_draft), **draft_updates}
+            audit_svc.write_history(
+                db, history_table, new_draft_values, version=current_version + 1,
+                action="UPDATE", valid_from=now,
+                reason=body.get("_reason"), user_name=_get_username(request)
+            )
+            audit_svc.log_change(
+                db, audit_table, schema, obj, draft_id, "UPDATE",
+                old_values=audit_svc._serialize(dict(existing_draft)),
+                new_values=audit_svc._serialize(new_draft_values),
+                reason=body.get("_reason"), ip_address=_client_ip(request),
+                user_name=_get_username(request)
+            )
+        else:
+            # Create a new draft record alongside the active one
+            draft_id = uuid.uuid4()
+            draft_values = {
+                k: v for k, v in dict(existing).items()
+                if k not in ("_id", "_created_at", "_updated_at", "_deleted_at",
+                             "_state", "_draft_of_id")
+            }
+            draft_values.update(user_updates)
+            draft_values["_id"] = draft_id
+            draft_values["_created_at"] = now
+            draft_values["_updated_at"] = now
+            draft_values["_deleted_at"] = None
+            draft_values["_state"] = "draft"
+            draft_values["_draft_of_id"] = rid
+
+            try:
+                db.execute(table.insert().values(**draft_values))
+            except IntegrityError as e:
+                db.rollback()
+                raise HTTPException(422, _integrity_error_message(e)) from e
+
+            audit_svc.write_history(
+                db, history_table, draft_values, version=1,
+                action="INSERT", valid_from=now,
+                reason=body.get("_reason"), user_name=_get_username(request)
+            )
+            audit_svc.log_change(
+                db, audit_table, schema, obj, draft_id, "DRAFT_CREATED",
+                old_values=None, new_values=audit_svc._serialize(draft_values),
+                reason=body.get("_reason"), ip_address=_client_ip(request),
+                user_name=_get_username(request)
+            )
+
+        db.commit()
+        return {"id": str(draft_id), "draft": True}
+
+    # Draft or retired — update in place
+    old_values = dict(existing)
+
     current_version_row = db.execute(
         select(history_table)
         .where(history_table.c._id == rid)
@@ -503,10 +593,209 @@ def revert_record(
 
 
 # ---------------------------------------------------------------------------
+# Publish draft → active
+# ---------------------------------------------------------------------------
+
+@router.post("/records/{schema}/{obj}/{record_id}/publish", status_code=200)
+def publish_record(
+    schema: str,
+    obj: str,
+    record_id: str,
+    request: Request,
+    reason: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Promote a draft record to active.
+
+    The record_id must be a draft (state='draft') that has a _draft_of_id pointing
+    to the active record. The active record is updated with the draft's data and the
+    draft is soft-deleted. The active record's stable _id is preserved.
+    Requires Publisher or Admin.
+    """
+    require_publish_access(request, schema)
+    tm = _get_tm(request)
+    try:
+        table = tm.get_table(schema, obj)
+        history_table = tm.get_history_table(schema, obj)
+        audit_table = tm.get_audit_table()
+    except KeyError:
+        raise HTTPException(404, f"Object '{schema}.{obj}' not found")
+
+    try:
+        draft_id = uuid.UUID(record_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid record ID")
+
+    draft = db.execute(
+        select(table)
+        .where(table.c._id == draft_id)
+        .where(table.c._state == "draft")
+        .where(table.c._deleted_at.is_(None))
+    ).mappings().first()
+    if not draft:
+        raise HTTPException(404, "Draft record not found (must be a draft with state='draft')")
+
+    master_id = draft["_draft_of_id"]
+    if not master_id:
+        raise HTTPException(422, "This draft has no linked active record (_draft_of_id is null)")
+
+    active = db.execute(
+        select(table)
+        .where(table.c._id == master_id)
+        .where(table.c._state == "active")
+        .where(table.c._deleted_at.is_(None))
+    ).mappings().first()
+    if not active:
+        raise HTTPException(404, "Linked active record not found")
+
+    now = datetime.now(timezone.utc)
+
+    # Build the set of user-writable column names (no system cols)
+    user_col_names = {
+        c.name for c in table.c
+        if c.name not in _SYSTEM_COLS and not c.name.startswith("_")
+    }
+    # Also include parent FK columns (e.g. _division_id)
+    parent_fk_cols = {
+        c.name for c in table.c
+        if c.name.startswith("_") and c.name not in _SYSTEM_COLS
+        and c.name not in ("_state", "_draft_of_id", "_created_by")
+    }
+
+    # Copy draft's user columns onto the active record
+    update_vals: dict = {}
+    for col_name in user_col_names | parent_fk_cols:
+        if col_name in draft.keys():
+            update_vals[col_name] = draft[col_name]
+    update_vals["_updated_at"] = now
+
+    # Increment active record's history
+    current_version_row = db.execute(
+        select(history_table)
+        .where(history_table.c._id == master_id)
+        .where(history_table.c._valid_to.is_(None))
+        .with_for_update()
+    ).mappings().first()
+    current_version = current_version_row["_version"] if current_version_row else 0
+    if current_version_row:
+        db.execute(
+            history_table.update()
+            .where(history_table.c._history_id == current_version_row["_history_id"])
+            .values(_valid_to=now)
+        )
+
+    old_active_values = dict(active)
+    try:
+        db.execute(table.update().where(table.c._id == master_id).values(**update_vals))
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(422, _integrity_error_message(e)) from e
+
+    new_active_values = {**old_active_values, **update_vals}
+    audit_svc.write_history(
+        db, history_table, new_active_values, version=current_version + 1,
+        action="PUBLISH", valid_from=now,
+        reason=reason or "Published from draft", user_name=_get_username(request)
+    )
+    audit_svc.log_change(
+        db, audit_table, schema, obj, master_id, "PUBLISH",
+        old_values=audit_svc._serialize(old_active_values),
+        new_values=audit_svc._serialize(new_active_values),
+        reason=reason or "Published from draft", ip_address=_client_ip(request),
+        user_name=_get_username(request)
+    )
+
+    # Soft-delete the draft (it's been superseded)
+    db.execute(
+        table.update()
+        .where(table.c._id == draft_id)
+        .values(_deleted_at=now, _updated_at=now)
+    )
+
+    db.commit()
+    return {"id": str(master_id), "published": True}
+
+
+# ---------------------------------------------------------------------------
+# Retire active → retired
+# ---------------------------------------------------------------------------
+
+@router.post("/records/{schema}/{obj}/{record_id}/retire", status_code=200)
+def retire_record(
+    schema: str,
+    obj: str,
+    record_id: str,
+    request: Request,
+    reason: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Transition an active record to the retired state. Requires Publisher or Admin."""
+    require_publish_access(request, schema)
+    tm = _get_tm(request)
+    try:
+        table = tm.get_table(schema, obj)
+        history_table = tm.get_history_table(schema, obj)
+        audit_table = tm.get_audit_table()
+    except KeyError:
+        raise HTTPException(404, f"Object '{schema}.{obj}' not found")
+
+    try:
+        rid = uuid.UUID(record_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid record ID")
+
+    existing = db.execute(
+        select(table)
+        .where(table.c._id == rid)
+        .where(table.c._state == "active")
+        .where(table.c._deleted_at.is_(None))
+    ).mappings().first()
+    if not existing:
+        raise HTTPException(404, "Active record not found (only active records can be retired)")
+
+    now = datetime.now(timezone.utc)
+    old_values = dict(existing)
+
+    current_version_row = db.execute(
+        select(history_table)
+        .where(history_table.c._id == rid)
+        .where(history_table.c._valid_to.is_(None))
+        .with_for_update()
+    ).mappings().first()
+    current_version = current_version_row["_version"] if current_version_row else 0
+    if current_version_row:
+        db.execute(
+            history_table.update()
+            .where(history_table.c._history_id == current_version_row["_history_id"])
+            .values(_valid_to=now)
+        )
+
+    db.execute(
+        table.update().where(table.c._id == rid).values(_state="retired", _updated_at=now)
+    )
+    new_values = {**old_values, "_state": "retired", "_updated_at": now}
+    audit_svc.write_history(
+        db, history_table, new_values, version=current_version + 1,
+        action="RETIRE", valid_from=now,
+        reason=reason or "Retired", user_name=_get_username(request)
+    )
+    audit_svc.log_change(
+        db, audit_table, schema, obj, rid, "RETIRE",
+        old_values=audit_svc._serialize(old_values),
+        new_values=audit_svc._serialize(new_values),
+        reason=reason or "Retired", ip_address=_client_ip(request),
+        user_name=_get_username(request)
+    )
+    db.commit()
+    return {"id": str(rid), "retired": True}
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-_SYSTEM_COLS = {"_id", "_created_at", "_updated_at", "_deleted_at", "_version"}
+_SYSTEM_COLS = {"_id", "_created_at", "_updated_at", "_deleted_at", "_version",
+               "_state", "_draft_of_id"}
 
 
 def _filter_columns(body: dict, table) -> dict:
