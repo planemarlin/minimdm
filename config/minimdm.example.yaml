@@ -1,4 +1,19 @@
 minimdm:
+
+  # --- Webhooks (optional) ---
+  # miniMDM can notify external systems when lifecycle transitions occur.
+  # Two events are supported:
+  #   record.published  — a draft was promoted to active
+  #   record.retired    — an active record was transitioned to retired
+  # Multiple URLs can be registered for the same event.
+  # Delivery is asynchronous; failures are logged but never affect the API caller.
+  #
+  # webhooks:
+  #   - event: record.published
+  #     url: https://example.com/hooks/minimdm
+  #   - event: record.retired
+  #     url: https://example.com/hooks/minimdm
+
   schemas:
     # Replace 'mycompany' with a short identifier for your organisation or domain.
     # You can define multiple schemas in the same file.
@@ -49,10 +64,12 @@ minimdm:
         # --- Product ---
         # A child of product_category (parent relationship) with a cross-object
         # reference to supplier and a numeric attribute.
+        # require_change_reason forces editors to document why a product was changed.
         product:
           name: Product
           description: Products sourced from suppliers
           parent: product_category
+          require_change_reason: true
           attributes:
             sku:
               name: SKU
