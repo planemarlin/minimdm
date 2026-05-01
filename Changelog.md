@@ -18,6 +18,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Publish and Retire buttons** on the record detail page: Publish appears for draft records (Publisher/Admin only); Retire appears for active records (Publisher/Admin only); Edit and Delete are hidden for retired records
 - **Import initial state**: `POST /api/records/{schema}/{obj}/import` accepts `initial_state=active` (default) or `initial_state=draft`; importing as `active` requires Publisher or Admin role — Editors can import as `draft` and publish later
 - **Required reason for change**: objects can set `require_change_reason: true` in the config; when set, all write operations (create, update, delete, revert, publish, retire) return HTTP 422 if `_reason` is absent or empty; the UI marks the Reason field with a red asterisk and blocks submission
+- **Webhooks on state transitions**: configure HTTP POST callbacks in the config under `webhooks:`; `record.published` fires when a draft is promoted to active, `record.retired` fires when an active record is retired; delivery is asynchronous (after the API response) so a slow or unreachable endpoint never affects the caller; failures are logged as warnings
 
 ### Fixed
 - Export now respects the active state filter dropdown: exporting while viewing drafts exports drafts, not active records
