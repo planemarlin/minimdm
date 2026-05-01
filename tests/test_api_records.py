@@ -172,7 +172,8 @@ def test_get_record_invalid_uuid_returns_400(client):
 # Update
 # ---------------------------------------------------------------------------
 
-def test_update_record(client):
+def test_update_active_record_creates_draft(client):
+    """PUT on an active record creates a draft alongside — original record is untouched."""
     rid = client.post(
         "/api/records/test/company",
         json={"code": "C001", "name": "Original"},
@@ -183,10 +184,19 @@ def test_update_record(client):
         json={"name": "Updated", "_reason": "rename"},
     )
     assert res.status_code == 200
+    data = res.json()
+    assert data["draft"] is True
+    draft_id = data["id"]
+    assert draft_id != rid  # a new record was created
 
-    record = client.get(f"/api/records/test/company/{rid}").json()
-    assert record["name"] == "Updated"
-    assert record["code"] == "C001"  # unchanged
+    # Active record is unchanged
+    active = client.get(f"/api/records/test/company/{rid}").json()
+    assert active["name"] == "Original"
+    assert active["_state"] == "active"
+
+    # Draft is listed under state=draft
+    drafts = client.get("/api/records/test/company?state=draft").json()
+    assert any(r["_id"] == draft_id for r in drafts["records"])
 
 
 def test_update_nonexistent_record_returns_404(client):
@@ -243,25 +253,33 @@ def test_history_entries_include_attribute_snapshot(client):
         "/api/records/test/company",
         json={"code": "C001", "name": "Original"},
     ).json()["id"]
-    client.put(f"/api/records/test/company/{rid}", json={"name": "Updated"})
+    # PUT on active record creates a draft; edit that draft in-place to get an UPDATE history entry
+    draft_id = client.put(
+        f"/api/records/test/company/{rid}", json={"name": "Pending"}
+    ).json()["id"]
+    client.put(f"/api/records/test/company/{draft_id}", json={"name": "Updated"})
 
-    history = client.get(f"/api/records/test/company/{rid}/history").json()
+    history = client.get(f"/api/records/test/company/{draft_id}/history").json()
     by_version = {h["_version"]: h for h in history}
 
-    # Version 1 (INSERT) snapshot
+    # Version 1 (INSERT) snapshot — draft was created with "Pending"
     assert by_version[1]["code"] == "C001"
-    assert by_version[1]["name"] == "Original"
+    assert by_version[1]["name"] == "Pending"
 
-    # Version 2 (UPDATE) snapshot
+    # Version 2 (UPDATE) snapshot — draft edited in-place
     assert by_version[2]["code"] == "C001"
     assert by_version[2]["name"] == "Updated"
 
 
-def test_history_after_update_has_two_entries(client):
+def test_history_after_draft_update_has_two_entries(client):
+    """Editing a draft in-place produces INSERT + UPDATE history on the draft record."""
     rid = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
-    client.put(f"/api/records/test/company/{rid}", json={"name": "Changed"})
+    draft_id = client.put(
+        f"/api/records/test/company/{rid}", json={"name": "First"}
+    ).json()["id"]
+    client.put(f"/api/records/test/company/{draft_id}", json={"name": "Second"})
 
-    history = client.get(f"/api/records/test/company/{rid}/history").json()
+    history = client.get(f"/api/records/test/company/{draft_id}/history").json()
     assert len(history) == 2
     actions = {h["_action"] for h in history}
     assert actions == {"INSERT", "UPDATE"}
@@ -303,13 +321,15 @@ def test_revert_to_previous_version(client):
 
 
 def test_revert_creates_new_history_entry(client):
+    """Reverting always creates a new history entry on the target record."""
     rid = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
+    # PUT creates a draft (rid only has 1 history entry)
     client.put(f"/api/records/test/company/{rid}", json={"name": "v2"})
 
     client.post(f"/api/records/test/company/{rid}/revert/1")
 
     history = client.get(f"/api/records/test/company/{rid}/history").json()
-    assert len(history) == 3
+    assert len(history) == 2  # INSERT(v1) + REVERT(v2) — no UPDATE on rid itself
     assert any(h["_action"] == "REVERT" for h in history)
 
 
@@ -355,15 +375,23 @@ def test_parent_id_is_saved_on_create(client):
     assert rec["_company_id"] == company_id
 
 
-def test_parent_id_is_saved_on_update(client):
+def test_parent_id_is_saved_on_draft(client):
+    """PUT on an active record saves parent FK changes on the draft (not the original)."""
     company_id = client.post("/api/records/test/company", json={"code": "C001"}).json()["id"]
     div_id = client.post("/api/records/test/division", json={"code": "D001"}).json()["id"]
 
     # Verify no parent initially
     assert client.get(f"/api/records/test/division/{div_id}").json()["_company_id"] is None
 
-    client.put(f"/api/records/test/division/{div_id}", json={"_company_id": company_id})
-    assert client.get(f"/api/records/test/division/{div_id}").json()["_company_id"] == company_id
+    res = client.put(f"/api/records/test/division/{div_id}", json={"_company_id": company_id})
+    draft_id = res.json()["id"]
+
+    # Active record is unchanged
+    assert client.get(f"/api/records/test/division/{div_id}").json()["_company_id"] is None
+    # Draft has the parent set
+    drafts = client.get("/api/records/test/division?state=draft").json()
+    draft = next(r for r in drafts["records"] if r["_id"] == draft_id)
+    assert draft["_company_id"] == company_id
 
 
 def test_list_records_filter_by_parent_id(client):

@@ -96,7 +96,9 @@ class RecordList {
     this.totalEl = document.getElementById("total-count");
     this.searchInput = document.getElementById("search-input");
     this.deletedToggle = document.getElementById("show-deleted-toggle");
+    this.stateFilter = document.getElementById("state-filter");
     this.includeDeleted = false;
+    this.stateValue = "active";
 
     const firstNonRef = Object.entries(objConfig.attributes || {}).find(([, v]) => !v.reference);
     this.sortBy = firstNonRef ? firstNonRef[0] : null;
@@ -122,6 +124,14 @@ class RecordList {
       });
     }
 
+    if (this.stateFilter) {
+      this.stateFilter.addEventListener("change", (e) => {
+        this.stateValue = e.target.value;
+        this.page = 1;
+        this.load();
+      });
+    }
+
     this.load();
   }
 
@@ -139,6 +149,7 @@ class RecordList {
     });
     if (this.search) params.set("search", this.search);
     if (this.includeDeleted) params.set("include_deleted", "true");
+    if (this.stateValue && this.stateValue !== "active") params.set("state", this.stateValue);
     if (this.sortBy) { params.set("sort_by", this.sortBy); params.set("sort_dir", this.sortDir); }
 
     const res = await fetch(
@@ -174,6 +185,7 @@ class RecordList {
     this.tbody.innerHTML = records
       .map((r) => {
         const isDeleted = !!r._deleted_at;
+        const recordState = r._state || "active";
         const style = isDeleted ? "opacity:.5;text-decoration:line-through" : "";
         const cells = [];
         if (objConfig.parent) {
@@ -191,12 +203,18 @@ class RecordList {
             cells.push(`<td style="${style}">${escHtml(r[k] ?? "")}</td>`);
           }
         }
+        const stateBadge = recordState === "draft"
+          ? `<span class="badge badge-draft" style="font-size:.7rem">draft</span>`
+          : recordState === "retired"
+            ? `<span class="badge badge-retired" style="font-size:.7rem">retired</span>`
+            : "";
         const actions = isDeleted
           ? `<a class="btn btn-ghost btn-sm" href="/${schema}/${obj}/${r._id}/history">History</a>
              <span class="badge badge-delete" style="font-size:.7rem">deleted</span>`
           : `<a class="btn btn-ghost btn-sm" href="/${schema}/${obj}/${r._id}/edit">Edit</a>
              <button class="btn btn-ghost btn-sm" style="color:var(--danger)"
-               onclick="recordList.confirmDelete('${r._id}')">Delete</button>`;
+               onclick="recordList.confirmDelete('${r._id}')">Delete</button>
+             ${stateBadge}`;
         const rowClick = isDeleted
           ? `onclick="window.location='/${schema}/${obj}/${r._id}/history'"`
           : `onclick="window.location='/${schema}/${obj}/${r._id}'"`;
@@ -256,7 +274,12 @@ class RecordList {
 
   async confirmDelete(id) {
     if (!confirm("Delete this record? This action can be undone via history.")) return;
-    const reason = prompt("Reason for deletion (optional):") || "";
+    const requireReason = !!this.objConfig.require_change_reason;
+    const reason = prompt(`Reason for deletion (${requireReason ? "required" : "optional"}):`) || "";
+    if (requireReason && !reason.trim()) {
+      alert("A reason is required to delete this record.");
+      return;
+    }
     const res = await fetch(
       `/api/records/${this.schema}/${this.obj}/${id}?reason=${encodeURIComponent(reason)}`,
       { method: "DELETE" }
@@ -271,16 +294,27 @@ class RecordList {
 
 // ── Record detail page ───────────────────────────────────────────────────────
 
-async function loadRecordDetail(schema, obj, recordId, objConfig) {
+async function loadRecordDetail(schema, obj, recordId, objConfig, opts = {}) {
   const container = document.getElementById("detail-container");
   if (!container) return;
 
-  const res = await fetch(`/api/records/${schema}/${obj}/${recordId}`);
+  const res = await fetch(`/api/records/${schema}/${obj}/${recordId}?include_deleted=true`);
   if (!res.ok) {
     container.innerHTML = `<div class="alert alert-error">Record not found.</div>`;
     return;
   }
   const record = await res.json();
+
+  // Show/hide lifecycle action buttons based on record state and user permissions
+  const recordState = record._state || "active";
+  const publishBtn = document.getElementById("btn-publish");
+  const retireBtn = document.getElementById("btn-retire");
+  const editBtn = document.getElementById("btn-edit");
+  const deleteBtn = document.getElementById("btn-delete");
+  if (publishBtn) publishBtn.style.display = (opts.canPublish && recordState === "draft") ? "" : "none";
+  if (retireBtn) retireBtn.style.display = (opts.canPublish && recordState === "active") ? "" : "none";
+  if (editBtn) editBtn.style.display = (opts.canWrite && recordState !== "retired") ? "" : "none";
+  if (deleteBtn) deleteBtn.style.display = (opts.canWrite && recordState !== "retired") ? "" : "none";
 
   // Show parent record with a link if configured
   let parentHtml = "";
@@ -372,7 +406,14 @@ async function loadRecordDetail(schema, obj, recordId, objConfig) {
     })
     .join("");
 
-  const sysMeta = `<div style="margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--border); font-size:.78rem; color:var(--text-muted); display:flex; gap:1.5rem; flex-wrap:wrap;">
+  const stateLabel = { active: "Active", draft: "Draft", retired: "Retired" }[recordState] || recordState;
+  const stateBadgeHtml = recordState === "draft"
+    ? `<span class="badge badge-draft">${stateLabel}</span>`
+    : recordState === "retired"
+      ? `<span class="badge badge-retired">${stateLabel}</span>`
+      : `<span class="badge badge-insert" style="background:var(--success,#2a9d5c)">${stateLabel}</span>`;
+  const sysMeta = `<div style="margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--border); font-size:.78rem; color:var(--text-muted); display:flex; gap:1.5rem; flex-wrap:wrap; align-items:center">
+    ${stateBadgeHtml}
     <span>Created: ${fmtDate(record._created_at)}</span>
     <span>Updated: ${fmtDate(record._updated_at)}</span>
     ${record._created_by ? `<span>By: ${escHtml(record._created_by)}</span>` : ""}
@@ -559,9 +600,10 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
       </div>`
     : "";
 
+  const reasonRequired = !!objConfig.require_change_reason;
   const reasonField = `<div class="form-group">
-    <label>Reason for change</label>
-    <input type="text" name="_reason" placeholder="Optional: why is this record being changed?" />
+    <label>Reason for change${reasonRequired ? ' <span style="color:var(--danger)">*</span>' : ''}</label>
+    <input type="text" name="_reason" ${reasonRequired ? 'required' : ''} placeholder="${reasonRequired ? 'Required: why is this record being changed?' : 'Optional: why is this record being changed?'}" />
     <div class="form-hint">Stored in the audit log</div>
   </div>`;
 
@@ -735,7 +777,7 @@ async function loadHistory(schema, obj, recordId, objConfig, canWrite) {
         <div>
           ${canWrite && h._action !== "DELETE" ? `<button class="btn btn-secondary btn-sm"
             title="Restore this record to the values shown in this version."
-            onclick="revertToVersion('${schema}','${obj}','${recordId}',${h._version})">Revert</button>` : ""}
+            onclick="revertToVersion('${schema}','${obj}','${recordId}',${h._version},${!!objConfig.require_change_reason})">Revert</button>` : ""}
         </div>
       </li>`
     )
@@ -744,9 +786,13 @@ async function loadHistory(schema, obj, recordId, objConfig, canWrite) {
   container.innerHTML = `<ul class="history-list">${rows}</ul>`;
 }
 
-async function revertToVersion(schema, obj, recordId, version) {
-  const reason = prompt(`Revert to version ${version}? Enter reason (optional):`) ?? "";
+async function revertToVersion(schema, obj, recordId, version, requireReason = false) {
+  const reason = prompt(`Revert to version ${version}? Enter reason (${requireReason ? "required" : "optional"}):`) ?? "";
   if (reason === null) return; // cancelled
+  if (requireReason && !reason.trim()) {
+    alert("A reason is required to revert this record.");
+    return;
+  }
   const res = await fetch(
     `/api/records/${schema}/${obj}/${recordId}/revert/${version}?reason=${encodeURIComponent(reason)}`,
     { method: "POST" }
@@ -761,7 +807,9 @@ async function revertToVersion(schema, obj, recordId, version) {
 // ── Export ───────────────────────────────────────────────────────────────────
 
 function exportRecords(schema, obj, format) {
-  window.location.href = `/api/records/${schema}/${obj}/export?format=${format}`;
+  const stateEl = document.getElementById("state-filter");
+  const state = stateEl ? stateEl.value : "active";
+  window.location.href = `/api/records/${schema}/${obj}/export?format=${format}&state=${state}`;
 }
 
 // ── Audit log page ────────────────────────────────────────────────────────────

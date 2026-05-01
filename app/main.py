@@ -422,10 +422,13 @@ async def object_detail(request: Request, schema: str, obj: str, record_id: str)
     user = getattr(request.state, "current_user", None)
     if user and user.get("is_admin"):
         can_write = True
+        can_publish = True
     elif user:
         can_write = check_permission(tm.engine, user["user_id"], schema, write=True)
+        can_publish = check_permission(tm.engine, user["user_id"], schema, publish=True)
     else:
         can_write = False
+        can_publish = False
     return templates.TemplateResponse(
         request,
         "objects/detail.html",
@@ -435,6 +438,7 @@ async def object_detail(request: Request, schema: str, obj: str, record_id: str)
             "obj_config": obj_config,
             "record_id": record_id,
             "can_write": can_write,
+            "can_publish": can_publish,
             "schemas": _sidebar_schemas(request),
             "app_name": settings.app_name,
         },

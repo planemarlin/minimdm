@@ -41,20 +41,24 @@
         <h3>Records</h3>
         <p>Create, edit, and delete records from the object list. Deleted records are <strong>soft-deleted</strong> — they are hidden from the list but not removed from the database. Use <em>Show deleted</em> to view them; their history page allows recovery via Revert.</p>
 
+        <h3>Lifecycle states</h3>
+        <p>Every record has a state: <strong>Active</strong> (live), <strong>Draft</strong> (pending change), or <strong>Retired</strong> (no longer in use). Editing an active record creates a draft copy alongside it — the active record is unchanged until a Publisher approves. Use the state filter dropdown on the list page to switch between views.</p>
+        <p><em>Publish</em> promotes a draft to active. <em>Retire</em> transitions an active record to retired. Both actions require Publisher or Admin role and are available on the record detail page.</p>
+
         <h3>History &amp; Revert</h3>
         <p>Every change to a record is saved as a new version. Click <em>History</em> on any record to see all versions, then <em>Revert</em> to restore a previous one. Reverts are themselves versioned and audited.</p>
 
         <h3>Reason for change</h3>
-        <p>The optional <em>Reason</em> field on create, edit, and delete forms is stored in the audit log alongside the change. Use it to explain why a value was changed.</p>
+        <p>The <em>Reason</em> field on create, edit, and delete forms is stored in the audit log alongside the change. Use it to explain why a value was changed. If an object is configured with <code>require_change_reason: true</code>, the field is mandatory — the form and all API operations will reject the change without it.</p>
 
         <h3>Import &amp; Upsert</h3>
-        <p>Import records from CSV, TSV, or JSON. <em>Insert only</em> always adds a new record. <em>Upsert on &lt;attribute&gt;</em> updates existing records whose value matches on that attribute and inserts the rest.</p>
+        <p>Import records from CSV, TSV, or JSON. <em>Insert only</em> always adds a new record. <em>Upsert on &lt;attribute&gt;</em> updates existing records whose value matches on that attribute and inserts the rest. The import respects the active state filter — select Draft in the list before importing to import records as drafts.</p>
 
         <h3>Audit log</h3>
         <p>All data changes and authentication events (login, logout, user management) are recorded in the audit log, available from the header navigation (admin only).</p>
 
         <h3>Access control</h3>
-        <p>Admins have full access. Non-admin users have no access by default — an admin must grant read and/or write access per schema from the User Management page.</p>
+        <p>Four roles are supported, each building on the previous: <strong>Viewer</strong> (read-only), <strong>Editor</strong> (create, update, delete, import as draft), <strong>Publisher</strong> (additionally: publish drafts, retire records, import as active), and <strong>Admin</strong> (full access across all schemas). Roles are granted per schema from the User Management page.</p>
 
         <p style="margin-top:1.25rem;font-size:.8rem;color:var(--text-muted)">
           Full documentation: <a href="/docs" target="_blank">API reference</a> &mdash;

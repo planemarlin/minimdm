@@ -7,7 +7,11 @@
 | `tests/test_schema_loader.py` | Unit – config parsing | No |
 | `tests/test_table_manager.py` | Unit – table manager helpers | No |
 | `tests/test_api_records.py` | Integration – CRUD, history, revert | Yes |
-| `tests/test_api_import_export.py` | Integration – import/export, upsert | Yes |
+| `tests/test_api_lifecycle.py` | Integration – lifecycle states, draft/publish/retire | Yes |
+| `tests/test_api_import_export.py` | Integration – import/export, upsert, initial_state | Yes |
+| `tests/test_api_auth.py` | Integration – authentication, token handling | Yes |
+| `tests/test_api_permissions.py` | Integration – schema-based access control | Yes |
+| `tests/test_api_webhooks.py` | Integration – webhook delivery on publish/retire | Yes |
 | `tests/test_templates.py` | Template rendering – page structure | Yes |
 
 Unit tests run anywhere. Integration and template tests require a PostgreSQL test database and are automatically skipped when `TEST_DATABASE_URL` is not set.
@@ -52,7 +56,9 @@ uv run pytest tests/test_schema_loader.py tests/test_table_manager.py -v
 
 ```bash
 TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test \
-  uv run pytest tests/test_api_records.py tests/test_api_import_export.py tests/test_templates.py -v
+  uv run pytest tests/test_api_records.py tests/test_api_lifecycle.py \
+               tests/test_api_import_export.py tests/test_api_auth.py \
+               tests/test_api_permissions.py tests/test_templates.py -v
 ```
 
 **With coverage report:**
@@ -73,12 +79,41 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Revert a deleted record (regression: version numbering must not reset to 1)
 - 404/400 responses for unknown objects, missing records, and invalid UUIDs
 
+**`test_api_lifecycle.py`**
+- New records default to `active` state
+- `?state=` filter on list: `active`, `draft`, `retired`, `all`
+- Draft copy on edit: PUT on active creates a draft alongside; active is unchanged
+- Second PUT on the same active record reuses the existing draft rather than creating a second
+- PUT on a draft updates it in place (no new draft created)
+- System columns (`_state`, `_draft_of_id`) are silently ignored if included in the request body
+- Publish: applies draft data to the active record, soft-deletes the draft, writes `PUBLISH` history entry
+- Publish returns 404 for non-draft records and unknown IDs
+- Retire: transitions active → retired, writes `RETIRE` history entry
+- Retire returns 404 for drafts, already-retired records, and unknown IDs
+- Full draft → edit → publish workflow end-to-end
+- Export `?state=` filter works correctly for active and draft
+- History entries snapshot `_state` on create and on lifecycle transitions
+
+**`test_api_auth.py`**
+- Unauthenticated requests return 401
+- Login with valid and invalid credentials
+- Token revocation (logout)
+- Permission grant and revoke events are logged in the audit log
+
+**`test_api_permissions.py`**
+- Setting a permission creates or updates the row (all three flags: read/write/publish)
+- Deleting a permission removes the row
+- Non-admin users are blocked from schemas they have no grant for
+- Read-only users cannot write; Editors cannot publish
+
 **`test_api_import_export.py`**
 - Export CSV, TSV, and JSON (empty table and with data)
 - Export excludes soft-deleted records
+- Export respects `?state=` filter
 - CSV, TSV, and JSON import (insert-only)
 - Upsert: update on key match, insert when no match, mixed batches
 - Upsert creates correct history entries for updated records
+- Import with `initial_state=draft` creates records as drafts
 - 400 responses for invalid JSON and unknown upsert keys
 
 **`test_templates.py`**

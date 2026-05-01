@@ -9,11 +9,15 @@
 <div class="page-header">
   <h1 class="page-title">{{ obj_config.name }}</h1>
   {% if can_write %}
-  <a class="btn btn-secondary" href="/{{ schema }}/{{ obj }}/{{ record_id }}/edit">Edit</a>
+  <a class="btn btn-secondary" id="btn-edit" href="/{{ schema }}/{{ obj }}/{{ record_id }}/edit">Edit</a>
+  {% endif %}
+  {% if can_publish %}
+  <button class="btn btn-primary" id="btn-publish" style="display:none" onclick="openPublishModal()" title="Promote this draft to active (Publisher role required).">Publish</button>
+  <button class="btn btn-secondary" id="btn-retire" style="display:none" onclick="openRetireModal()" title="Retire this active record (Publisher role required).">Retire</button>
   {% endif %}
   <a class="btn btn-secondary" href="/{{ schema }}/{{ obj }}/{{ record_id }}/history" title="View all versions of this record and revert to any previous one.">History</a>
   {% if can_write %}
-  <button class="btn btn-danger" onclick="openDeleteModal()" title="Soft-delete this record. It remains in the database and can be recovered from the record history.">Delete</button>
+  <button class="btn btn-danger" id="btn-delete" onclick="openDeleteModal()" title="Soft-delete this record. It remains in the database and can be recovered from the record history.">Delete</button>
   {% endif %}
 </div>
 
@@ -38,7 +42,7 @@
       This action can be undone via the record history.
     </p>
     <div class="form-group">
-      <label for="delete-reason">Reason <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+      <label for="delete-reason">Reason{% if obj_config.require_change_reason %} <span style="color:var(--danger)">*</span>{% else %} <span style="font-weight:400;color:var(--text-muted)">(optional)</span>{% endif %}</label>
       <input type="text" id="delete-reason" placeholder="Why is this record being deleted?" />
     </div>
     <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.25rem">
@@ -48,11 +52,56 @@
   </div>
 </div>
 {% endif %}
+
+{% if can_publish %}
+<div id="publish-modal-backdrop" class="modal-backdrop" style="display:none" onclick="closePublishModal(event)">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="publish-modal-title">
+    <div class="modal__header">
+      <span class="modal__title" id="publish-modal-title">Publish draft</span>
+      <button class="modal__close" onclick="closePublishModal()" aria-label="Close">&times;</button>
+    </div>
+    <p style="margin-bottom:1rem;color:var(--text-muted)">
+      The draft will be applied to the active record. This action is recorded in the audit log.
+    </p>
+    <div class="form-group">
+      <label for="publish-reason">Reason{% if obj_config.require_change_reason %} <span style="color:var(--danger)">*</span>{% else %} <span style="font-weight:400;color:var(--text-muted)">(optional)</span>{% endif %}</label>
+      <input type="text" id="publish-reason" placeholder="Why is this draft being published?" />
+    </div>
+    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.25rem">
+      <button class="btn btn-secondary" onclick="closePublishModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitPublish()">Publish</button>
+    </div>
+  </div>
+</div>
+
+<div id="retire-modal-backdrop" class="modal-backdrop" style="display:none" onclick="closeRetireModal(event)">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="retire-modal-title">
+    <div class="modal__header">
+      <span class="modal__title" id="retire-modal-title">Retire record</span>
+      <button class="modal__close" onclick="closeRetireModal()" aria-label="Close">&times;</button>
+    </div>
+    <p style="margin-bottom:1rem;color:var(--text-muted)">
+      The record will be moved to the retired state and excluded from default API responses. This action is recorded in the audit log.
+    </p>
+    <div class="form-group">
+      <label for="retire-reason">Reason{% if obj_config.require_change_reason %} <span style="color:var(--danger)">*</span>{% else %} <span style="font-weight:400;color:var(--text-muted)">(optional)</span>{% endif %}</label>
+      <input type="text" id="retire-reason" placeholder="Why is this record being retired?" />
+    </div>
+    <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.25rem">
+      <button class="btn btn-secondary" onclick="closeRetireModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="submitRetire()">Retire</button>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
-loadRecordDetail("{{ schema }}", "{{ obj }}", "{{ record_id }}", {{ obj_config | tojson }});
+loadRecordDetail("{{ schema }}", "{{ obj }}", "{{ record_id }}", {{ obj_config | tojson }},
+  { canPublish: {{ 'true' if can_publish else 'false' }}, canWrite: {{ 'true' if can_write else 'false' }} });
+
+const requireReason = {{ 'true' if obj_config.require_change_reason else 'false' }};
 
 {% if can_write %}
 function openDeleteModal() {
@@ -68,6 +117,10 @@ function closeDeleteModal(event) {
 
 async function submitDelete() {
   const reason = document.getElementById("delete-reason").value.trim();
+  if (requireReason && !reason) {
+    alert("A reason is required to delete this record.");
+    return;
+  }
   const url = `/api/records/{{ schema }}/{{ obj }}/{{ record_id }}` +
     (reason ? `?reason=${encodeURIComponent(reason)}` : "");
   const res = await fetch(url, { method: "DELETE" });
@@ -78,10 +131,69 @@ async function submitDelete() {
     alert("Failed to delete record.");
   }
 }
+{% endif %}
+
+{% if can_publish %}
+function openPublishModal() {
+  document.getElementById("publish-reason").value = "";
+  document.getElementById("publish-modal-backdrop").style.display = "flex";
+  document.getElementById("publish-reason").focus();
+}
+function closePublishModal(event) {
+  if (event && event.target !== document.getElementById("publish-modal-backdrop")) return;
+  document.getElementById("publish-modal-backdrop").style.display = "none";
+}
+async function submitPublish() {
+  const reason = document.getElementById("publish-reason").value.trim();
+  if (requireReason && !reason) {
+    alert("A reason is required to publish this record.");
+    return;
+  }
+  const url = `/api/records/{{ schema }}/{{ obj }}/{{ record_id }}/publish` +
+    (reason ? `?reason=${encodeURIComponent(reason)}` : "");
+  const res = await fetch(url, { method: "POST" });
+  if (res.ok) {
+    const data = await res.json();
+    window.location.href = `/{{ schema }}/{{ obj }}/${data.id}`;
+  } else {
+    document.getElementById("publish-modal-backdrop").style.display = "none";
+    const data = await res.json().catch(() => ({}));
+    alert(data.detail || "Failed to publish record.");
+  }
+}
+
+function openRetireModal() {
+  document.getElementById("retire-reason").value = "";
+  document.getElementById("retire-modal-backdrop").style.display = "flex";
+  document.getElementById("retire-reason").focus();
+}
+function closeRetireModal(event) {
+  if (event && event.target !== document.getElementById("retire-modal-backdrop")) return;
+  document.getElementById("retire-modal-backdrop").style.display = "none";
+}
+async function submitRetire() {
+  const reason = document.getElementById("retire-reason").value.trim();
+  if (requireReason && !reason) {
+    alert("A reason is required to retire this record.");
+    return;
+  }
+  const url = `/api/records/{{ schema }}/{{ obj }}/{{ record_id }}/retire` +
+    (reason ? `?reason=${encodeURIComponent(reason)}` : "");
+  const res = await fetch(url, { method: "POST" });
+  if (res.ok) {
+    window.location.reload();
+  } else {
+    document.getElementById("retire-modal-backdrop").style.display = "none";
+    const data = await res.json().catch(() => ({}));
+    alert(data.detail || "Failed to retire record.");
+  }
+}
+{% endif %}
 
 document.addEventListener("keydown", function(e) {
-  if (e.key === "Escape") document.getElementById("delete-modal-backdrop").style.display = "none";
+  if (e.key === "Escape") {
+    document.querySelectorAll(".modal-backdrop").forEach(el => { el.style.display = "none"; });
+  }
 });
-{% endif %}
 </script>
 {% endblock %}

@@ -6,12 +6,13 @@ A minimal, lightweight, open-source **Master Data Management** application with 
 
 - Define data objects (tables) in a YAML or JSON config file
 - Create, read, update, and delete records through the web UI or API
+- **Lifecycle states**: records progress through `draft` → `active` → `retired`; editing an active record creates a draft copy, keeping the live record stable until a Publisher approves the change
 - Full record versioning with the ability to view and revert to any historical version
 - Complete audit log: what changed, who changed it, when, and why
-- JWT-based authentication with role-based access control (admin / user)
-- Schema-based access control: grant read and/or write access per schema per user
+- JWT-based authentication with four roles: Viewer, Editor, Publisher, and Admin
+- Schema-based access control: grant read, write, and publish access per schema per user
 - User management UI and API for creating and managing accounts
-- Bulk import/export (CSV, TSV, JSON) with optional upsert by key
+- Bulk import/export (CSV, TSV, JSON) with optional upsert by key; import directly as `active` or as `draft`
 - Full-text search within any object
 - Cross-object references and parent-child hierarchies
 - Related-record panels on the detail view: child records and back-references displayed inline

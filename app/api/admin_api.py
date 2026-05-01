@@ -150,13 +150,15 @@ async def upsert_permission(user_id: str, schema_name: str, request: Request):
     data = await request.json()
     can_read = bool(data.get("can_read", True))
     can_write = bool(data.get("can_write", False))
+    can_publish = bool(data.get("can_publish", False))
     engine = request.app.state.table_manager.engine
     target = get_user_by_id(engine, user_id)
     if not target:
         raise HTTPException(404, "User not found")
-    set_permission(engine, user_id, schema_name, can_read=can_read, can_write=can_write)
+    set_permission(engine, user_id, schema_name, can_read=can_read, can_write=can_write,
+                   can_publish=can_publish)
     target_name = target["username"]
-    if not can_read and not can_write:
+    if not can_read and not can_write and not can_publish:
         _log_admin(request, "PERMISSION_REVOKED", uuid.UUID(user_id),
                    reason=f"Revoked access to schema '{schema_name}' from '{target_name}'")
     else:
@@ -165,6 +167,8 @@ async def upsert_permission(user_id: str, schema_name: str, request: Request):
             perms.append("read")
         if can_write:
             perms.append("write")
+        if can_publish:
+            perms.append("publish")
         _log_admin(request, "PERMISSION_GRANTED", uuid.UUID(user_id),
                    reason=f"Granted {'+'.join(perms)} on schema '{schema_name}' to '{target_name}'")
     return {"status": "ok"}

@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://minimdm:minimdm@localhost:5432/minimdm"
     config_file: str = "config/minimdm.yaml"
     app_name: str = "miniMDM"
-    app_version: str = "0.3.1"
+    app_version: str = "0.4.0"
     debug: bool = False
     host: str = "0.0.0.0"  # nosec B104 — intentional; bind address is configured by the operator
     port: int = 8000

@@ -3,8 +3,9 @@
 Table: _system.schema_permissions
   user_id     UUID     FK to _system.users.id
   schema_name TEXT
-  can_read    BOOLEAN
-  can_write   BOOLEAN
+  can_read    BOOLEAN  — Viewer role
+  can_write   BOOLEAN  — Editor role (implies read)
+  can_publish BOOLEAN  — Publisher role (implies write + read)
   PRIMARY KEY (user_id, schema_name)
 
 Admins always have full access and bypass all checks.
@@ -13,7 +14,8 @@ Non-admins have no access unless a row explicitly grants it.
 import uuid
 
 from fastapi import HTTPException, Request
-from sqlalchemy import MetaData, Table, select, text
+from sqlalchemy import Boolean, Column, MetaData, Table, Text, select, text
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Session
 
 
@@ -25,19 +27,32 @@ def ensure_permissions_table(engine) -> None:
                 schema_name TEXT NOT NULL,
                 can_read    BOOLEAN NOT NULL DEFAULT TRUE,
                 can_write   BOOLEAN NOT NULL DEFAULT FALSE,
+                can_publish BOOLEAN NOT NULL DEFAULT FALSE,
                 PRIMARY KEY (user_id, schema_name)
             )
+        """))
+        conn.execute(text("""
+            ALTER TABLE _system.schema_permissions
+            ADD COLUMN IF NOT EXISTS can_publish BOOLEAN NOT NULL DEFAULT FALSE
         """))
         conn.commit()
 
 
 def _perms_table(engine) -> Table:
     meta = MetaData()
-    return Table("schema_permissions", meta, schema="_system", autoload_with=engine)
+    return Table(
+        "schema_permissions", meta,
+        Column("user_id", PGUUID(as_uuid=True), nullable=False),
+        Column("schema_name", Text, nullable=False),
+        Column("can_read", Boolean, nullable=False),
+        Column("can_write", Boolean, nullable=False),
+        Column("can_publish", Boolean, nullable=False),
+        schema="_system",
+    )
 
 
 def get_user_permissions(engine, user_id: str) -> list[dict]:
-    """Return all permission rows for a user (list of {schema_name, can_read, can_write})."""
+    """Return all permission rows for a user."""
     tbl = _perms_table(engine)
     with Session(engine) as s:
         rows = s.execute(
@@ -48,20 +63,28 @@ def get_user_permissions(engine, user_id: str) -> list[dict]:
                 "schema_name": r["schema_name"],
                 "can_read": r["can_read"],
                 "can_write": r["can_write"],
+                "can_publish": r["can_publish"],
             }
             for r in rows
         ]
 
 
-def set_permission(engine, user_id: str, schema_name: str, can_read: bool, can_write: bool) -> None:
+def set_permission(
+    engine, user_id: str, schema_name: str,
+    can_read: bool, can_write: bool, can_publish: bool = False
+) -> None:
     """Insert or update a permission row for a user/schema pair.
 
-    Write access implies read access. Removing read access also removes write access.
+    Publisher implies write + read. Write implies read.
+    Removing read also removes write and publish.
     """
+    if can_publish:
+        can_write = True
     if can_write:
         can_read = True
     if not can_read:
         can_write = False
+        can_publish = False
     tbl = _perms_table(engine)
     uid = uuid.UUID(user_id)
     with Session(engine) as s:
@@ -73,11 +96,12 @@ def set_permission(engine, user_id: str, schema_name: str, can_read: bool, can_w
                 tbl.update()
                 .where(tbl.c.user_id == uid)
                 .where(tbl.c.schema_name == schema_name)
-                .values(can_read=can_read, can_write=can_write)
+                .values(can_read=can_read, can_write=can_write, can_publish=can_publish)
             )
         else:
             s.execute(tbl.insert().values(
-                user_id=uid, schema_name=schema_name, can_read=can_read, can_write=can_write
+                user_id=uid, schema_name=schema_name,
+                can_read=can_read, can_write=can_write, can_publish=can_publish
             ))
         s.commit()
 
@@ -93,7 +117,9 @@ def delete_permission(engine, user_id: str, schema_name: str) -> None:
         s.commit()
 
 
-def check_permission(engine, user_id: str, schema_name: str, write: bool = False) -> bool:
+def check_permission(
+    engine, user_id: str, schema_name: str, write: bool = False, publish: bool = False
+) -> bool:
     """Return True if the user has the requested access to the schema."""
     tbl = _perms_table(engine)
     uid = uuid.UUID(user_id)
@@ -103,6 +129,8 @@ def check_permission(engine, user_id: str, schema_name: str, write: bool = False
         ).mappings().first()
         if not row:
             return False
+        if publish:
+            return bool(row["can_publish"])
         if write:
             return bool(row["can_write"])
         return bool(row["can_read"])
@@ -134,4 +162,22 @@ def require_schema_access(request: Request, schema: str, write: bool = False) ->
         action = "write to" if write else "read"
         raise HTTPException(
             403, f"Access denied: you do not have permission to {action} schema '{schema}'"
+        )
+
+
+def require_publish_access(request: Request, schema: str) -> None:
+    """Raise HTTP 403 if the user does not have Publisher (or Admin) access.
+
+    Required for lifecycle transitions: draft → active (publish) and active → retired (retire).
+    """
+    user = getattr(request.state, "current_user", None)
+    if not user:
+        raise HTTPException(401, "Not authenticated")
+    if user.get("is_admin"):
+        return
+    engine = request.app.state.table_manager.engine
+    if not check_permission(engine, user["user_id"], schema, publish=True):
+        raise HTTPException(
+            403,
+            f"Publisher role required to perform lifecycle transitions on schema '{schema}'"
         )

@@ -49,7 +49,8 @@ def write_history(
     user_name: Optional[str] = None,
 ) -> None:
     """Insert a versioned snapshot into the history table."""
-    row = {k: v for k, v in record.items()}
+    history_cols = {c.name for c in history_table.c}
+    row = {k: v for k, v in record.items() if k in history_cols}
     row["_history_id"] = uuid.uuid4()
     row["_version"] = version
     row["_valid_from"] = valid_from
@@ -58,9 +59,6 @@ def write_history(
     row["_changed_by"] = user_name
     row["_change_reason"] = reason
     row["_action"] = action
-    # Remove columns that don't exist on history table
-    row.pop("_updated_at", None)
-    row.pop("_deleted_at", None)
     db.execute(history_table.insert().values(**row))
 
 

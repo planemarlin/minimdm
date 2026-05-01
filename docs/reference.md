@@ -8,6 +8,11 @@ miniMDM is driven by a YAML or JSON config file. Both formats are fully equivale
 
 ```yaml
 minimdm:
+  webhooks:
+    - event: record.published
+      url: https://example.com/hooks/minimdm
+    - event: record.retired
+      url: https://example.com/hooks/minimdm
   schemas:
     <schema_name>:
       objects:
@@ -15,6 +20,7 @@ minimdm:
           name: <display name>
           description: <optional description>
           parent: <object_key of parent object, optional>
+          require_change_reason: <true|false>
           attributes:
             <attribute_key>:
               name: <display name>
@@ -45,6 +51,62 @@ Setting `parent: <object_key>` adds a `_{parent}_id` UUID column to the table. U
 
 Use `reference: <object_key>` instead of `type` to create a foreign-key style link. The column stored is `{attribute_key}_id` (UUID). The UI renders a dropdown populated from the referenced object.
 
+### Object-Level Flags
+
+| Flag | Type | Description |
+|---|---|---|
+| `require_change_reason` | `true`/`false` | When `true`, a non-empty `_reason` is required on every create, update, delete, revert, publish, and retire operation. The API returns HTTP 422 if the reason is missing. The UI marks the Reason field as required with a red asterisk. |
+
+Example:
+
+```yaml
+objects:
+  product:
+    name: Product
+    require_change_reason: true
+    attributes:
+      code:
+        name: Code
+        type: string
+```
+
+### Webhooks
+
+miniMDM can notify external systems when lifecycle transitions occur. Webhooks are configured at the top level of the config file (not per-schema):
+
+```yaml
+minimdm:
+  webhooks:
+    - event: record.published
+      url: https://example.com/hooks/minimdm
+    - event: record.retired
+      url: https://example.com/hooks/minimdm
+```
+
+Two events are supported:
+
+| Event | Triggered when |
+|---|---|
+| `record.published` | A draft is promoted to active via the publish endpoint |
+| `record.retired` | An active record is transitioned to retired |
+
+Note: creating a new record directly as `active` does **not** trigger `record.published` — the event specifically represents a draft being reviewed and approved.
+
+**Payload** sent as JSON via HTTP POST:
+
+```json
+{
+  "event": "record.published",
+  "schema": "nordkraft",
+  "object": "product",
+  "record_id": "<uuid>",
+  "triggered_by": "alice",
+  "timestamp": "2026-05-01T10:00:00Z"
+}
+```
+
+Webhooks are delivered asynchronously after the API response is sent, so a slow or unreachable endpoint never delays the caller. Failures are logged as warnings and silently swallowed — the API response is unaffected. Multiple URLs can be configured for the same event. The same URL can appear for multiple events; use the `event` field in the payload to distinguish them.
+
 ## System Columns
 
 Every object table includes these system-managed columns (not in the config):
@@ -56,6 +118,24 @@ Every object table includes these system-managed columns (not in the config):
 | `_updated_at` | TIMESTAMPTZ | Last update time |
 | `_created_by` | TEXT | Username of the authenticated user who created the record |
 | `_deleted_at` | TIMESTAMPTZ | Soft-delete timestamp |
+| `_state` | TEXT | Lifecycle state: `active`, `draft`, or `retired` |
+| `_draft_of_id` | UUID | For draft records only: UUID of the master active record this draft was copied from |
+
+## Lifecycle States
+
+Every record has a `_state` field that controls its visibility and transitions:
+
+| State | Description |
+|---|---|
+| `active` | The live, published record. Returned by default on all list and export calls. |
+| `draft` | A pending version of an active record. Invisible to normal consumers until published. Editing an active record creates a draft copy instead of modifying the active record in place. |
+| `retired` | A record that is no longer in use. Excluded from default responses but still queryable. |
+
+**Transitions:**
+- `POST ./{id}/publish` — promotes a `draft` to `active` (copies draft data onto the master record, soft-deletes the draft). Requires Publisher or Admin.
+- `POST ./{id}/retire` — transitions an `active` record to `retired`. Requires Publisher or Admin.
+
+The `active` record is never touched directly when you edit it — a `draft` copy is created instead. This means API consumers always see the stable active record while changes are being prepared.
 
 ## History Tables
 
@@ -70,7 +150,8 @@ For every object `{schema}.{obj}`, a history table `{schema}.{obj}_history` is c
 | `_changed_at` | Timestamp of the change |
 | `_changed_by` | User who made the change |
 | `_change_reason` | Optional reason string |
-| `_action` | INSERT / UPDATE / DELETE / REVERT |
+| `_state` | Lifecycle state at the time of this history entry |
+| `_action` | `INSERT` / `UPDATE` / `DELETE` / `REVERT` / `PUBLISH` / `RETIRE` |
 
 ## Audit Log
 
@@ -84,7 +165,7 @@ All changes are recorded in `_system.audit_log`:
 | `schema_name` | Schema of the changed object |
 | `object_name` | Object key |
 | `record_id` | UUID of the changed record |
-| `action` | INSERT / UPDATE / DELETE / REVERT |
+| `action` | `INSERT` / `UPDATE` / `DELETE` / `REVERT` / `PUBLISH` / `RETIRE` |
 | `old_values` | JSON snapshot before change |
 | `new_values` | JSON snapshot after change |
 | `reason` | Optional reason provided by the user |
@@ -132,33 +213,61 @@ On first startup, if no users exist, an admin account is created automatically f
 
 ### Schema-Based Access Control
 
-Non-admin users have **no access** to any schema unless explicitly granted. Admins always have full access.
+Non-admin users have **no access** to any schema unless explicitly granted. Admins always have full access and bypass all permission checks.
 
-| Permission | Effect |
-|---|---|
-| `can_read: true` | User can list records, get individual records, view history, export, and call `GET /api/schemas/{schema}` |
-| `can_write: true` | User can additionally create, update, delete, revert, and import records |
+Four roles are supported, each building on the previous:
 
-Grants are managed in the User Management UI (`/admin/users`) via the inline permissions panel, or directly through the API.
+| Role | Permissions granted | Effect |
+|---|---|---|
+| **Viewer** | `can_read: true` | List records, get individual records, view history, export, and call `GET /api/schemas/{schema}` |
+| **Editor** | `can_write: true` (implies read) | Additionally: create, update (creates a draft), delete, revert, and import as `draft` |
+| **Publisher** | `can_publish: true` (implies write + read) | Additionally: publish drafts → active, retire active records, and import directly as `active` |
+| **Admin** | Full access (bypasses all checks) | Everything, across all schemas |
+
+Permission grants are managed in the User Management UI (`/admin/users`) via the inline permissions panel, or directly through the API.
+
+When setting a permission, the body may include any combination of these flags. Higher roles imply lower ones — setting `can_publish: true` automatically enables `can_write` and `can_read` on the server side. Removing `can_read` also removes write and publish access.
+
+```json
+{ "can_read": true, "can_write": false, "can_publish": false }
+```
 
 ### Records
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/records/{schema}/{obj}` | List records (paginated, searchable) |
-| `POST` | `/api/records/{schema}/{obj}` | Create record |
-| `GET` | `/api/records/{schema}/{obj}/{id}` | Get single record |
-| `PUT` | `/api/records/{schema}/{obj}/{id}` | Update record |
-| `DELETE` | `/api/records/{schema}/{obj}/{id}` | Soft-delete record |
-| `GET` | `/api/records/{schema}/{obj}/{id}/history` | Get version history |
-| `POST` | `/api/records/{schema}/{obj}/{id}/revert/{version}` | Revert to version |
+| Method | Path | Role required | Description |
+|---|---|---|---|
+| `GET` | `/api/records/{schema}/{obj}` | Viewer | List records (paginated, searchable); default `state=active` |
+| `POST` | `/api/records/{schema}/{obj}` | Editor | Create record (always `active`) |
+| `GET` | `/api/records/{schema}/{obj}/{id}` | Viewer | Get single record |
+| `PUT` | `/api/records/{schema}/{obj}/{id}` | Editor | Update record — creates a `draft` copy if the record is `active`; updates in-place if already a `draft` |
+| `DELETE` | `/api/records/{schema}/{obj}/{id}` | Editor | Soft-delete record |
+| `GET` | `/api/records/{schema}/{obj}/{id}/history` | Viewer | Get version history |
+| `POST` | `/api/records/{schema}/{obj}/{id}/revert/{version}` | Editor | Revert to version |
+| `POST` | `/api/records/{schema}/{obj}/{draft_id}/publish` | Publisher | Promote a `draft` to `active`; accepts `?reason=` |
+| `POST` | `/api/records/{schema}/{obj}/{id}/retire` | Publisher | Transition an `active` record to `retired`; accepts `?reason=` |
+
+**PUT response when a draft is created:**
+```json
+{ "id": "<draft-uuid>", "draft": true }
+```
+The returned `id` is the new draft's UUID. The original active record UUID is unchanged.
+
+**Publish response:**
+```json
+{ "id": "<active-uuid>", "published": true }
+```
+
+**Retire response:**
+```json
+{ "id": "<record-uuid>", "retired": true }
+```
 
 ### Import / Export
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/records/{schema}/{obj}/export` | Export (`?format=csv\|tsv\|json`) |
-| `POST` | `/api/records/{schema}/{obj}/import` | Import (`?format=csv\|tsv\|json`; optional `?upsert_key=<attr>`) |
+| Method | Path | Role required | Description |
+|---|---|---|---|
+| `GET` | `/api/records/{schema}/{obj}/export` | Viewer | Export (`?format=csv\|tsv\|json`; `?state=active\|draft\|retired\|all`) |
+| `POST` | `/api/records/{schema}/{obj}/import` | Editor / Publisher | Import (`?format=csv\|tsv\|json`; optional `?upsert_key=<attr>`; `?initial_state=active\|draft`) |
 
 ### Schemas
 
@@ -182,7 +291,7 @@ Grants are managed in the User Management UI (`/admin/users`) via the inline per
 |---|---|---|
 | `schema` | — | Filter by schema name (use `_system` for auth events) |
 | `obj` | — | Filter by object key within the schema |
-| `action` | — | Filter by action: `INSERT`, `UPDATE`, `DELETE`, `REVERT`, `LOGIN`, `LOGIN_FAILED`, `LOGOUT` |
+| `action` | — | Filter by action: `INSERT`, `UPDATE`, `DELETE`, `REVERT`, `PUBLISH`, `RETIRE`, `LOGIN`, `LOGIN_FAILED`, `LOGOUT` |
 | `from_time` | — | ISO 8601 datetime — include entries at or after this time |
 | `to_time` | — | ISO 8601 datetime — include entries at or before this time |
 | `exclude_system` | `false` | When `true`, omit entries from system schemas (schema name starts with `_`) |
@@ -196,6 +305,7 @@ Grants are managed in the User Management UI (`/admin/users`) via the inline per
 | `page` | 1 | Page number |
 | `page_size` | 50 | Records per page (max 500) |
 | `search` | — | Full-text search across string columns |
+| `state` | `active` | Lifecycle state filter: `active`, `draft`, `retired`, or `all` |
 | `include_deleted` | false | Include soft-deleted records in the results |
 | `parent_id` | — | Filter records by parent UUID (requires `parent` to be set on the object) |
 | `ref_field` | — | Attribute key of a reference field to filter by (use together with `ref_id`) |
@@ -205,12 +315,20 @@ Grants are managed in the User Management UI (`/admin/users`) via the inline per
 
 > **Note:** Sorting is intentionally not supported on parent or reference columns. These values are resolved from other tables client-side; a server-side sort would require a SQL JOIN per relationship, adding significant complexity. In the UI, parent and reference column headers are intentionally non-clickable to reflect this. Sort on the underlying data attributes instead.
 
+### Query Parameters (Export)
+
+| Parameter | Default | Description |
+|---|---|---|
+| `format` | `csv` | File format: `csv`, `tsv`, or `json` |
+| `state` | `active` | Lifecycle state filter: `active`, `draft`, `retired`, or `all` |
+
 ### Query Parameters (Import)
 
 | Parameter | Default | Description |
 |---|---|---|
 | `format` | `csv` | File format: `csv`, `tsv`, or `json` |
 | `upsert_key` | — | Attribute key to match against existing records. If a non-deleted record with the same value exists, it is updated in place; otherwise a new record is inserted. |
+| `initial_state` | `active` | Lifecycle state to assign to imported records: `active` or `draft`. Importing as `active` requires Publisher or Admin role; Editors can import as `draft` and publish the records later. |
 | `reason` | — | Audit note attached to every inserted or updated record |
 
 ### Record Body Format
