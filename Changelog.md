@@ -4,7 +4,7 @@ All notable changes to miniMDM are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] – 2026-05-01
 
 ### Added
 - **Lifecycle states**: every record now carries a `_state` field with three values — `draft`, `active`, and `retired`; new records are created as `active`; history tables also snapshot the state
