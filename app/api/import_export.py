@@ -133,14 +133,17 @@ async def import_records(
 
     if initial_state == "active":
         user = getattr(request.state, "current_user", None)
-        if user and not user.get("is_admin"):
-            engine = request.app.state.table_manager.engine
-            if not check_permission(engine, user["user_id"], schema, publish=True):
-                raise HTTPException(
-                    403,
-                    "Importing records as 'active' requires Publisher or Admin role. "
-                    "Use initial_state=draft to import as drafts instead."
-                )
+        if not user or (
+            not user.get("is_admin")
+            and not check_permission(
+                request.app.state.table_manager.engine, user["user_id"], schema, publish=True
+            )
+        ):
+            raise HTTPException(
+                403,
+                "Importing records as 'active' requires Publisher or Admin role. "
+                "Use initial_state=draft to import as drafts instead."
+            )
     tm = _get_tm(request)
     try:
         table = tm.get_table(schema, obj)

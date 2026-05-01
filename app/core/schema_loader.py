@@ -1,7 +1,19 @@
 import json
+import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
+
+_IDENTIFIER_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+
+
+def _validate_identifier(value: str, context: str) -> None:
+    if not _IDENTIFIER_RE.match(value):
+        raise ValueError(
+            f"Invalid identifier '{value}' in {context}. "
+            "Use only letters, digits, and underscores, starting with a letter or underscore."
+        )
 
 
 def load_config(config_path: str) -> dict:
@@ -54,14 +66,17 @@ def _normalize(raw: dict) -> dict:
     schemas = {}
 
     for schema_name, schema_body in schemas_raw.items():
+        _validate_identifier(schema_name, "schemas")
         objects_raw = schema_body.get("objects", {})
         objects = {}
 
         for obj_key, obj_body in objects_raw.items():
+            _validate_identifier(obj_key, f"schemas.{schema_name}.objects")
             attrs_raw = obj_body.get("attributes", {})
             attributes = {}
 
             for attr_key, attr_body in attrs_raw.items():
+                _validate_identifier(attr_key, f"schemas.{schema_name}.objects.{obj_key}.attributes")
                 attributes[attr_key] = {
                     "name": attr_body.get("name", attr_key),
                     "type": attr_body.get("type", "string"),
@@ -82,8 +97,16 @@ def _normalize(raw: dict) -> dict:
 
     webhooks = []
     for entry in raw.get("webhooks", []):
-        if entry.get("event") and entry.get("url"):
-            webhooks.append({"event": str(entry["event"]), "url": str(entry["url"])})
+        event = entry.get("event")
+        url = entry.get("url")
+        if not event or not url:
+            continue
+        parsed = urlparse(str(url))
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError(
+                f"Webhook URL '{url}' must use http or https scheme."
+            )
+        webhooks.append({"event": str(event), "url": str(url)})
 
     return {"schemas": schemas, "webhooks": webhooks}
 

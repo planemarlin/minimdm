@@ -537,6 +537,9 @@ def revert_record(
     if not existing:
         raise HTTPException(404, "Record not found")
 
+    if existing.get("_state") == "retired":
+        require_publish_access(request, schema)
+
     _check_reason(reason, tm.get_object_config(schema, obj))
 
     old_values = dict(existing)
