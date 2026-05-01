@@ -8,6 +8,11 @@ miniMDM is driven by a YAML or JSON config file. Both formats are fully equivale
 
 ```yaml
 minimdm:
+  webhooks:
+    - event: record.published
+      url: https://example.com/hooks/minimdm
+    - event: record.retired
+      url: https://example.com/hooks/minimdm
   schemas:
     <schema_name>:
       objects:
@@ -15,6 +20,7 @@ minimdm:
           name: <display name>
           description: <optional description>
           parent: <object_key of parent object, optional>
+          require_change_reason: <true|false>
           attributes:
             <attribute_key>:
               name: <display name>
@@ -63,6 +69,43 @@ objects:
         name: Code
         type: string
 ```
+
+### Webhooks
+
+miniMDM can notify external systems when lifecycle transitions occur. Webhooks are configured at the top level of the config file (not per-schema):
+
+```yaml
+minimdm:
+  webhooks:
+    - event: record.published
+      url: https://example.com/hooks/minimdm
+    - event: record.retired
+      url: https://example.com/hooks/minimdm
+```
+
+Two events are supported:
+
+| Event | Triggered when |
+|---|---|
+| `record.published` | A draft is promoted to active via the publish endpoint |
+| `record.retired` | An active record is transitioned to retired |
+
+Note: creating a new record directly as `active` does **not** trigger `record.published` — the event specifically represents a draft being reviewed and approved.
+
+**Payload** sent as JSON via HTTP POST:
+
+```json
+{
+  "event": "record.published",
+  "schema": "nordkraft",
+  "object": "product",
+  "record_id": "<uuid>",
+  "triggered_by": "alice",
+  "timestamp": "2026-05-01T10:00:00Z"
+}
+```
+
+Webhooks are delivered asynchronously after the API response is sent, so a slow or unreachable endpoint never delays the caller. Failures are logged as warnings and silently swallowed — the API response is unaffected. Multiple URLs can be configured for the same event. The same URL can appear for multiple events; use the `event` field in the payload to distinguish them.
 
 ## System Columns
 

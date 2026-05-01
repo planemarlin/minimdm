@@ -3,13 +3,14 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import audit as audit_svc
 from app.core.permissions import require_publish_access, require_schema_access
+from app.core.webhooks import fire_webhooks
 from app.database import get_db
 
 router = APIRouter()
@@ -615,6 +616,7 @@ def publish_record(
     obj: str,
     record_id: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     reason: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
@@ -728,6 +730,10 @@ def publish_record(
     )
 
     db.commit()
+    background_tasks.add_task(
+        fire_webhooks, tm.get_config(), "record.published",
+        schema, obj, str(master_id), _get_username(request)
+    )
     return {"id": str(master_id), "published": True}
 
 
@@ -741,6 +747,7 @@ def retire_record(
     obj: str,
     record_id: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     reason: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
@@ -804,6 +811,10 @@ def retire_record(
         user_name=_get_username(request)
     )
     db.commit()
+    background_tasks.add_task(
+        fire_webhooks, tm.get_config(), "record.retired",
+        schema, obj, str(rid), _get_username(request)
+    )
     return {"id": str(rid), "retired": True}
 
 

@@ -11,6 +11,7 @@
 | `tests/test_api_import_export.py` | Integration – import/export, upsert, initial_state | Yes |
 | `tests/test_api_auth.py` | Integration – authentication, token handling | Yes |
 | `tests/test_api_permissions.py` | Integration – schema-based access control | Yes |
+| `tests/test_api_webhooks.py` | Integration – webhook delivery on publish/retire | Yes |
 | `tests/test_templates.py` | Template rendering – page structure | Yes |
 
 Unit tests run anywhere. Integration and template tests require a PostgreSQL test database and are automatically skipped when `TEST_DATABASE_URL` is not set.

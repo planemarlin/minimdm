@@ -80,7 +80,12 @@ def _normalize(raw: dict) -> dict:
 
         schemas[schema_name] = {"objects": objects}
 
-    return {"schemas": schemas}
+    webhooks = []
+    for entry in raw.get("webhooks", []):
+        if entry.get("event") and entry.get("url"):
+            webhooks.append({"event": str(entry["event"]), "url": str(entry["url"])})
+
+    return {"schemas": schemas, "webhooks": webhooks}
 
 
 def validate_config(config: dict) -> list[str]:
