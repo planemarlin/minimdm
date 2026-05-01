@@ -76,7 +76,9 @@ def _normalize(raw: dict) -> dict:
             attributes = {}
 
             for attr_key, attr_body in attrs_raw.items():
-                _validate_identifier(attr_key, f"schemas.{schema_name}.objects.{obj_key}.attributes")
+                _validate_identifier(
+                    attr_key, f"schemas.{schema_name}.objects.{obj_key}.attributes"
+                )
                 attributes[attr_key] = {
                     "name": attr_body.get("name", attr_key),
                     "type": attr_body.get("type", "string"),

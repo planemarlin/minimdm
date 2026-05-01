@@ -3,8 +3,9 @@
 Requires TEST_DATABASE_URL; skipped otherwise.
 httpx.post is mocked — no real HTTP calls are made.
 """
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 pytestmark = pytest.mark.usefixtures("clean_records")
 
