@@ -4,6 +4,12 @@ All notable changes to miniMDM are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- Upgraded `mako` from 1.3.11 to 1.3.12 to resolve CVE-2026-44307
+- Upgraded `python-multipart` from 0.0.26 to 0.0.27 to resolve CVE-2026-42561
+
 ## [0.4.0] – 2026-05-01
 
 ### Added
