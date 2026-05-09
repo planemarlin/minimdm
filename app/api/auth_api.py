@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -21,6 +22,11 @@ from app.core.limiter import limiter
 router = APIRouter()
 
 COOKIE_NAME = "access_token"
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 _ZERO_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
@@ -53,10 +59,9 @@ def _log_auth(request: Request, action: str, user_id: uuid.UUID, username: str, 
 
 @router.post("/auth/login")
 @limiter.limit("10/minute")
-async def login(request: Request):
-    data = await request.json()
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
+async def login(request: Request, body: LoginRequest):
+    username = body.username.strip()
+    password = body.password
 
     if not username or not password:
         raise HTTPException(400, "Username and password are required")

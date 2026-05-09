@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+- Auth login endpoint now documents its request body (`username`, `password`) in the Swagger UI; replaced raw `request.json()` parsing with a Pydantic model ([#27](../../issues/27))
+
 ### Security
 - Upgraded `mako` from 1.3.11 to 1.3.12 to resolve CVE-2026-44307
 - Upgraded `python-multipart` from 0.0.26 to 0.0.27 to resolve CVE-2026-42561
