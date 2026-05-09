@@ -140,6 +140,13 @@ def test_login_unknown_user_returns_401(client):
     assert res.status_code == 401
 
 
+def test_login_missing_fields_returns_422(client):
+    res = client.post("/api/auth/login", json={"username": "only_username"})
+    assert res.status_code == 422
+    res = client.post("/api/auth/login", json={})
+    assert res.status_code == 422
+
+
 def test_login_inactive_user_returns_401(client):
     engine = _get_engine()
     from app.core.auth import create_user, list_users, update_user
