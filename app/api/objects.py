@@ -179,6 +179,7 @@ def create_record(
     obj: str,
     request: Request,
     body: dict,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema, write=True)
@@ -218,6 +219,11 @@ def create_record(
         user_name=_get_username(request)
     )
     db.commit()
+
+    background_tasks.add_task(
+        fire_webhooks, tm.get_config(), "record.created",
+        schema, obj, str(record_id), _get_username(request)
+    )
 
     return {"id": str(record_id)}
 

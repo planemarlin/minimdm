@@ -1,14 +1,17 @@
 minimdm:
 
   # --- Webhooks (optional) ---
-  # miniMDM can notify external systems when lifecycle transitions occur.
-  # Two events are supported:
+  # miniMDM can notify external systems when lifecycle events occur.
+  # Three events are supported:
+  #   record.created    — a new record was created directly as active
   #   record.published  — a draft was promoted to active
   #   record.retired    — an active record was transitioned to retired
   # Multiple URLs can be registered for the same event.
   # Delivery is asynchronous; failures are logged but never affect the API caller.
   #
   # webhooks:
+  #   - event: record.created
+  #     url: https://example.com/hooks/minimdm
   #   - event: record.published
   #     url: https://example.com/hooks/minimdm
   #   - event: record.retired

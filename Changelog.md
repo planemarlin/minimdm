@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **record.created webhook**: `record.created` fires when a new record is created directly as active; completes full lifecycle webhook coverage alongside `record.published` and `record.retired`
+
 ### Security
 - Upgraded `mako` from 1.3.11 to 1.3.12 to resolve CVE-2026-44307
 - Upgraded `python-multipart` from 0.0.26 to 0.0.27 to resolve CVE-2026-42561

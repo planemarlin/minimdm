@@ -9,6 +9,8 @@ miniMDM is driven by a YAML or JSON config file. Both formats are fully equivale
 ```yaml
 minimdm:
   webhooks:
+    - event: record.created
+      url: https://example.com/hooks/minimdm
     - event: record.published
       url: https://example.com/hooks/minimdm
     - event: record.retired
@@ -77,20 +79,23 @@ miniMDM can notify external systems when lifecycle transitions occur. Webhooks a
 ```yaml
 minimdm:
   webhooks:
+    - event: record.created
+      url: https://example.com/hooks/minimdm
     - event: record.published
       url: https://example.com/hooks/minimdm
     - event: record.retired
       url: https://example.com/hooks/minimdm
 ```
 
-Two events are supported:
+Three events are supported:
 
 | Event | Triggered when |
 |---|---|
+| `record.created` | A new record is created (always as `active`) |
 | `record.published` | A draft is promoted to active via the publish endpoint |
 | `record.retired` | An active record is transitioned to retired |
 
-Note: creating a new record directly as `active` does **not** trigger `record.published` — the event specifically represents a draft being reviewed and approved.
+Note: `record.created` and `record.published` are distinct events. `record.created` fires when a brand-new record is created directly as active. `record.published` fires when a draft goes through the review-and-approve flow. Editing an existing record creates a draft copy — no webhook fires for draft creation.
 
 **Payload** sent as JSON via HTTP POST:
 
