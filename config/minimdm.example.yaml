@@ -50,9 +50,13 @@ minimdm:
 
         # --- Product Category ---
         # A standalone object used as a parent for products.
+        # allow_retire: false prevents this reference data from being retired via the API.
+        # allow_direct_active_import: false forces all bulk imports to go through draft review.
         product_category:
           name: Product Category
           description: Top-level grouping for products
+          allow_retire: false
+          allow_direct_active_import: false
           attributes:
             code:
               name: Category Code
@@ -68,11 +72,14 @@ minimdm:
         # A child of product_category (parent relationship) with a cross-object
         # reference to supplier and a numeric attribute.
         # require_change_reason forces editors to document why a product was changed.
+        # requires_draft: true means new products always start as a draft — a Publisher
+        # must approve them before they become the active golden record.
         product:
           name: Product
           description: Products sourced from suppliers
           parent: product_category
           require_change_reason: true
+          requires_draft: true
           attributes:
             sku:
               name: SKU

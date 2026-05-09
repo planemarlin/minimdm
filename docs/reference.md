@@ -71,9 +71,12 @@ Use `reference: <object_key>` instead of `type` to create a foreign-key style li
 
 ### Object-Level Flags
 
-| Flag | Type | Description |
-|---|---|---|
-| `require_change_reason` | `true`/`false` | When `true`, a non-empty `_reason` is required on every create, update, delete, revert, publish, and retire operation. The API returns HTTP 422 if the reason is missing. The UI marks the Reason field as required with a red asterisk. |
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `require_change_reason` | `true`/`false` | `false` | When `true`, a non-empty `_reason` is required on every create, update, delete, revert, publish, and retire operation. The API returns HTTP 422 if the reason is missing. The UI marks the Reason field as required with a red asterisk. |
+| `requires_draft` | `true`/`false` | `false` | When `true`, new records are always created as `draft` regardless of the caller's role. Editors and Publishers alike must go through the draft → publish workflow. Useful for high-governance objects where every new golden record needs explicit review. |
+| `allow_retire` | `true`/`false` | `true` | When `false`, the retire endpoint returns HTTP 422 for this object. Use this to protect stable reference data (e.g. currency codes, country lists) that should never be retired. |
+| `allow_direct_active_import` | `true`/`false` | `true` | When `false`, bulk import with `initial_state=active` is blocked for this object even for Publishers and Admins. All imported records must enter as `draft` and be published individually. |
 
 Example:
 
@@ -82,9 +85,19 @@ objects:
   product:
     name: Product
     require_change_reason: true
+    requires_draft: true           # new products always start as draft
     attributes:
       code:
         name: Code
+        type: string
+
+  country:
+    name: Country
+    allow_retire: false            # reference data — cannot be retired
+    allow_direct_active_import: false  # bulk imports must go through draft review
+    attributes:
+      code:
+        name: ISO Code
         type: string
 ```
 

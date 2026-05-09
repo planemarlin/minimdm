@@ -155,6 +155,14 @@ async def import_records(
     except KeyError:
         raise HTTPException(404, f"Object '{schema}.{obj}' not found")
 
+    import_obj_config = tm.get_object_config(schema, obj) or {}
+    if initial_state == "active" and not import_obj_config.get("allow_direct_active_import", True):
+        raise HTTPException(
+            422,
+            f"Object '{obj}' does not allow direct active import "
+            "(allow_direct_active_import: false in config). Use initial_state=draft instead."
+        )
+
     if upsert_key:
         user_cols = {c.name for c in table.c if not c.name.startswith("_")}
         if upsert_key not in user_cols:

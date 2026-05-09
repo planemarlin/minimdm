@@ -92,6 +92,11 @@ def _normalize(raw: dict) -> dict:
                 "description": obj_body.get("description", ""),
                 "parent": obj_body.get("parent"),
                 "require_change_reason": bool(obj_body.get("require_change_reason", False)),
+                "requires_draft": bool(obj_body.get("requires_draft", False)),
+                "allow_retire": bool(obj_body.get("allow_retire", True)),
+                "allow_direct_active_import": bool(
+                    obj_body.get("allow_direct_active_import", True)
+                ),
                 "attributes": attributes,
             }
 
