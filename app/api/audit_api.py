@@ -35,6 +35,7 @@ def list_audit_log(
     to_time: Optional[str] = Query(
         None, description="ISO datetime — include entries at or before this time"
     ),
+    user: str = Query(None, description="Filter by username (case-insensitive, partial match)"),
     exclude_system: bool = Query(
         False, description="Exclude entries from system schemas (schema_name starting with '_')"
     ),
@@ -68,6 +69,8 @@ def list_audit_log(
         filters.append(audit_table.c.object_name == obj)
     if action:
         filters.append(audit_table.c.action == action.upper())
+    if user:
+        filters.append(audit_table.c.user_name.ilike(f"%{user}%"))
     if from_time:
         ft = _parse_dt(from_time)
         if ft:

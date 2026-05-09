@@ -35,6 +35,7 @@
       <option value="DELETE">DELETE</option>
       <option value="REVERT">REVERT</option>
     </select>
+    <input type="text" id="filter-user" placeholder="Filter by user…" style="width:12rem" />
     <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
       From <input type="datetime-local" id="filter-from" />
     </label>
@@ -74,6 +75,7 @@
       <option value="LOGIN_FAILED">LOGIN_FAILED</option>
       <option value="LOGOUT">LOGOUT</option>
     </select>
+    <input type="text" id="auth-filter-user" placeholder="Filter by user…" style="width:12rem" />
     <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
       From <input type="datetime-local" id="auth-filter-from" />
     </label>
@@ -123,10 +125,12 @@ document.getElementById("filter-schema").addEventListener("change", () => {
 });
 document.getElementById("filter-obj").addEventListener("change", () => loadAuditLog(1));
 document.getElementById("filter-action").addEventListener("change", () => loadAuditLog(1));
+document.getElementById("filter-user").addEventListener("input", () => loadAuditLog(1));
 document.getElementById("filter-from").addEventListener("change", () => loadAuditLog(1));
 document.getElementById("filter-to").addEventListener("change", () => loadAuditLog(1));
 
 document.getElementById("auth-filter-action").addEventListener("change", () => loadAuthLog(1));
+document.getElementById("auth-filter-user").addEventListener("input", () => loadAuthLog(1));
 document.getElementById("auth-filter-from").addEventListener("change", () => loadAuthLog(1));
 document.getElementById("auth-filter-to").addEventListener("change", () => loadAuthLog(1));
 

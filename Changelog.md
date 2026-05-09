@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 - **record.created webhook**: `record.created` fires when a new record is created directly as active; completes full lifecycle webhook coverage alongside `record.published` and `record.retired`
+- **Audit log user filter**: text input on both the Data Changes and Auth Events tabs filters entries by username (case-insensitive partial match); `GET /api/audit` accepts a `?user=` query parameter
 
 ### Security
 - Upgraded `mako` from 1.3.11 to 1.3.12 to resolve CVE-2026-44307

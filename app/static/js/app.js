@@ -857,6 +857,7 @@ async function loadAuditLog(page) {
   const schema = document.getElementById("filter-schema")?.value || "";
   const obj = document.getElementById("filter-obj")?.value || "";
   const action = document.getElementById("filter-action")?.value || "";
+  const user = document.getElementById("filter-user")?.value || "";
   const fromTime = document.getElementById("filter-from")?.value || "";
   const toTime = document.getElementById("filter-to")?.value || "";
 
@@ -865,6 +866,7 @@ async function loadAuditLog(page) {
   if (schema) params.set("schema", schema);
   if (obj) params.set("obj", obj);
   if (action) params.set("action", action);
+  if (user) params.set("user", user);
   if (fromTime) params.set("from_time", toUtcIso(fromTime));
   if (toTime) params.set("to_time", toUtcIso(toTime));
 
@@ -921,12 +923,14 @@ async function loadAuthLog(page) {
   tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>`;
 
   const action = document.getElementById("auth-filter-action")?.value || "";
+  const user = document.getElementById("auth-filter-user")?.value || "";
   const fromTime = document.getElementById("auth-filter-from")?.value || "";
   const toTime = document.getElementById("auth-filter-to")?.value || "";
 
   const toUtcIso = s => new Date(s).toISOString().replace(/\.\d{3}Z$/, "+00:00");
   const params = new URLSearchParams({ page: _auditPage, page_size: _auditPageSize, schema: "_system" });
   if (action) params.set("action", action);
+  if (user) params.set("user", user);
   if (fromTime) params.set("from_time", toUtcIso(fromTime));
   if (toTime) params.set("to_time", toUtcIso(toTime));
 
