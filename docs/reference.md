@@ -141,6 +141,8 @@ Every object table includes these system-managed columns (not in the config):
 | `_deleted_at` | TIMESTAMPTZ | Soft-delete timestamp |
 | `_state` | TEXT | Lifecycle state: `active`, `draft`, or `retired` |
 | `_draft_of_id` | UUID | For draft records only: UUID of the master active record this draft was copied from |
+| `_source_system` | TEXT | Name of the external system that originated this record (e.g. `"erp"`, `"crm"`) |
+| `_source_id` | TEXT | Identifier of the record in the source system |
 
 ## Lifecycle States
 
@@ -350,6 +352,7 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 | `format` | `csv` | File format: `csv`, `tsv`, or `json` |
 | `upsert_key` | — | Attribute key to match against existing records. If a non-deleted record with the same value exists, it is updated in place; otherwise a new record is inserted. |
 | `initial_state` | `active` | Lifecycle state to assign to imported records: `active` or `draft`. Importing as `active` requires Publisher or Admin role; Editors can import as `draft` and publish the records later. |
+| `source_system` | — | Source system name applied to all imported records (sets `_source_system`). Per-row values in the file take precedence if the file includes a `_source_system` column. |
 | `reason` | — | Audit note attached to every inserted or updated record |
 
 ### Record Body Format

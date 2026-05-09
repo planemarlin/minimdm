@@ -412,11 +412,15 @@ async function loadRecordDetail(schema, obj, recordId, objConfig, opts = {}) {
     : recordState === "retired"
       ? `<span class="badge badge-retired">${stateLabel}</span>`
       : `<span class="badge badge-insert" style="background:var(--success,#2a9d5c)">${stateLabel}</span>`;
+  const provenanceHtml = record._source_system
+    ? `<span>Source: ${escHtml(record._source_system)}${record._source_id ? ` / ${escHtml(record._source_id)}` : ""}</span>`
+    : "";
   const sysMeta = `<div style="margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--border); font-size:.78rem; color:var(--text-muted); display:flex; gap:1.5rem; flex-wrap:wrap; align-items:center">
     ${stateBadgeHtml}
     <span>Created: ${fmtDate(record._created_at)}</span>
     <span>Updated: ${fmtDate(record._updated_at)}</span>
     ${record._created_by ? `<span>By: ${escHtml(record._created_by)}</span>` : ""}
+    ${provenanceHtml}
   </div>`;
 
   container.innerHTML = `<div class="detail-grid">${parentHtml}${fields}</div>${sysMeta}`;

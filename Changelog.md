@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **record.created webhook**: `record.created` fires when a new record is created directly as active; completes full lifecycle webhook coverage alongside `record.published` and `record.retired`
 - **Audit log user filter**: text input on both the Data Changes and Auth Events tabs filters entries by username (case-insensitive partial match); `GET /api/audit` accepts a `?user=` query parameter
 - **Golden record semantics**: active records are now explicitly identified as the golden/master record throughout the UI (detail view badge shows "Active · Master", list filter shows "Active (Master)"), OpenAPI descriptions, and docs; a new "miniMDM as an MDM system" section in `docs/reference.md` explains the single-source-of-truth model
+- **Source & provenance**: two new system columns `_source_system` (e.g. `"erp"`, `"crm"`) and `_source_id` record where each golden record originated; settable via the API body, via per-column CSV/TSV/JSON import, or via the `?source_system=` import query parameter (query param applies to all rows; per-row column values take precedence); provenance is shown in the record detail view and preserved in history; `GET /api/records` accepts `?source_system=` to filter by origin
 
 ### Security
 - Upgraded `mako` from 1.3.11 to 1.3.12 to resolve CVE-2026-44307

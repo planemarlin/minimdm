@@ -68,6 +68,7 @@ def list_records(
     ref_id: Optional[str] = Query(None),
     sort_by: Optional[str] = Query(None),
     sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
+    source_system: Optional[str] = Query(None, description="Filter by source system name"),
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema)
@@ -109,6 +110,9 @@ def list_records(
         if text_cols:
             escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             q = q.where(or_(*[c.ilike(f"%{escaped}%") for c in text_cols]))
+
+    if source_system and hasattr(table.c, "_source_system"):
+        q = q.where(table.c._source_system == source_system)
 
     user_col_names = {c.name for c in table.c if not c.name.startswith("_")}
     if sort_by and sort_by in user_col_names:

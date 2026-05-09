@@ -127,6 +127,9 @@ async def import_records(
                     "Importing as active requires Publisher or Admin.",
     ),
     strict: bool = Query(True, description="Roll back all rows if any row fails (default: true)"),
+    source_system: Optional[str] = Query(
+        None, description="Source system name applied to all imported records"
+    ),
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema, write=True)
@@ -195,7 +198,7 @@ async def import_records(
             if upsert_key:
                 action = _upsert_row(
                     db, table, history_table, audit_table,
-                    row, upsert_key, reason, request, schema, obj, initial_state
+                    row, upsert_key, reason, request, schema, obj, initial_state, source_system
                 )
                 if action == "updated":
                     updated += 1
@@ -204,7 +207,7 @@ async def import_records(
             else:
                 _import_row(
                     db, table, history_table, audit_table,
-                    row, reason, request, schema, obj, initial_state
+                    row, reason, request, schema, obj, initial_state, source_system
                 )
                 inserted += 1
             if sp:
@@ -261,20 +264,26 @@ def _coerce_value(val: str, col_type):
     return val
 
 
+_IMPORTABLE_SYSTEM_COLS = {"_source_system", "_source_id"}
+
+
 def _coerce_row(row: dict, table) -> dict:
     """Apply type coercion to all values in a CSV row based on column types."""
     col_types = {c.name: c.type for c in table.c}
-    user_cols = {c.name for c in table.c if not c.name.startswith("_")}
+    accepted = {
+        c.name for c in table.c
+        if not c.name.startswith("_") or c.name in _IMPORTABLE_SYSTEM_COLS
+    }
     result = {}
     for k, v in row.items():
-        if k not in user_cols:
+        if k not in accepted:
             continue
         result[k] = _coerce_value(v, col_types[k]) if k in col_types else (v if v != "" else None)
     return result
 
 
 def _import_row(db, table, history_table, audit_table, row: dict, reason, request, schema, obj,
-                initial_state: str = "active"):
+                initial_state: str = "active", source_system: Optional[str] = None):
     from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
     values = _coerce_row(row, table)
@@ -283,6 +292,8 @@ def _import_row(db, table, history_table, audit_table, row: dict, reason, reques
     values["_created_at"] = now
     values["_updated_at"] = now
     values["_state"] = initial_state
+    if source_system and not values.get("_source_system"):
+        values["_source_system"] = source_system
 
     db.execute(table.insert().values(**values))
     audit_svc.write_history(
@@ -298,11 +309,13 @@ def _import_row(db, table, history_table, audit_table, row: dict, reason, reques
 
 def _upsert_row(
     db, table, history_table, audit_table, row: dict, upsert_key: str, reason, request, schema, obj,
-    initial_state: str = "active",
+    initial_state: str = "active", source_system: Optional[str] = None,
 ):
     from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
     values = _coerce_row(row, table)
+    if source_system and not values.get("_source_system"):
+        values["_source_system"] = source_system
 
     match_value = values.get(upsert_key)
     existing = None

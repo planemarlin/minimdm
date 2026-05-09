@@ -141,6 +141,8 @@ class TableManager:
             Column("_deleted_at", DateTime(timezone=True), nullable=True),
             Column("_state", Text, nullable=False, server_default="'active'"),
             Column("_draft_of_id", PGUUID(as_uuid=True), nullable=True),
+            Column("_source_system", Text, nullable=True),
+            Column("_source_id", Text, nullable=True),
         ]
 
         parent = obj_body.get("parent")
@@ -204,6 +206,8 @@ class TableManager:
             Column("_created_at", DateTime(timezone=True), nullable=True),
             Column("_created_by", Text, nullable=True),
             Column("_state", Text, nullable=True),
+            Column("_source_system", Text, nullable=True),
+            Column("_source_id", Text, nullable=True),
         ]
 
         parent = obj_body.get("parent")

@@ -302,3 +302,58 @@ def test_import_non_strict_mode_commits_valid_rows(client):
     # Alice must be present; Bob was skipped
     records = client.get("/api/records/test/contact").json()
     assert records["total"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Provenance: source_system query param and _source_system/_source_id columns
+# ---------------------------------------------------------------------------
+
+def test_import_source_system_query_param_sets_field(client):
+    """?source_system= on import sets _source_system on all inserted records."""
+    csv_content = "code,name\nP001,Prov Corp\n"
+    files = {"file": ("prov.csv", csv_content.encode(), "text/csv")}
+    res = client.post(
+        "/api/records/test/company/import?format=csv&source_system=erp", files=files
+    )
+    assert res.status_code == 200
+    records = client.get("/api/records/test/company").json()
+    assert records["total"] == 1
+    assert records["records"][0]["_source_system"] == "erp"
+
+
+def test_import_source_system_column_in_csv_takes_precedence(client):
+    """Per-row _source_system in the CSV overrides the query param."""
+    csv_content = "code,name,_source_system\nP002,Row Corp,crm\n"
+    files = {"file": ("prov.csv", csv_content.encode(), "text/csv")}
+    res = client.post(
+        "/api/records/test/company/import?format=csv&source_system=erp", files=files
+    )
+    assert res.status_code == 200
+    records = client.get("/api/records/test/company").json()
+    assert records["total"] == 1
+    assert records["records"][0]["_source_system"] == "crm"
+
+
+def test_import_source_id_column_in_csv(client):
+    """_source_id can be supplied per-row in the CSV."""
+    csv_content = "code,name,_source_system,_source_id\nP003,ID Corp,erp,ERP-42\n"
+    files = {"file": ("prov.csv", csv_content.encode(), "text/csv")}
+    res = client.post("/api/records/test/company/import?format=csv", files=files)
+    assert res.status_code == 200
+    records = client.get("/api/records/test/company").json()
+    assert records["total"] == 1
+    assert records["records"][0]["_source_id"] == "ERP-42"
+
+
+def test_import_upsert_source_system_query_param(client):
+    """?source_system= is also applied during upsert inserts."""
+    csv_content = "code,name\nU001,Upsert Corp\n"
+    files = {"file": ("up.csv", csv_content.encode(), "text/csv")}
+    res = client.post(
+        "/api/records/test/company/import?format=csv&upsert_key=code&source_system=wms",
+        files=files,
+    )
+    assert res.status_code == 200
+    assert res.json()["inserted"] == 1
+    records = client.get("/api/records/test/company").json()
+    assert records["records"][0]["_source_system"] == "wms"
