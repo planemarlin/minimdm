@@ -9,6 +9,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Fixed
 - Web UI routes (`/`, `/login`, `/admin/users`, etc.) no longer appear in the Swagger API documentation; `include_in_schema=False` added to all HTML-returning routes ([#28](../../issues/28))
 
+### Security
+- Upgraded `mako` from 1.3.11 to 1.3.12 to resolve CVE-2026-44307
+- Upgraded `python-multipart` from 0.0.26 to 0.0.27 to resolve CVE-2026-42561
+
 ## [0.4.0] – 2026-05-01
 
 ### Added
