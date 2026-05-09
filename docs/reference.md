@@ -1,5 +1,21 @@
 # Feature and API Reference
 
+## miniMDM as an MDM System
+
+miniMDM implements a **single-source-of-truth** master data model. Every object type has exactly one authoritative record per entity — the `active` record. This is the **golden record**: the version that downstream systems, integrations, and API consumers should read and trust.
+
+The active record is never overwritten in place. When a change is needed, a `draft` copy is created and goes through a review-and-approve flow before being promoted. This means:
+
+- **Consumers** always read from `state=active` (the default) and see only clean, approved master data.
+- **Stewards** work in the draft layer — preparing, reviewing, and publishing changes without affecting the live record.
+- **Publishers** control the promotion gate: a draft only becomes the master record when explicitly published.
+
+The `retired` state preserves historical records that are no longer active without deleting them.
+
+This model maps directly to standard MDM concepts: `active` = golden record, publish = mastering approval, draft = pending change in stewardship.
+
+---
+
 ## Config File Format
 
 miniMDM is driven by a YAML or JSON config file. Both formats are fully equivalent.
@@ -132,15 +148,15 @@ Every record has a `_state` field that controls its visibility and transitions:
 
 | State | Description |
 |---|---|
-| `active` | The live, published record. Returned by default on all list and export calls. |
-| `draft` | A pending version of an active record. Invisible to normal consumers until published. Editing an active record creates a draft copy instead of modifying the active record in place. |
-| `retired` | A record that is no longer in use. Excluded from default responses but still queryable. |
+| `active` | The **golden record** — the authoritative master version. Returned by default on all list and export calls. This is the record downstream systems and integrations should consume. |
+| `draft` | A pending change to an active record, awaiting review and approval. Invisible to normal consumers until published. Editing an active record always creates a draft copy — the active record is never modified in place. New records created directly are always `active`; to require the draft flow for all new records, set `requires_draft: true` in the config (see Lifecycle Policy). |
+| `retired` | A record that is no longer in use. Excluded from default responses but preserved for history and audit. |
 
 **Transitions:**
-- `POST ./{id}/publish` — promotes a `draft` to `active` (copies draft data onto the master record, soft-deletes the draft). Requires Publisher or Admin.
+- `POST ./{id}/publish` — promotes a `draft` to the active golden record (applies draft data onto the master, removes the draft). Requires Publisher or Admin.
 - `POST ./{id}/retire` — transitions an `active` record to `retired`. Requires Publisher or Admin.
 
-The `active` record is never touched directly when you edit it — a `draft` copy is created instead. This means API consumers always see the stable active record while changes are being prepared.
+The `active` record is never touched directly when you edit it — a `draft` copy is created instead. This means API consumers always see stable, approved master data while changes are being prepared in the draft layer.
 
 ## History Tables
 

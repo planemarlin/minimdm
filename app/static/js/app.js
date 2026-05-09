@@ -406,7 +406,7 @@ async function loadRecordDetail(schema, obj, recordId, objConfig, opts = {}) {
     })
     .join("");
 
-  const stateLabel = { active: "Active", draft: "Draft", retired: "Retired" }[recordState] || recordState;
+  const stateLabel = { active: "Active · Master", draft: "Draft", retired: "Retired" }[recordState] || recordState;
   const stateBadgeHtml = recordState === "draft"
     ? `<span class="badge badge-draft">${stateLabel}</span>`
     : recordState === "retired"

@@ -46,7 +46,14 @@ def _serialize_row(row: dict) -> dict:
 # List / search records
 # ---------------------------------------------------------------------------
 
-@router.get("/records/{schema}/{obj}")
+@router.get(
+    "/records/{schema}/{obj}",
+    summary="List master records",
+    description=(
+        "Returns active (golden) records by default. "
+        "Use `?state=` to query drafts, retired, or all records."
+    ),
+)
 def list_records(
     schema: str,
     obj: str,
@@ -173,7 +180,16 @@ def get_record(
 # Create record
 # ---------------------------------------------------------------------------
 
-@router.post("/records/{schema}/{obj}", status_code=201)
+@router.post(
+    "/records/{schema}/{obj}",
+    status_code=201,
+    summary="Create a master record",
+    description=(
+        "Creates a new active (golden) record. "
+        "If the object has `requires_draft: true` configured, "
+        "the record is created as a draft instead."
+    ),
+)
 def create_record(
     schema: str,
     obj: str,
@@ -619,7 +635,16 @@ def revert_record(
 # Publish draft → active
 # ---------------------------------------------------------------------------
 
-@router.post("/records/{schema}/{obj}/{record_id}/publish", status_code=200)
+@router.post(
+    "/records/{schema}/{obj}/{record_id}/publish",
+    status_code=200,
+    summary="Publish draft to master",
+    description=(
+        "Promotes a draft record to the active golden record. "
+        "The draft's data replaces the master and the draft is removed. "
+        "Requires Publisher or Admin."
+    ),
+)
 def publish_record(
     schema: str,
     obj: str,
@@ -750,7 +775,16 @@ def publish_record(
 # Retire active → retired
 # ---------------------------------------------------------------------------
 
-@router.post("/records/{schema}/{obj}/{record_id}/retire", status_code=200)
+@router.post(
+    "/records/{schema}/{obj}/{record_id}/retire",
+    status_code=200,
+    summary="Retire a master record",
+    description=(
+        "Transitions an active golden record to retired. "
+        "The record is preserved for history and audit but excluded from default responses. "
+        "Requires Publisher or Admin."
+    ),
+)
 def retire_record(
     schema: str,
     obj: str,
