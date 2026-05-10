@@ -4,6 +4,11 @@ All notable changes to miniMDM are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Web UI routes (`/`, `/login`, `/admin/users`, etc.) no longer appear in the Swagger API documentation; `include_in_schema=False` added to all HTML-returning routes ([#28](../../issues/28))
+
 ## [0.5.0] – 2026-05-10
 
 ### Added
@@ -24,9 +29,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Import reason input in UI**: the import dialog now includes a reason text input; the value is passed to the API as `?reason=`, and the reason appears in the record history as expected
 - **`_reason` clarified as not a per-row import column**: `docs/reference.md` now explicitly notes that `_reason` is not supported as a column in CSV/TSV/JSON import files; set the reason via the `?reason=` query parameter instead
 - **403 access-denied message**: attempting to view a record list for a schema the user cannot access now shows a clear "You don't have access to this schema" message instead of the generic "Failed to load records" error
-
-### Fixed
-- Web UI routes (`/`, `/login`, `/admin/users`, etc.) no longer appear in the Swagger API documentation; `include_in_schema=False` added to all HTML-returning routes ([#28](../../issues/28))
 
 ### Security
 - Upgraded `mako` from 1.3.11 to 1.3.12 to resolve CVE-2026-44307
