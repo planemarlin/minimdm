@@ -322,7 +322,7 @@ def test_import_source_system_query_param_sets_field(client):
 
 
 def test_import_source_system_column_in_csv_takes_precedence(client):
-    """Per-row _source_system in the CSV overrides the query param."""
+    """Per-row _source_system in the CSV wins over the query param when the column is present."""
     csv_content = "code,name,_source_system\nP002,Row Corp,crm\n"
     files = {"file": ("prov.csv", csv_content.encode(), "text/csv")}
     res = client.post(
@@ -332,6 +332,20 @@ def test_import_source_system_column_in_csv_takes_precedence(client):
     records = client.get("/api/records/test/company").json()
     assert records["total"] == 1
     assert records["records"][0]["_source_system"] == "crm"
+
+
+def test_import_source_system_column_present_but_empty_still_wins(client):
+    """If _source_system column is present but empty, the query param does NOT override it.
+    The file controls _source_system whenever the column is present, even for empty cells."""
+    csv_content = "code,name,_source_system\nP002b,Empty Corp,\n"
+    files = {"file": ("prov.csv", csv_content.encode(), "text/csv")}
+    res = client.post(
+        "/api/records/test/company/import?format=csv&source_system=erp", files=files
+    )
+    assert res.status_code == 200
+    records = client.get("/api/records/test/company").json()
+    assert records["total"] == 1
+    assert records["records"][0]["_source_system"] is None
 
 
 def test_import_source_id_column_in_csv(client):

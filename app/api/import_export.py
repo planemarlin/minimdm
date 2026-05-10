@@ -295,13 +295,14 @@ def _import_row(db, table, history_table, audit_table, row: dict, reason, reques
                 initial_state: str = "active", source_system: Optional[str] = None):
     from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
+    row_keys = {k.strip() for k in row.keys()}
     values = _coerce_row(row, table)
     record_id = uuid.uuid4()
     values["_id"] = record_id
     values["_created_at"] = now
     values["_updated_at"] = now
     values["_state"] = initial_state
-    if source_system and not values.get("_source_system"):
+    if source_system and "_source_system" not in row_keys:
         values["_source_system"] = source_system
 
     db.execute(table.insert().values(**values))
@@ -322,8 +323,9 @@ def _upsert_row(
 ):
     from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
+    row_keys = {k.strip() for k in row.keys()}
     values = _coerce_row(row, table)
-    if source_system and not values.get("_source_system"):
+    if source_system and "_source_system" not in row_keys:
         values["_source_system"] = source_system
 
     match_value = values.get(upsert_key)
