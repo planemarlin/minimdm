@@ -18,6 +18,7 @@
       {% if not attr.reference %}<option value="{{ attr_key }}">Upsert on: {{ attr.name }}</option>{% endif %}
       {% endfor %}
     </select>
+    <input type="text" id="import-reason" placeholder="Import reason (optional)" style="width:14rem" title="Reason stored in the audit log for all imported records" />
     <label class="btn btn-secondary btn-sm" style="cursor:pointer" title="Import records from a CSV, TSV, or JSON file. Max 10 MB.">
       Import
       <input type="file" id="import-file" style="display:none" accept=".csv,.tsv,.json" onchange="importFile(this)" />
@@ -35,11 +36,12 @@
     <input type="search" id="search-input" placeholder="Search..." />
   </div>
   <select id="state-filter" class="btn btn-secondary btn-sm" title="Filter records by lifecycle state">
-    <option value="active">Active</option>
+    <option value="active">Active (Master)</option>
     <option value="draft">Draft</option>
     <option value="retired">Retired</option>
     <option value="all">All states</option>
   </select>
+  <input type="search" id="source-system-filter" placeholder="Source system…" title="Filter by source system (e.g. erp, crm)" style="width:10rem" />
   <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.35rem; cursor:pointer; user-select:none">
     <input type="checkbox" id="show-deleted-toggle" title="Soft-deleted records are hidden by default. Check to include them in the list." />
     Show deleted
@@ -99,8 +101,10 @@ async function importFile(input) {
   statusEl.innerHTML = `<div class="alert alert-info">Importing…</div>`;
   const stateEl = document.getElementById("state-filter");
   const initialState = stateEl?.value === "draft" ? "draft" : "active";
+  const importReason = document.getElementById("import-reason")?.value.trim() || "";
   const params = new URLSearchParams({ format, initial_state: initialState });
   if (upsertKey) params.set("upsert_key", upsertKey);
+  if (importReason) params.set("reason", importReason);
   const res = await fetch(`/api/records/{{ schema }}/{{ obj }}/import?${params}`, {
     method: "POST", body: fd
   });

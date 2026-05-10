@@ -40,6 +40,29 @@ SAMPLE_CONFIG = {
                         "company": {"name": "Company", "type": "string", "required": False, "unique": False, "reference": "company"},  # noqa: E501
                     },
                 },
+                # Policy flag test objects
+                "governed_item": {
+                    "name": "Governed Item",
+                    "description": "requires_draft: true — always starts as draft",
+                    "parent": None,
+                    "requires_draft": True,
+                    "allow_retire": True,
+                    "allow_direct_active_import": True,
+                    "attributes": {
+                        "code": {"name": "Code", "type": "string", "required": True, "unique": False, "reference": None},  # noqa: E501
+                    },
+                },
+                "reference_data": {
+                    "name": "Reference Data",
+                    "description": "allow_retire: false; allow_direct_active_import: false",
+                    "parent": None,
+                    "requires_draft": False,
+                    "allow_retire": False,
+                    "allow_direct_active_import": False,
+                    "attributes": {
+                        "code": {"name": "Code", "type": "string", "required": True, "unique": False, "reference": None},  # noqa: E501
+                    },
+                },
             }
         }
     }
@@ -99,6 +122,10 @@ def clean_records(client):
         conn.execute(text('DELETE FROM "test"."division"'))
         conn.execute(text('DELETE FROM "test"."company_history"'))
         conn.execute(text('DELETE FROM "test"."company"'))
+        conn.execute(text('DELETE FROM "test"."governed_item_history"'))
+        conn.execute(text('DELETE FROM "test"."governed_item"'))
+        conn.execute(text('DELETE FROM "test"."reference_data_history"'))
+        conn.execute(text('DELETE FROM "test"."reference_data"'))
         conn.execute(text("DELETE FROM _system.audit_log WHERE schema_name = 'test'"))
         conn.commit()
     yield

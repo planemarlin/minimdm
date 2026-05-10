@@ -86,6 +86,46 @@ def test_retire_fires_webhook(client):
 
 
 # ---------------------------------------------------------------------------
+# Create fires record.created webhook
+# ---------------------------------------------------------------------------
+
+def test_create_fires_webhook(client):
+    _set_webhooks(client, [{"event": "record.created", "url": WEBHOOK_URL}])
+    try:
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.status_code = 200
+        with patch("app.core.webhooks.httpx.post", return_value=mock_response) as mock_post:
+            res = client.post(
+                "/api/records/test/company", json={"code": "W006", "name": "Created Co"}
+            )
+            assert res.status_code == 201
+            record_id = res.json()["id"]
+
+        mock_post.assert_called_once()
+        payload = mock_post.call_args[1]["json"]
+        assert payload["event"] == "record.created"
+        assert payload["schema"] == "test"
+        assert payload["object"] == "company"
+        assert payload["record_id"] == record_id
+    finally:
+        _clear_webhooks(client)
+
+
+def test_create_does_not_fire_published_webhook(client):
+    _set_webhooks(client, [{"event": "record.published", "url": WEBHOOK_URL}])
+    try:
+        with patch("app.core.webhooks.httpx.post") as mock_post:
+            res = client.post(
+                "/api/records/test/company", json={"code": "W007", "name": "No Hook Co"}
+            )
+            assert res.status_code == 201
+        mock_post.assert_not_called()
+    finally:
+        _clear_webhooks(client)
+
+
+# ---------------------------------------------------------------------------
 # Webhook not fired when no webhooks configured
 # ---------------------------------------------------------------------------
 
