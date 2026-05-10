@@ -4,7 +4,26 @@ All notable changes to miniMDM are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] – 2026-05-10
+
+### Added
+- **record.created webhook**: `record.created` fires when a new record is created directly as active; completes full lifecycle webhook coverage alongside `record.published` and `record.retired`
+- **Audit log user filter**: text input on both the Data Changes and Auth Events tabs filters entries by username (case-insensitive partial match); `GET /api/audit` accepts a `?user=` query parameter
+- **Golden record semantics**: active records are now explicitly identified as the golden/master record throughout the UI (detail view badge shows "Active · Master", list filter shows "Active (Master)"), OpenAPI descriptions, and docs; a new "miniMDM as an MDM system" section in `docs/reference.md` explains the single-source-of-truth model
+- **Source & provenance**: two new system columns `_source_system` (e.g. `"erp"`, `"crm"`) and `_source_id` record where each golden record originated; settable via the API body, via per-column CSV/TSV/JSON import, or via the `?source_system=` import query parameter (query param applies to all rows; per-row column values take precedence); provenance is shown in the record detail view and preserved in history; `GET /api/records` accepts `?source_system=` to filter by origin
+- **Lifecycle policy flags**: three new object-level config flags enforce governance rules without code changes — `requires_draft: true` forces all new records through draft regardless of role; `allow_retire: false` blocks retirement of stable reference data; `allow_direct_active_import: false` prevents bulk import directly as active, requiring draft review even for Publishers
+
+### Fixed
+- **Sidebar highlight collision**: the active-item highlight in the left nav now uses an exact path match, preventing a false highlight when one object key is a prefix of another (e.g. `product` incorrectly highlighted when viewing `product_category`)
+- **History snapshot provenance**: `_source_system` and `_source_id` are now shown in each history snapshot entry on the record history page
+- **CSV header whitespace**: trailing spaces in CSV column headers (produced by Excel and LibreOffice) are now stripped before matching against the object schema, preventing silent row failures
+- **Source system list filter**: a source system input on the record list toolbar filters records by `_source_system` via the existing `?source_system=` API parameter; was previously added only to the API
+- **Date-only formatting**: date-type attribute values are now displayed without a time component in the record list, record detail view, and history snapshots; a new `fmtDateOnly()` helper is used wherever the attribute type is `date`
+- **Show deleted excludes draft artifacts**: edit drafts that were soft-deleted by the publish workflow (those with `_draft_of_id` set) no longer appear when "Show deleted" is toggled; only records explicitly deleted by a user are shown
+- **`_created_by` populated on creation**: the `_created_by` system column is now populated from the authenticated username when a record is created (it was always populated in history; the main record was missing it)
+- **Import reason input in UI**: the import dialog now includes a reason text input; the value is passed to the API as `?reason=`, and the reason appears in the record history as expected
+- **`_reason` clarified as not a per-row import column**: `docs/reference.md` now explicitly notes that `_reason` is not supported as a column in CSV/TSV/JSON import files; set the reason via the `?reason=` query parameter instead
+- **403 access-denied message**: attempting to view a record list for a schema the user cannot access now shows a clear "You don't have access to this schema" message instead of the generic "Failed to load records" error
 
 ### Fixed
 - Web UI routes (`/`, `/login`, `/admin/users`, etc.) no longer appear in the Swagger API documentation; `include_in_schema=False` added to all HTML-returning routes ([#28](../../issues/28))

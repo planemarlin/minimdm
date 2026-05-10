@@ -1,5 +1,21 @@
 # Feature and API Reference
 
+## miniMDM as an MDM System
+
+miniMDM implements a **single-source-of-truth** master data model. Every object type has exactly one authoritative record per entity — the `active` record. This is the **golden record**: the version that downstream systems, integrations, and API consumers should read and trust.
+
+The active record is never overwritten in place. When a change is needed, a `draft` copy is created and goes through a review-and-approve flow before being promoted. This means:
+
+- **Consumers** always read from `state=active` (the default) and see only clean, approved master data.
+- **Stewards** work in the draft layer — preparing, reviewing, and publishing changes without affecting the live record.
+- **Publishers** control the promotion gate: a draft only becomes the master record when explicitly published.
+
+The `retired` state preserves historical records that are no longer active without deleting them.
+
+This model maps directly to standard MDM concepts: `active` = golden record, publish = mastering approval, draft = pending change in stewardship.
+
+---
+
 ## Config File Format
 
 miniMDM is driven by a YAML or JSON config file. Both formats are fully equivalent.
@@ -9,6 +25,8 @@ miniMDM is driven by a YAML or JSON config file. Both formats are fully equivale
 ```yaml
 minimdm:
   webhooks:
+    - event: record.created
+      url: https://example.com/hooks/minimdm
     - event: record.published
       url: https://example.com/hooks/minimdm
     - event: record.retired
@@ -53,9 +71,12 @@ Use `reference: <object_key>` instead of `type` to create a foreign-key style li
 
 ### Object-Level Flags
 
-| Flag | Type | Description |
-|---|---|---|
-| `require_change_reason` | `true`/`false` | When `true`, a non-empty `_reason` is required on every create, update, delete, revert, publish, and retire operation. The API returns HTTP 422 if the reason is missing. The UI marks the Reason field as required with a red asterisk. |
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `require_change_reason` | `true`/`false` | `false` | When `true`, a non-empty `_reason` is required on every create, update, delete, revert, publish, and retire operation. The API returns HTTP 422 if the reason is missing. The UI marks the Reason field as required with a red asterisk. |
+| `requires_draft` | `true`/`false` | `false` | When `true`, new records are always created as `draft` regardless of the caller's role. Editors and Publishers alike must go through the draft → publish workflow. Useful for high-governance objects where every new golden record needs explicit review. |
+| `allow_retire` | `true`/`false` | `true` | When `false`, the retire endpoint returns HTTP 422 for this object. Use this to protect stable reference data (e.g. currency codes, country lists) that should never be retired. |
+| `allow_direct_active_import` | `true`/`false` | `true` | When `false`, bulk import with `initial_state=active` is blocked for this object even for Publishers and Admins. All imported records must enter as `draft` and be published individually. |
 
 Example:
 
@@ -64,9 +85,19 @@ objects:
   product:
     name: Product
     require_change_reason: true
+    requires_draft: true           # new products always start as draft
     attributes:
       code:
         name: Code
+        type: string
+
+  country:
+    name: Country
+    allow_retire: false            # reference data — cannot be retired
+    allow_direct_active_import: false  # bulk imports must go through draft review
+    attributes:
+      code:
+        name: ISO Code
         type: string
 ```
 
@@ -77,20 +108,23 @@ miniMDM can notify external systems when lifecycle transitions occur. Webhooks a
 ```yaml
 minimdm:
   webhooks:
+    - event: record.created
+      url: https://example.com/hooks/minimdm
     - event: record.published
       url: https://example.com/hooks/minimdm
     - event: record.retired
       url: https://example.com/hooks/minimdm
 ```
 
-Two events are supported:
+Three events are supported:
 
 | Event | Triggered when |
 |---|---|
+| `record.created` | A new record is created (always as `active`) |
 | `record.published` | A draft is promoted to active via the publish endpoint |
 | `record.retired` | An active record is transitioned to retired |
 
-Note: creating a new record directly as `active` does **not** trigger `record.published` — the event specifically represents a draft being reviewed and approved.
+Note: `record.created` and `record.published` are distinct events. `record.created` fires when a brand-new record is created directly as active. `record.published` fires when a draft goes through the review-and-approve flow. Editing an existing record creates a draft copy — no webhook fires for draft creation.
 
 **Payload** sent as JSON via HTTP POST:
 
@@ -120,6 +154,8 @@ Every object table includes these system-managed columns (not in the config):
 | `_deleted_at` | TIMESTAMPTZ | Soft-delete timestamp |
 | `_state` | TEXT | Lifecycle state: `active`, `draft`, or `retired` |
 | `_draft_of_id` | UUID | For draft records only: UUID of the master active record this draft was copied from |
+| `_source_system` | TEXT | Name of the external system that originated this record (e.g. `"erp"`, `"crm"`) |
+| `_source_id` | TEXT | Identifier of the record in the source system |
 
 ## Lifecycle States
 
@@ -127,15 +163,15 @@ Every record has a `_state` field that controls its visibility and transitions:
 
 | State | Description |
 |---|---|
-| `active` | The live, published record. Returned by default on all list and export calls. |
-| `draft` | A pending version of an active record. Invisible to normal consumers until published. Editing an active record creates a draft copy instead of modifying the active record in place. |
-| `retired` | A record that is no longer in use. Excluded from default responses but still queryable. |
+| `active` | The **golden record** — the authoritative master version. Returned by default on all list and export calls. This is the record downstream systems and integrations should consume. |
+| `draft` | A pending change to an active record, awaiting review and approval. Invisible to normal consumers until published. Editing an active record always creates a draft copy — the active record is never modified in place. New records created directly are always `active`; to require the draft flow for all new records, set `requires_draft: true` in the config (see Lifecycle Policy). |
+| `retired` | A record that is no longer in use. Excluded from default responses but preserved for history and audit. |
 
 **Transitions:**
-- `POST ./{id}/publish` — promotes a `draft` to `active` (copies draft data onto the master record, soft-deletes the draft). Requires Publisher or Admin.
+- `POST ./{id}/publish` — promotes a `draft` to the active golden record (applies draft data onto the master, removes the draft). Requires Publisher or Admin.
 - `POST ./{id}/retire` — transitions an `active` record to `retired`. Requires Publisher or Admin.
 
-The `active` record is never touched directly when you edit it — a `draft` copy is created instead. This means API consumers always see the stable active record while changes are being prepared.
+The `active` record is never touched directly when you edit it — a `draft` copy is created instead. This means API consumers always see stable, approved master data while changes are being prepared in the draft layer.
 
 ## History Tables
 
@@ -329,6 +365,7 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 | `format` | `csv` | File format: `csv`, `tsv`, or `json` |
 | `upsert_key` | — | Attribute key to match against existing records. If a non-deleted record with the same value exists, it is updated in place; otherwise a new record is inserted. |
 | `initial_state` | `active` | Lifecycle state to assign to imported records: `active` or `draft`. Importing as `active` requires Publisher or Admin role; Editors can import as `draft` and publish the records later. |
+| `source_system` | — | Source system name applied to all imported records (sets `_source_system`). Per-row values in the file take precedence if the file includes a `_source_system` column. |
 | `reason` | — | Audit note attached to every inserted or updated record |
 
 ### Record Body Format
@@ -344,3 +381,5 @@ When creating or updating a record, send a JSON object with attribute keys as fi
 ```
 
 For reference attributes, use `{attribute_key}_id` with the UUID of the referenced record.
+
+> **Note:** `_reason` in the request body applies only to single-record create and update operations. For bulk imports, use the `?reason=` query parameter instead — `_reason` as a column in the import file is not supported and will be ignored.

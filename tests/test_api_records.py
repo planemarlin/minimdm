@@ -533,3 +533,60 @@ def test_parent_fk_set_null_on_parent_delete(client):
     client.delete(f"/api/records/test/company/{company_id}")
     div = client.get(f"/api/records/test/division/{div_id}").json()
     assert div["_company_id"] == company_id
+
+
+# ---------------------------------------------------------------------------
+# Provenance: _source_system and _source_id
+# ---------------------------------------------------------------------------
+
+def test_create_record_with_provenance(client):
+    """Creating a record with _source_system and _source_id stores both fields."""
+    res = client.post(
+        "/api/records/test/company",
+        json={"code": "PRV001", "name": "Prov Co", "_source_system": "erp", "_source_id": "ERP-1"},
+    )
+    assert res.status_code == 201
+    record_id = res.json()["id"]
+    record = client.get(f"/api/records/test/company/{record_id}").json()
+    assert record["_source_system"] == "erp"
+    assert record["_source_id"] == "ERP-1"
+
+
+def test_source_system_filter(client):
+    """GET /api/records?source_system= returns only records from that system."""
+    client.post("/api/records/test/company", json={"code": "PRV002", "_source_system": "erp"})
+    client.post("/api/records/test/company", json={"code": "PRV003", "_source_system": "crm"})
+    client.post("/api/records/test/company", json={"code": "PRV004"})
+
+    erp = client.get("/api/records/test/company?source_system=erp").json()
+    assert erp["total"] == 1
+    assert erp["records"][0]["_source_system"] == "erp"
+
+    crm = client.get("/api/records/test/company?source_system=crm").json()
+    assert crm["total"] == 1
+
+    none = client.get("/api/records/test/company?source_system=unknown").json()
+    assert none["total"] == 0
+
+
+def test_provenance_preserved_in_history(client):
+    """Provenance fields appear in the history snapshot after create and update."""
+    res = client.post(
+        "/api/records/test/company",
+        json={"code": "PRV005", "_source_system": "erp", "_source_id": "ERP-5"},
+    )
+    record_id = res.json()["id"]
+
+    history = client.get(f"/api/records/test/company/{record_id}/history").json()
+    first_entry = history[0]
+    assert first_entry["_source_system"] == "erp"
+    assert first_entry["_source_id"] == "ERP-5"
+
+
+
+def test_created_by_is_populated_on_create(client):
+    """_created_by should be set to the authenticated username when a record is created."""
+    res = client.post("/api/records/test/company", json={"code": "CBY001"})
+    assert res.status_code == 201
+    record = client.get(f"/api/records/test/company/{res.json()['id']}").json()
+    assert record["_created_by"] == "test_admin"

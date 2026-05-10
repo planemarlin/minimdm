@@ -25,6 +25,15 @@ function fmtDate(iso) {
   }
 }
 
+function fmtDateOnly(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString();
+  } catch {
+    return iso;
+  }
+}
+
 function escHtml(str) {
   if (str == null) return "";
   return String(str)
@@ -97,8 +106,10 @@ class RecordList {
     this.searchInput = document.getElementById("search-input");
     this.deletedToggle = document.getElementById("show-deleted-toggle");
     this.stateFilter = document.getElementById("state-filter");
+    this.sourceSystemInput = document.getElementById("source-system-filter");
     this.includeDeleted = false;
     this.stateValue = "active";
+    this.sourceSystem = "";
 
     const firstNonRef = Object.entries(objConfig.attributes || {}).find(([, v]) => !v.reference);
     this.sortBy = firstNonRef ? firstNonRef[0] : null;
@@ -132,6 +143,18 @@ class RecordList {
       });
     }
 
+    if (this.sourceSystemInput) {
+      let timer;
+      this.sourceSystemInput.addEventListener("input", (e) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          this.sourceSystem = e.target.value.trim();
+          this.page = 1;
+          this.load();
+        }, 300);
+      });
+    }
+
     this.load();
   }
 
@@ -150,13 +173,17 @@ class RecordList {
     if (this.search) params.set("search", this.search);
     if (this.includeDeleted) params.set("include_deleted", "true");
     if (this.stateValue && this.stateValue !== "active") params.set("state", this.stateValue);
+    if (this.sourceSystem) params.set("source_system", this.sourceSystem);
     if (this.sortBy) { params.set("sort_by", this.sortBy); params.set("sort_dir", this.sortDir); }
 
     const res = await fetch(
       `/api/records/${this.schema}/${this.obj}?${params}`
     );
     if (!res.ok) {
-      this.tbody.innerHTML = `<tr><td colspan="20"><div class="alert alert-error">Failed to load records.</div></td></tr>`;
+      const msg = res.status === 403
+        ? "You don't have access to this schema. Contact your administrator to request access."
+        : "Failed to load records.";
+      this.tbody.innerHTML = `<tr><td colspan="20"><div class="alert alert-error">${msg}</div></td></tr>`;
       return;
     }
     const data = await res.json();
@@ -200,7 +227,8 @@ class RecordList {
             const label = refId ? (refLabelMaps[k]?.[refId] || refId) : "";
             cells.push(`<td style="${style}">${escHtml(label)}</td>`);
           } else {
-            cells.push(`<td style="${style}">${escHtml(r[k] ?? "")}</td>`);
+            const cellVal = v.type === "date" ? fmtDateOnly(r[k]) : escHtml(r[k] ?? "");
+            cells.push(`<td style="${style}">${cellVal}</td>`);
           }
         }
         const stateBadge = recordState === "draft"
@@ -397,26 +425,33 @@ async function loadRecordDetail(schema, obj, recordId, objConfig, opts = {}) {
         </div>`;
       }
       const val = record[k];
+      const displayVal = val == null ? "—"
+        : v.type === "date" ? fmtDateOnly(val)
+        : escHtml(String(val));
       return `<div class="detail-field">
         <div class="detail-field__label">${escHtml(v.name || k)}</div>
         <div class="detail-field__value ${val == null ? "detail-field__value--empty" : ""}">
-          ${val != null ? escHtml(String(val)) : "—"}
+          ${displayVal}
         </div>
       </div>`;
     })
     .join("");
 
-  const stateLabel = { active: "Active", draft: "Draft", retired: "Retired" }[recordState] || recordState;
+  const stateLabel = { active: "Active · Master", draft: "Draft", retired: "Retired" }[recordState] || recordState;
   const stateBadgeHtml = recordState === "draft"
     ? `<span class="badge badge-draft">${stateLabel}</span>`
     : recordState === "retired"
       ? `<span class="badge badge-retired">${stateLabel}</span>`
       : `<span class="badge badge-insert" style="background:var(--success,#2a9d5c)">${stateLabel}</span>`;
+  const provenanceHtml = record._source_system
+    ? `<span>Source: ${escHtml(record._source_system)}${record._source_id ? ` / ${escHtml(record._source_id)}` : ""}</span>`
+    : "";
   const sysMeta = `<div style="margin-top:1.5rem; padding-top:1rem; border-top:1px solid var(--border); font-size:.78rem; color:var(--text-muted); display:flex; gap:1.5rem; flex-wrap:wrap; align-items:center">
     ${stateBadgeHtml}
     <span>Created: ${fmtDate(record._created_at)}</span>
     <span>Updated: ${fmtDate(record._updated_at)}</span>
     ${record._created_by ? `<span>By: ${escHtml(record._created_by)}</span>` : ""}
+    ${provenanceHtml}
   </div>`;
 
   container.innerHTML = `<div class="detail-grid">${parentHtml}${fields}</div>${sysMeta}`;
@@ -755,7 +790,8 @@ async function loadHistory(schema, obj, recordId, objConfig, canWrite) {
       } else {
         const val = h[k];
         if (val != null) {
-          pairs.push(`<span><b>${escHtml(v.name || k)}:</b> ${escHtml(String(val))}</span>`);
+          const displayVal = v.type === "date" ? fmtDateOnly(val) : escHtml(String(val));
+          pairs.push(`<span><b>${escHtml(v.name || k)}:</b> ${displayVal}</span>`);
         }
       }
     }
@@ -772,6 +808,7 @@ async function loadHistory(schema, obj, recordId, objConfig, canWrite) {
           <div class="history-meta__time">${fmtDate(h._changed_at)}</div>
           ${h._change_reason ? `<div class="history-meta__reason">Reason: ${escHtml(h._change_reason)}</div>` : ""}
           ${h._changed_by ? `<div class="history-meta__time">By: ${escHtml(h._changed_by)}</div>` : ""}
+          ${h._source_system ? `<div class="history-meta__time">Source: ${escHtml(h._source_system)}${h._source_id ? ` / ${escHtml(h._source_id)}` : ""}</div>` : ""}
           ${attrSnapshot(h)}
         </div>
         <div>
@@ -857,6 +894,7 @@ async function loadAuditLog(page) {
   const schema = document.getElementById("filter-schema")?.value || "";
   const obj = document.getElementById("filter-obj")?.value || "";
   const action = document.getElementById("filter-action")?.value || "";
+  const user = document.getElementById("filter-user")?.value || "";
   const fromTime = document.getElementById("filter-from")?.value || "";
   const toTime = document.getElementById("filter-to")?.value || "";
 
@@ -865,6 +903,7 @@ async function loadAuditLog(page) {
   if (schema) params.set("schema", schema);
   if (obj) params.set("obj", obj);
   if (action) params.set("action", action);
+  if (user) params.set("user", user);
   if (fromTime) params.set("from_time", toUtcIso(fromTime));
   if (toTime) params.set("to_time", toUtcIso(toTime));
 
@@ -921,12 +960,14 @@ async function loadAuthLog(page) {
   tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>`;
 
   const action = document.getElementById("auth-filter-action")?.value || "";
+  const user = document.getElementById("auth-filter-user")?.value || "";
   const fromTime = document.getElementById("auth-filter-from")?.value || "";
   const toTime = document.getElementById("auth-filter-to")?.value || "";
 
   const toUtcIso = s => new Date(s).toISOString().replace(/\.\d{3}Z$/, "+00:00");
   const params = new URLSearchParams({ page: _auditPage, page_size: _auditPageSize, schema: "_system" });
   if (action) params.set("action", action);
+  if (user) params.set("user", user);
   if (fromTime) params.set("from_time", toUtcIso(fromTime));
   if (toTime) params.set("to_time", toUtcIso(toTime));
 
