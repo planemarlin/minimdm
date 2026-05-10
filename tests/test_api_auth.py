@@ -395,6 +395,21 @@ def test_audit_system_schema_filter_returns_auth_events(client):
         "No auth events found in _system schema"
 
 
+def test_audit_user_filter_matches_partially(client):
+    """?user= does a case-insensitive partial match on user_name."""
+    res = client.get("/api/audit?schema=_system&user=test_admin&page_size=500")
+    assert res.status_code == 200
+    records = res.json()["records"]
+    assert all("test_admin" in r["user_name"].lower() for r in records)
+
+
+def test_audit_user_filter_returns_empty_for_unknown_user(client):
+    """?user= with a name that has no entries returns an empty list."""
+    res = client.get("/api/audit?user=zzz_no_such_user_zzz")
+    assert res.status_code == 200
+    assert res.json()["records"] == []
+
+
 # ---------------------------------------------------------------------------
 # Audit log for user management actions
 # ---------------------------------------------------------------------------

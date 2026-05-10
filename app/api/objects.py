@@ -46,7 +46,14 @@ def _serialize_row(row: dict) -> dict:
 # List / search records
 # ---------------------------------------------------------------------------
 
-@router.get("/records/{schema}/{obj}")
+@router.get(
+    "/records/{schema}/{obj}",
+    summary="List master records",
+    description=(
+        "Returns active (golden) records by default. "
+        "Use `?state=` to query drafts, retired, or all records."
+    ),
+)
 def list_records(
     schema: str,
     obj: str,
@@ -61,6 +68,7 @@ def list_records(
     ref_id: Optional[str] = Query(None),
     sort_by: Optional[str] = Query(None),
     sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
+    source_system: Optional[str] = Query(None, description="Filter by source system name"),
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema)
@@ -75,6 +83,12 @@ def list_records(
     q = select(table)
     if not include_deleted:
         q = q.where(table.c._deleted_at.is_(None))
+    else:
+        # Never surface superseded edit drafts (soft-deleted by the publish workflow).
+        # They are implementation artifacts, not user-deleted records.
+        q = q.where(
+            table.c._deleted_at.is_(None) | table.c._draft_of_id.is_(None)
+        )
     if state != "all":
         q = q.where(table.c._state == state)
 
@@ -102,6 +116,9 @@ def list_records(
         if text_cols:
             escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             q = q.where(or_(*[c.ilike(f"%{escaped}%") for c in text_cols]))
+
+    if source_system and hasattr(table.c, "_source_system"):
+        q = q.where(table.c._source_system == source_system)
 
     user_col_names = {c.name for c in table.c if not c.name.startswith("_")}
     if sort_by and sort_by in user_col_names:
@@ -173,12 +190,22 @@ def get_record(
 # Create record
 # ---------------------------------------------------------------------------
 
-@router.post("/records/{schema}/{obj}", status_code=201)
+@router.post(
+    "/records/{schema}/{obj}",
+    status_code=201,
+    summary="Create a master record",
+    description=(
+        "Creates a new active (golden) record. "
+        "If the object has `requires_draft: true` configured, "
+        "the record is created as a draft instead."
+    ),
+)
 def create_record(
     schema: str,
     obj: str,
     request: Request,
     body: dict,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema, write=True)
@@ -190,7 +217,8 @@ def create_record(
     except KeyError:
         raise HTTPException(404, f"Object '{schema}.{obj}' not found")
 
-    _check_reason(body.get("_reason"), tm.get_object_config(schema, obj))
+    obj_config = tm.get_object_config(schema, obj) or {}
+    _check_reason(body.get("_reason"), obj_config)
 
     now = datetime.now(timezone.utc)
     record_id = uuid.uuid4()
@@ -198,7 +226,9 @@ def create_record(
     values["_id"] = record_id
     values["_created_at"] = now
     values["_updated_at"] = now
-    values["_state"] = "active"
+    values["_created_by"] = _get_username(request)
+    initial_state = "draft" if obj_config.get("requires_draft") else "active"
+    values["_state"] = initial_state
 
     try:
         db.execute(table.insert().values(**values))
@@ -218,6 +248,12 @@ def create_record(
         user_name=_get_username(request)
     )
     db.commit()
+
+    if initial_state == "active":
+        background_tasks.add_task(
+            fire_webhooks, tm.get_config(), "record.created",
+            schema, obj, str(record_id), _get_username(request)
+        )
 
     return {"id": str(record_id)}
 
@@ -613,7 +649,16 @@ def revert_record(
 # Publish draft → active
 # ---------------------------------------------------------------------------
 
-@router.post("/records/{schema}/{obj}/{record_id}/publish", status_code=200)
+@router.post(
+    "/records/{schema}/{obj}/{record_id}/publish",
+    status_code=200,
+    summary="Publish draft to master",
+    description=(
+        "Promotes a draft record to the active golden record. "
+        "The draft's data replaces the master and the draft is removed. "
+        "Requires Publisher or Admin."
+    ),
+)
 def publish_record(
     schema: str,
     obj: str,
@@ -654,8 +699,54 @@ def publish_record(
         raise HTTPException(404, "Draft record not found (must be a draft with state='draft')")
 
     master_id = draft["_draft_of_id"]
+    _check_reason(reason, tm.get_object_config(schema, obj))
+    now = datetime.now(timezone.utc)
+
     if not master_id:
-        raise HTTPException(422, "This draft has no linked active record (_draft_of_id is null)")
+        # New-record draft (created via requires_draft or imported as draft with no master).
+        # Promote it directly to active in place — no master to merge into.
+        current_version_row = db.execute(
+            select(history_table)
+            .where(history_table.c._id == draft_id)
+            .where(history_table.c._valid_to.is_(None))
+            .with_for_update()
+        ).mappings().first()
+        current_version = current_version_row["_version"] if current_version_row else 0
+        if current_version_row:
+            db.execute(
+                history_table.update()
+                .where(history_table.c._history_id == current_version_row["_history_id"])
+                .values(_valid_to=now)
+            )
+        try:
+            db.execute(
+                table.update()
+                .where(table.c._id == draft_id)
+                .values(_state="active", _updated_at=now)
+            )
+        except IntegrityError as e:
+            db.rollback()
+            raise HTTPException(422, _integrity_error_message(e)) from e
+
+        new_values = {**dict(draft), "_state": "active", "_updated_at": now}
+        audit_svc.write_history(
+            db, history_table, new_values, version=current_version + 1,
+            action="PUBLISH", valid_from=now,
+            reason=reason or "Published from draft", user_name=_get_username(request)
+        )
+        audit_svc.log_change(
+            db, audit_table, schema, obj, draft_id, "PUBLISH",
+            old_values=audit_svc._serialize(dict(draft)),
+            new_values=audit_svc._serialize(new_values),
+            reason=reason or "Published from draft", ip_address=_client_ip(request),
+            user_name=_get_username(request)
+        )
+        db.commit()
+        background_tasks.add_task(
+            fire_webhooks, tm.get_config(), "record.created",
+            schema, obj, str(draft_id), _get_username(request)
+        )
+        return {"id": str(draft_id), "published": True}
 
     active = db.execute(
         select(table)
@@ -665,10 +756,6 @@ def publish_record(
     ).mappings().first()
     if not active:
         raise HTTPException(404, "Linked active record not found")
-
-    _check_reason(reason, tm.get_object_config(schema, obj))
-
-    now = datetime.now(timezone.utc)
 
     # Build the set of user-writable column names (no system cols)
     user_col_names = {
@@ -744,7 +831,16 @@ def publish_record(
 # Retire active → retired
 # ---------------------------------------------------------------------------
 
-@router.post("/records/{schema}/{obj}/{record_id}/retire", status_code=200)
+@router.post(
+    "/records/{schema}/{obj}/{record_id}/retire",
+    status_code=200,
+    summary="Retire a master record",
+    description=(
+        "Transitions an active golden record to retired. "
+        "The record is preserved for history and audit but excluded from default responses. "
+        "Requires Publisher or Admin."
+    ),
+)
 def retire_record(
     schema: str,
     obj: str,
@@ -769,6 +865,13 @@ def retire_record(
     except ValueError:
         raise HTTPException(400, "Invalid record ID")
 
+    retire_obj_config = tm.get_object_config(schema, obj) or {}
+    if not retire_obj_config.get("allow_retire", True):
+        raise HTTPException(
+            422,
+            f"Object '{obj}' does not allow retirement (allow_retire: false in config)."
+        )
+
     existing = db.execute(
         select(table)
         .where(table.c._id == rid)
@@ -778,7 +881,7 @@ def retire_record(
     if not existing:
         raise HTTPException(404, "Active record not found (only active records can be retired)")
 
-    _check_reason(reason, tm.get_object_config(schema, obj))
+    _check_reason(reason, retire_obj_config)
 
     now = datetime.now(timezone.utc)
     old_values = dict(existing)
