@@ -381,3 +381,5 @@ When creating or updating a record, send a JSON object with attribute keys as fi
 ```
 
 For reference attributes, use `{attribute_key}_id` with the UUID of the referenced record.
+
+> **Note:** `_reason` in the request body applies only to single-record create and update operations. For bulk imports, use the `?reason=` query parameter instead — `_reason` as a column in the import file is not supported and will be ignored.

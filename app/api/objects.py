@@ -83,6 +83,12 @@ def list_records(
     q = select(table)
     if not include_deleted:
         q = q.where(table.c._deleted_at.is_(None))
+    else:
+        # Never surface superseded edit drafts (soft-deleted by the publish workflow).
+        # They are implementation artifacts, not user-deleted records.
+        q = q.where(
+            table.c._deleted_at.is_(None) | table.c._draft_of_id.is_(None)
+        )
     if state != "all":
         q = q.where(table.c._state == state)
 
@@ -220,6 +226,7 @@ def create_record(
     values["_id"] = record_id
     values["_created_at"] = now
     values["_updated_at"] = now
+    values["_created_by"] = _get_username(request)
     initial_state = "draft" if obj_config.get("requires_draft") else "active"
     values["_state"] = initial_state
 

@@ -284,6 +284,7 @@ def _coerce_row(row: dict, table) -> dict:
     }
     result = {}
     for k, v in row.items():
+        k = k.strip()  # normalize headers (handles trailing spaces from Excel/LibreOffice)
         if k not in accepted:
             continue
         result[k] = _coerce_value(v, col_types[k]) if k in col_types else (v if v != "" else None)
