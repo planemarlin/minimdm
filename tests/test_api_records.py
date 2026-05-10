@@ -582,3 +582,11 @@ def test_provenance_preserved_in_history(client):
     assert first_entry["_source_system"] == "erp"
     assert first_entry["_source_id"] == "ERP-5"
 
+
+
+def test_created_by_is_populated_on_create(client):
+    """_created_by should be set to the authenticated username when a record is created."""
+    res = client.post("/api/records/test/company", json={"code": "CBY001"})
+    assert res.status_code == 201
+    record = client.get(f"/api/records/test/company/{res.json()['id']}").json()
+    assert record["_created_by"] == "test_admin"
