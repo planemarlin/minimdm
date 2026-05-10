@@ -790,7 +790,8 @@ async function loadHistory(schema, obj, recordId, objConfig, canWrite) {
       } else {
         const val = h[k];
         if (val != null) {
-          pairs.push(`<span><b>${escHtml(v.name || k)}:</b> ${escHtml(String(val))}</span>`);
+          const displayVal = v.type === "date" ? fmtDateOnly(val) : escHtml(String(val));
+          pairs.push(`<span><b>${escHtml(v.name || k)}:</b> ${displayVal}</span>`);
         }
       }
     }
