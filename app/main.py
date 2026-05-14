@@ -288,14 +288,14 @@ def _sidebar_schemas(request: Request) -> list[dict]:
 
 
 
-@app.get("/login", response_class=HTMLResponse)
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
 async def login_page(request: Request):
     return templates.TemplateResponse(
         request, "auth/login.html", {"app_name": settings.app_name}
     )
 
 
-@app.get("/reset-password", response_class=HTMLResponse)
+@app.get("/reset-password", response_class=HTMLResponse, include_in_schema=False)
 async def reset_password_page(request: Request, token: str = ""):
     return templates.TemplateResponse(
         request, "auth/reset_password.html",
@@ -303,7 +303,7 @@ async def reset_password_page(request: Request, token: str = ""):
     )
 
 
-@app.get("/admin/users", response_class=HTMLResponse)
+@app.get("/admin/users", response_class=HTMLResponse, include_in_schema=False)
 async def admin_users(request: Request):
     user = getattr(request.state, "current_user", None)
     if not user or not user.get("is_admin"):
@@ -323,7 +323,7 @@ async def admin_users(request: Request):
     )
 
 
-@app.get("/admin/audit", response_class=HTMLResponse)
+@app.get("/admin/audit", response_class=HTMLResponse, include_in_schema=False)
 async def admin_audit(request: Request):
     user = getattr(request.state, "current_user", None)
     if not user or not user.get("is_admin"):
@@ -342,7 +342,7 @@ async def admin_audit(request: Request):
     )
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def home(request: Request):
     tm = request.app.state.table_manager
     return templates.TemplateResponse(
@@ -356,7 +356,7 @@ async def home(request: Request):
     )
 
 
-@app.get("/{schema}/{obj}", response_class=HTMLResponse)
+@app.get("/{schema}/{obj}", response_class=HTMLResponse, include_in_schema=False)
 async def object_list(request: Request, schema: str, obj: str):
     tm = request.app.state.table_manager
     obj_config = tm.get_object_config(schema, obj)
@@ -380,7 +380,7 @@ async def object_list(request: Request, schema: str, obj: str):
     )
 
 
-@app.get("/{schema}/{obj}/new", response_class=HTMLResponse)
+@app.get("/{schema}/{obj}/new", response_class=HTMLResponse, include_in_schema=False)
 async def object_new(request: Request, schema: str, obj: str):
     tm = request.app.state.table_manager
     obj_config = tm.get_object_config(schema, obj)
@@ -406,7 +406,7 @@ async def object_new(request: Request, schema: str, obj: str):
     )
 
 
-@app.get("/{schema}/{obj}/{record_id}", response_class=HTMLResponse)
+@app.get("/{schema}/{obj}/{record_id}", response_class=HTMLResponse, include_in_schema=False)
 async def object_detail(request: Request, schema: str, obj: str, record_id: str):
     from app.core.permissions import check_permission
 
@@ -445,7 +445,7 @@ async def object_detail(request: Request, schema: str, obj: str, record_id: str)
     )
 
 
-@app.get("/{schema}/{obj}/{record_id}/edit", response_class=HTMLResponse)
+@app.get("/{schema}/{obj}/{record_id}/edit", response_class=HTMLResponse, include_in_schema=False)
 async def object_edit(request: Request, schema: str, obj: str, record_id: str):
     tm = request.app.state.table_manager
     obj_config = tm.get_object_config(schema, obj)
@@ -471,7 +471,9 @@ async def object_edit(request: Request, schema: str, obj: str, record_id: str):
     )
 
 
-@app.get("/{schema}/{obj}/{record_id}/history", response_class=HTMLResponse)
+@app.get(
+    "/{schema}/{obj}/{record_id}/history", response_class=HTMLResponse, include_in_schema=False
+)
 async def object_history(request: Request, schema: str, obj: str, record_id: str):
     from app.core.permissions import check_permission
 
