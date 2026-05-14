@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Fixed
 - Auth login endpoint now documents its request body (`username`, `password`) in the Swagger UI; replaced raw `request.json()` parsing with a Pydantic model ([#27](../../issues/27))
+- Web UI routes (`/`, `/login`, `/admin/users`, etc.) no longer appear in the Swagger API documentation; `include_in_schema=False` added to all HTML-returning routes ([#28](../../issues/28))
 
 ## [0.5.0] – 2026-05-10
 
