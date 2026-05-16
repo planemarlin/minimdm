@@ -9,7 +9,14 @@ from app.core.schema_loader import load_config, validate_config
 router = APIRouter()
 
 
-@router.get("/schemas")
+@router.get(
+    "/schemas",
+    summary="List MDM schemas",
+    description=(
+        "Returns all schemas accessible to the current user, "
+        "each with their MDM object definitions."
+    ),
+)
 def list_schemas(request: Request):
     tm = request.app.state.table_manager
     config = tm.get_config()
@@ -42,7 +49,11 @@ def list_schemas(request: Request):
     return result
 
 
-@router.get("/schemas/{schema}")
+@router.get(
+    "/schemas/{schema}",
+    summary="Get schema definition",
+    description="Returns the MDM object definitions for a single schema.",
+)
 def get_schema(schema: str, request: Request):
     require_schema_access(request, schema)
     tm = request.app.state.table_manager
@@ -56,7 +67,11 @@ def get_schema(schema: str, request: Request):
     }
 
 
-@router.get("/schemas/{schema}/objects/{obj}")
+@router.get(
+    "/schemas/{schema}/objects/{obj}",
+    summary="Get MDM object definition",
+    description="Returns the attribute schema and configuration for a single MDM object type.",
+)
 def get_object(schema: str, obj: str, request: Request):
     require_schema_access(request, schema)
     tm = request.app.state.table_manager
@@ -69,6 +84,9 @@ def get_object(schema: str, obj: str, request: Request):
 @router.post("/config/reload")
 def reload_config(request: Request):
     """Reload config from disk and sync database schema."""
+    user = getattr(request.state, "current_user", None)
+    if not user or not user.get("is_admin"):
+        raise HTTPException(403, "Admin access required")
     config_path = Path(settings.config_file)
     if not config_path.exists():
         raise HTTPException(404, f"Config file not found: {settings.config_file}")
@@ -91,4 +109,5 @@ def reload_config(request: Request):
 
 @router.get("/config")
 def get_config(request: Request):
-    return request.app.state.app_config
+    cfg = request.app.state.app_config
+    return {k: v for k, v in cfg.items() if k != "webhooks"}

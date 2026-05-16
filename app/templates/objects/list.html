@@ -28,7 +28,14 @@
 </div>
 
 {% if obj_config.description %}
-<p style="font-size:.875rem; color:var(--text-muted); margin-bottom:1rem">{{ obj_config.description }}</p>
+<p style="font-size:.875rem; color:var(--text-muted); margin-bottom:.5rem">{{ obj_config.description }}</p>
+{% endif %}
+{% if obj_config.owner or obj_config.steward %}
+<p style="font-size:.8rem; color:var(--text-muted); margin-bottom:1rem">
+  {% if obj_config.owner %}Owner: <strong>{{ obj_config.owner }}</strong>{% endif %}
+  {% if obj_config.owner and obj_config.steward %} &nbsp;·&nbsp; {% endif %}
+  {% if obj_config.steward %}Steward: <strong>{{ obj_config.steward }}</strong>{% endif %}
+</p>
 {% endif %}
 
 <div class="toolbar">
@@ -89,6 +96,10 @@ const recordList = new RecordList({
   objConfig: {{ obj_config | tojson }},
 });
 
+function escHtml(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
 async function importFile(input) {
   const file = input.files[0];
   if (!file) return;
@@ -114,7 +125,7 @@ async function importFile(input) {
     if (data.inserted) parts.push(`${data.inserted} inserted`);
     if (data.updated) parts.push(`${data.updated} updated`);
     const errHtml = data.errors.length
-      ? `<br>Errors: ${data.errors.map(e => `Row ${e.row}: ${e.error}`).join("; ")}`
+      ? `<br>Errors: ${data.errors.map(e => `Row ${escHtml(e.row)}: ${escHtml(e.error)}`).join("; ")}`
       : "";
     statusEl.innerHTML = `<div class="alert alert-success">${parts.join(", ") || "0 records"}.${errHtml}</div>`;
     recordList.load();
@@ -122,10 +133,10 @@ async function importFile(input) {
     const detail = data.detail;
     let msg;
     if (typeof detail === "object" && detail !== null) {
-      const errLines = (detail.errors || []).map(e => `Row ${e.row}: ${e.error}`).join("<br>");
-      msg = (detail.detail || "Import failed.") + (errLines ? `<br><br>${errLines}` : "");
+      const errLines = (detail.errors || []).map(e => `Row ${escHtml(e.row)}: ${escHtml(e.error)}`).join("<br>");
+      msg = escHtml(detail.detail || "Import failed.") + (errLines ? `<br><br>${errLines}` : "");
     } else {
-      msg = detail || "Import failed.";
+      msg = escHtml(detail) || "Import failed.";
     }
     statusEl.innerHTML = `<div class="alert alert-error">${msg}</div>`;
   }

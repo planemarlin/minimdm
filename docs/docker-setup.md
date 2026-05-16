@@ -31,7 +31,7 @@ This script will:
 
    Edit `.env` to update security settings, especially:
    - `SECRET_KEY` - Change from the default
-   - `ADMIN_USERNAME` and `ADMIN_PASSWORD` - Change from default credentials
+   - `ADMIN_USERNAME` and `ADMIN_PASSWORD` - Must be set explicitly; no default credentials exist
 
 2. **Build and start services:**
    ```bash
@@ -108,7 +108,7 @@ All environment variables can be set in `.env`. Key variables:
 - `CONFIG_FILE`: Path to miniMDM config file (default: `config/minimdm.yaml`)
 - `SECRET_KEY`: JWT secret key (⚠️ Change in production!)
 - `ADMIN_USERNAME`: Initial admin user (created on first run)
-- `ADMIN_PASSWORD`: Initial admin password (⚠️ Change in production!)
+- `ADMIN_PASSWORD`: Initial admin password — must be set explicitly; no default exists
 - `DEBUG`: Enable debug logging (default: `false`)
 - `PORT`: Application port (default: `8000`)
 

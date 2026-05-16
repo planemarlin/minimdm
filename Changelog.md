@@ -6,9 +6,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.6.0] – 2026-05-16
+
+### Added
+- **Data ownership & stewardship**: `owner` and `steward` are new optional free-text fields at the object level in the schema YAML config; both are informational only with no enforcement logic; when set, they are displayed near the object name and description on the records list page
+- **`?role=` MDM alias on record list**: `GET /api/records/{schema}/{obj}` now accepts `?role=master` (maps to `state=active`) and `?role=draft` (maps to `state=draft`) as MDM-native vocabulary; passing an invalid role value returns HTTP 400 with a list of valid values; combining `?role=` and `?state=` in the same request returns HTTP 400
+- **OpenAPI MDM vocabulary**: all record endpoint summaries, descriptions, and tags updated to use MDM-native language — "master record", "golden record", "draft candidate", "promote to master"; the records router tag is now `MDM Records`; schema and import/export endpoints also received descriptions
+
 ### Fixed
 - Auth login endpoint now documents its request body (`username`, `password`) in the Swagger UI; replaced raw `request.json()` parsing with a Pydantic model ([#27](../../issues/27))
 - Web UI routes (`/`, `/login`, `/admin/users`, etc.) no longer appear in the Swagger API documentation; `include_in_schema=False` added to all HTML-returning routes ([#28](../../issues/28))
+- `app_version` in `app/config.py` was behind `pyproject.toml` by one version; both are now aligned at `0.6.0`
+
+### Security
+- **Config reload restricted to admins**: `POST /api/config/reload` previously allowed any authenticated user to trigger a schema sync; now requires Admin role
+- **Webhook URLs hidden from non-admins**: `GET /api/config` no longer returns the `webhooks` list, which could contain API keys embedded in URLs; response is now limited to schema definitions
+- **SSRF guard on webhook URLs**: webhook URLs pointing to private or loopback IP ranges (`127.x`, `10.x`, `172.16.x`, `192.168.x`, `169.254.x`) are now rejected at config load time
+- **Constant-time login**: bcrypt verification now runs even when a username does not exist, closing a timing-based username enumeration channel
+- **HTML escaping in import error display**: row-level error messages from the import API are now HTML-escaped before rendering in the UI status panel, preventing self-XSS via crafted CSV cell values
+- **No default admin password in Docker Compose**: removed the `admin` fallback default for `ADMIN_PASSWORD`; operators must now explicitly set the variable, preventing accidental deployment with trivially guessable credentials
+- **Startup warning for `SECURE_COOKIE=false`**: the application now logs a warning at boot when `SECURE_COOKIE` is disabled, consistent with the existing `SECRET_KEY` placeholder warning
+- **Docker container runs as non-root**: the production image now creates and uses a dedicated `app` system user, following container security best practices
 
 ## [0.5.0] – 2026-05-10
 

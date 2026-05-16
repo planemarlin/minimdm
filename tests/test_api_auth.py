@@ -648,3 +648,32 @@ def test_reset_page_is_publicly_accessible(client):
     """The /reset-password page must not require authentication."""
     res = client.get("/reset-password?token=anytoken", headers=_no_auth_headers())
     assert res.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Config endpoint access control (security fixes)
+# ---------------------------------------------------------------------------
+
+def test_config_reload_requires_admin(client):
+    """Non-admin users must receive 403 on POST /api/config/reload."""
+    res = client.post("/api/config/reload", headers=_non_admin_headers())
+    assert res.status_code == 403
+
+
+def test_config_reload_unauthenticated_returns_401(client):
+    res = client.post("/api/config/reload", headers=_no_auth_headers())
+    assert res.status_code == 401
+
+
+def test_config_get_excludes_webhooks(client):
+    """GET /api/config must not expose the webhooks list."""
+    res = client.get("/api/config")
+    assert res.status_code == 200
+    assert "webhooks" not in res.json()
+
+
+def test_config_get_includes_schemas(client):
+    """GET /api/config still returns the schemas section."""
+    res = client.get("/api/config")
+    assert res.status_code == 200
+    assert "schemas" in res.json()

@@ -27,6 +27,11 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8")[:72], hashed.encode())
 
 
+# Pre-computed hash used for constant-time dummy checks when a username is not found,
+# preventing timing-based username enumeration.
+DUMMY_HASH = bcrypt.hashpw(b"dummy-constant-time-guard", bcrypt.gensalt()).decode()
+
+
 # ---------------------------------------------------------------------------
 # JWT helpers
 # ---------------------------------------------------------------------------

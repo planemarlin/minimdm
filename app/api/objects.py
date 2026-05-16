@@ -48,10 +48,13 @@ def _serialize_row(row: dict) -> dict:
 
 @router.get(
     "/records/{schema}/{obj}",
-    summary="List master records",
+    summary="List master (golden) records",
     description=(
-        "Returns active (golden) records by default. "
-        "Use `?state=` to query drafts, retired, or all records."
+        "Returns master (golden) records by default. "
+        "Use `?state=draft` or `?role=draft` to query draft candidates awaiting promotion. "
+        "Use `?state=retired` for retired records. "
+        "Use `?role=master` as an MDM-native alias for `?state=active`. "
+        "Providing both `?role=` and `?state=` in the same request returns 400."
     ),
 )
 def list_records(
@@ -62,7 +65,15 @@ def list_records(
     page_size: int = Query(50, ge=1, le=500),
     search: Optional[str] = Query(None),
     include_deleted: bool = Query(False),
-    state: str = Query("active", pattern="^(active|draft|retired|all)$"),
+    state: Optional[str] = Query(None, pattern="^(active|draft|retired|all)$"),
+    role: Optional[str] = Query(
+        None,
+        max_length=50,
+        description=(
+            "MDM-native alias for `?state=`: `master` → active (golden record), "
+            "`draft` → draft candidate. Cannot be combined with `?state=`."
+        ),
+    ),
     parent_id: Optional[str] = Query(None),
     ref_field: Optional[str] = Query(None),
     ref_id: Optional[str] = Query(None),
@@ -71,6 +82,17 @@ def list_records(
     source_system: Optional[str] = Query(None, description="Filter by source system name"),
     db: Session = Depends(get_db),
 ):
+    if role is not None and state is not None:
+        raise HTTPException(400, "Use either ?role= or ?state=, not both.")
+    if role is not None:
+        if role not in _ROLE_MAP:
+            raise HTTPException(
+                400, f"Invalid role value '{role}'. Valid values: master, draft"
+            )
+        state = _ROLE_MAP[role]
+    elif state is None:
+        state = "active"
+
     require_schema_access(request, schema)
     tm = _get_tm(request)
     try:
@@ -195,9 +217,10 @@ def get_record(
     status_code=201,
     summary="Create a master record",
     description=(
-        "Creates a new active (golden) record. "
+        "Creates a new master (golden) record. "
         "If the object has `requires_draft: true` configured, "
-        "the record is created as a draft instead."
+        "the record is created as a draft candidate instead "
+        "and must be promoted before becoming master."
     ),
 )
 def create_record(
@@ -652,10 +675,10 @@ def revert_record(
 @router.post(
     "/records/{schema}/{obj}/{record_id}/publish",
     status_code=200,
-    summary="Publish draft to master",
+    summary="Promote draft candidate to master record",
     description=(
-        "Promotes a draft record to the active golden record. "
-        "The draft's data replaces the master and the draft is removed. "
+        "Promotes a draft candidate to the master (golden) record. "
+        "The draft's data replaces the current master and the draft is removed. "
         "Requires Publisher or Admin."
     ),
 )
@@ -668,11 +691,11 @@ def publish_record(
     reason: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Promote a draft record to active.
+    """Promote a draft candidate to the master (golden) record.
 
-    The record_id must be a draft (state='draft') that has a _draft_of_id pointing
-    to the active record. The active record is updated with the draft's data and the
-    draft is soft-deleted. The active record's stable _id is preserved.
+    The record_id must identify a draft candidate (state='draft') with a _draft_of_id pointing
+    to the master record. The master is updated with the draft's data and the draft is
+    soft-deleted. The master record's stable _id is preserved.
     Requires Publisher or Admin.
     """
     require_publish_access(request, schema)
@@ -836,8 +859,8 @@ def publish_record(
     status_code=200,
     summary="Retire a master record",
     description=(
-        "Transitions an active golden record to retired. "
-        "The record is preserved for history and audit but excluded from default responses. "
+        "Transitions a master (golden) record to retired status. "
+        "The record is preserved for history and audit but excluded from the default MDM dataset. "
         "Requires Publisher or Admin."
     ),
 )
@@ -850,7 +873,7 @@ def retire_record(
     reason: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    """Transition an active record to the retired state. Requires Publisher or Admin."""
+    """Transition a master record to the retired state. Requires Publisher or Admin."""
     require_publish_access(request, schema)
     tm = _get_tm(request)
     try:
@@ -930,6 +953,8 @@ def retire_record(
 
 _SYSTEM_COLS = {"_id", "_created_at", "_updated_at", "_deleted_at", "_version",
                "_state", "_draft_of_id"}
+
+_ROLE_MAP = {"master": "active", "draft": "draft"}
 
 
 def _filter_columns(body: dict, table) -> dict:

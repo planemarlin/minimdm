@@ -114,3 +114,58 @@ def test_default_sort_is_first_attribute(client):
     assert res.status_code == 200
     codes = [r["code"] for r in res.json()["records"]]
     assert codes == sorted(codes)
+
+
+# ---------------------------------------------------------------------------
+# ?role= MDM alias
+# ---------------------------------------------------------------------------
+
+def test_role_master_returns_active_records(client):
+    client.post("/api/records/test/company", json={"code": "R01", "name": "Alpha"})
+    res = client.get("/api/records/test/company?role=master")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["total"] >= 1
+    assert all(r["_state"] == "active" for r in data["records"])
+
+
+def test_role_draft_returns_draft_records(client):
+    active_id = client.post(
+        "/api/records/test/company", json={"code": "R02", "name": "Beta"}
+    ).json()["id"]
+    client.put(f"/api/records/test/company/{active_id}", json={"name": "Beta Updated"})
+
+    res = client.get("/api/records/test/company?role=draft")
+    assert res.status_code == 200
+    assert res.json()["total"] >= 1
+    assert all(r["_state"] == "draft" for r in res.json()["records"])
+
+
+def test_role_master_excludes_drafts(client):
+    active_id = client.post(
+        "/api/records/test/company", json={"code": "R03", "name": "Gamma"}
+    ).json()["id"]
+    client.put(f"/api/records/test/company/{active_id}", json={"name": "Gamma Updated"})
+
+    res = client.get("/api/records/test/company?role=master")
+    assert res.status_code == 200
+    assert all(r["_state"] != "draft" for r in res.json()["records"])
+
+
+def test_role_invalid_value_returns_400(client):
+    res = client.get("/api/records/test/company?role=xyz")
+    assert res.status_code == 400
+    assert "Invalid role value" in res.json()["detail"]
+    assert "master" in res.json()["detail"]
+    assert "draft" in res.json()["detail"]
+
+
+def test_role_and_state_both_provided_returns_400(client):
+    res = client.get("/api/records/test/company?role=master&state=draft")
+    assert res.status_code == 400
+    assert "not both" in res.json()["detail"]
+
+
+def test_role_and_state_both_provided_even_if_consistent_returns_400(client):
+    res = client.get("/api/records/test/company?role=master&state=active")
+    assert res.status_code == 400

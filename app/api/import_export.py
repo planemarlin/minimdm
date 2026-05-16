@@ -40,7 +40,15 @@ def _serialize_row(row: dict) -> dict:
 # Export
 # ---------------------------------------------------------------------------
 
-@router.get("/records/{schema}/{obj}/export")
+@router.get(
+    "/records/{schema}/{obj}/export",
+    summary="Export master records",
+    description=(
+        "Exports MDM records in CSV, TSV, or JSON format. "
+        "Defaults to master (golden) records; use `?state=` to export draft candidates "
+        "or retired records."
+    ),
+)
 def export_records(
     schema: str,
     obj: str,
@@ -110,7 +118,15 @@ def export_records(
 # Import
 # ---------------------------------------------------------------------------
 
-@router.post("/records/{schema}/{obj}/import")
+@router.post(
+    "/records/{schema}/{obj}/import",
+    summary="Import records",
+    description=(
+        "Bulk-imports records from CSV, TSV, or JSON. "
+        "Records enter the MDM lifecycle as master records or draft candidates "
+        "depending on `initial_state` and object configuration."
+    ),
+)
 @limiter.limit("10/minute")
 async def import_records(
     schema: str,

@@ -1,3 +1,4 @@
+import re
 import uuid
 from typing import Optional
 
@@ -105,6 +106,8 @@ class TableManager:
                     "key": obj_key,
                     "name": obj_body.get("name", obj_key),
                     "description": obj_body.get("description", ""),
+                    "owner": obj_body.get("owner"),
+                    "steward": obj_body.get("steward"),
                     "parent": obj_body.get("parent"),
                     "attributes": obj_body.get("attributes", {}),
                 }
@@ -267,6 +270,12 @@ class TableManager:
                         default_clause = ""
                         sd = col.server_default
                         if sd is not None and hasattr(sd, "arg") and isinstance(sd.arg, str):
+                            # Guard: only interpolate quoted string literals (e.g. "'active'").
+                            # All server_default values in this codebase are hardcoded constants,
+                            # but this assertion prevents a future accidental injection.
+                            assert re.match(r"^'[a-z_]+'$", sd.arg), (
+                                f"Unexpected server_default value: {sd.arg!r}"
+                            )
                             default_clause = f" DEFAULT {sd.arg}"
                         conn.execute(text(
                             f'ALTER TABLE "{schema}"."{tbl_name}" '
@@ -277,6 +286,9 @@ class TableManager:
                         # without a DEFAULT (e.g. _state added by an earlier migration).
                         sd = col.server_default
                         if sd is not None and hasattr(sd, "arg") and isinstance(sd.arg, str):
+                            assert re.match(r"^'[a-z_]+'$", sd.arg), (
+                                f"Unexpected server_default value: {sd.arg!r}"
+                            )
                             conn.execute(text(
                                 f'UPDATE "{schema}"."{tbl_name}" '
                                 f'SET "{col.name}" = {sd.arg} WHERE "{col.name}" IS NULL'

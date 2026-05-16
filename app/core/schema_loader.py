@@ -1,9 +1,25 @@
+import ipaddress
 import json
 import re
 from pathlib import Path
 from urllib.parse import urlparse
 
 import yaml
+
+_PRIVATE_NETS = [
+    ipaddress.ip_network(n) for n in (
+        "127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+        "169.254.0.0/16", "::1/128", "fc00::/7",
+    )
+]
+
+
+def _is_private_ip(host: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(host)
+        return any(addr in net for net in _PRIVATE_NETS)
+    except ValueError:
+        return False  # hostname, not an IP literal — checked at config load time only
 
 _IDENTIFIER_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
@@ -44,6 +60,8 @@ def _normalize(raw: dict) -> dict:
                     "<object_key>": {
                         "name": str,
                         "description": str,
+                        "owner": str | None,
+                        "steward": str | None,
                         "parent": str | None,
                         "attributes": {
                             "<attr_key>": {
@@ -90,6 +108,8 @@ def _normalize(raw: dict) -> dict:
             objects[obj_key] = {
                 "name": obj_body.get("name", obj_key),
                 "description": obj_body.get("description", ""),
+                "owner": obj_body.get("owner"),
+                "steward": obj_body.get("steward"),
                 "parent": obj_body.get("parent"),
                 "require_change_reason": bool(obj_body.get("require_change_reason", False)),
                 "requires_draft": bool(obj_body.get("requires_draft", False)),
@@ -112,6 +132,10 @@ def _normalize(raw: dict) -> dict:
         if parsed.scheme not in ("http", "https"):
             raise ValueError(
                 f"Webhook URL '{url}' must use http or https scheme."
+            )
+        if _is_private_ip(parsed.hostname or ""):
+            raise ValueError(
+                f"Webhook URL '{url}' must not target private or loopback addresses."
             )
         webhooks.append({"event": str(event), "url": str(url)})
 

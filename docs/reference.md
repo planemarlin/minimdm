@@ -37,6 +37,8 @@ minimdm:
         <object_key>:
           name: <display name>
           description: <optional description>
+          owner: <free-text owner, optional>
+          steward: <free-text steward, optional>
           parent: <object_key of parent object, optional>
           require_change_reason: <true|false>
           attributes:
@@ -77,6 +79,29 @@ Use `reference: <object_key>` instead of `type` to create a foreign-key style li
 | `requires_draft` | `true`/`false` | `false` | When `true`, new records are always created as `draft` regardless of the caller's role. Editors and Publishers alike must go through the draft → publish workflow. Useful for high-governance objects where every new golden record needs explicit review. |
 | `allow_retire` | `true`/`false` | `true` | When `false`, the retire endpoint returns HTTP 422 for this object. Use this to protect stable reference data (e.g. currency codes, country lists) that should never be retired. |
 | `allow_direct_active_import` | `true`/`false` | `true` | When `false`, bulk import with `initial_state=active` is blocked for this object even for Publishers and Admins. All imported records must enter as `draft` and be published individually. |
+
+### Governance Metadata
+
+Two optional free-text fields can be set at the object level to document data ownership:
+
+| Field | Type | Description |
+|---|---|---|
+| `owner` | string (optional) | Who is responsible for this object type (e.g. a team name or email). Informational only — no enforcement or access control is applied. |
+| `steward` | string (optional) | Who maintains data quality day-to-day. Informational only. |
+
+When set, `owner` and `steward` are displayed on the records list page near the object name and description. When not set, the fields are hidden. They are not included in API record responses and have no effect on the MDM lifecycle.
+
+```yaml
+objects:
+  customer:
+    name: Customer
+    owner: Sales Operations
+    steward: alice@example.com
+    attributes:
+      code:
+        name: Customer Code
+        type: string
+```
 
 Example:
 
@@ -224,7 +249,7 @@ No analytics, tracking, or advertising cookies or storage keys are used.
 
 Tokens are JWTs signed with `SECRET_KEY` and expire after `TOKEN_EXPIRE_HOURS` (default: 24 hours).
 
-On first startup, if no users exist, an admin account is created automatically from `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables (defaults: `admin` / `admin`). **Change the default password immediately after first login.**
+On first startup, if no users exist, an admin account is created automatically from `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables. Both must be set — if either is empty, no admin user is created and the application logs a warning. There are no built-in default credentials.
 
 ## REST API Endpoints
 
@@ -272,7 +297,7 @@ When setting a permission, the body may include any combination of these flags. 
 
 | Method | Path | Role required | Description |
 |---|---|---|---|
-| `GET` | `/api/records/{schema}/{obj}` | Viewer | List records (paginated, searchable); default `state=active` |
+| `GET` | `/api/records/{schema}/{obj}` | Viewer | List master (golden) records (paginated, searchable); default `state=active`; supports `?role=master\|draft` as MDM-native alias |
 | `POST` | `/api/records/{schema}/{obj}` | Editor | Create record (always `active`) |
 | `GET` | `/api/records/{schema}/{obj}/{id}` | Viewer | Get single record |
 | `PUT` | `/api/records/{schema}/{obj}/{id}` | Editor | Update record — creates a `draft` copy if the record is `active`; updates in-place if already a `draft` |
@@ -312,8 +337,8 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 | `GET` | `/api/schemas` | List all schemas |
 | `GET` | `/api/schemas/{schema}` | Get schema details |
 | `GET` | `/api/schemas/{schema}/objects/{obj}` | Get object definition |
-| `GET` | `/api/config` | Get current loaded config |
-| `POST` | `/api/config/reload` | Reload config from disk |
+| `GET` | `/api/config` | Get current loaded config (schema definitions only; webhook URLs are excluded) |
+| `POST` | `/api/config/reload` | Reload config from disk and sync database schema — **Admin only** |
 
 ### Audit
 
@@ -341,7 +366,8 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 | `page` | 1 | Page number |
 | `page_size` | 50 | Records per page (max 500) |
 | `search` | — | Full-text search across string columns |
-| `state` | `active` | Lifecycle state filter: `active`, `draft`, `retired`, or `all` |
+| `state` | `active` | Lifecycle state filter: `active`, `draft`, `retired`, or `all`. Cannot be combined with `?role=`. |
+| `role` | — | MDM-native alias for `?state=`: `master` → active (golden record), `draft` → draft candidate. Returns HTTP 400 for unrecognised values or when combined with `?state=`. |
 | `include_deleted` | false | Include soft-deleted records in the results |
 | `parent_id` | — | Filter records by parent UUID (requires `parent` to be set on the object) |
 | `ref_field` | — | Attribute key of a reference field to filter by (use together with `ref_id`) |
