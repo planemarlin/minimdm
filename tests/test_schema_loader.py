@@ -93,6 +93,45 @@ class TestLoadConfig:
         assert attr["type"] == "string"
         assert attr["required"] is False
         assert attr["reference"] is None
+        obj = config["schemas"]["s"]["objects"]["obj"]
+        assert obj["owner"] is None
+        assert obj["steward"] is None
+
+    def test_owner_and_steward_parsed(self):
+        data = {
+            "schemas": {
+                "s": {
+                    "objects": {
+                        "obj": {
+                            "owner": "Data Team",
+                            "steward": "jane@example.com",
+                            "attributes": {},
+                        }
+                    }
+                }
+            }
+        }
+        path = write_tmp(yaml.dump(data), ".yml")
+        config = load_config(path)
+        obj = config["schemas"]["s"]["objects"]["obj"]
+        assert obj["owner"] == "Data Team"
+        assert obj["steward"] == "jane@example.com"
+
+    def test_owner_and_steward_default_to_none(self):
+        data = {
+            "schemas": {
+                "s": {
+                    "objects": {
+                        "obj": {"attributes": {}}
+                    }
+                }
+            }
+        }
+        path = write_tmp(yaml.dump(data), ".yml")
+        config = load_config(path)
+        obj = config["schemas"]["s"]["objects"]["obj"]
+        assert obj["owner"] is None
+        assert obj["steward"] is None
 
 
 class TestValidateConfig:

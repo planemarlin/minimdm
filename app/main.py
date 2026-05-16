@@ -43,6 +43,12 @@ async def lifespan(app: FastAPI):
             "JWTs can be trivially forged. Set SECRET_KEY in your .env file before deploying."
         )
 
+    if not settings.secure_cookie:
+        logger.warning(
+            "SECURE_COOKIE is disabled. The session cookie will be transmitted without "
+            "the Secure flag. Set SECURE_COOKIE=true for any non-localhost deployment over HTTPS."
+        )
+
     # Validate database connectivity before accepting requests
     try:
         with engine.connect() as conn:
@@ -67,6 +73,13 @@ async def lifespan(app: FastAPI):
     # Register the audit_log table in SQLAlchemy metadata so it can be queried.
     tm._ensure_audit_log_table()
     tm.metadata.create_all(engine)
+
+    # Warn if ADMIN_USERNAME is set but ADMIN_PASSWORD is not — no admin will be created.
+    if settings.admin_username and not settings.admin_password:
+        logger.warning(
+            "ADMIN_USERNAME is set but ADMIN_PASSWORD is empty. "
+            "No initial admin user will be created. Set ADMIN_PASSWORD to create one."
+        )
 
     # Auto-create first admin if credentials are configured and no users exist
     if settings.admin_username and settings.admin_password:
@@ -245,7 +258,7 @@ from app.api import (  # noqa: E402
 app.include_router(auth_api.router, prefix="/api", tags=["Auth"])
 app.include_router(admin_api.router, prefix="/api", tags=["Admin"])
 app.include_router(import_export.router, prefix="/api", tags=["Import / Export"])
-app.include_router(objects.router, prefix="/api", tags=["Records"])
+app.include_router(objects.router, prefix="/api", tags=["MDM Records"])
 app.include_router(schemas_api.router, prefix="/api", tags=["Schemas"])
 app.include_router(audit_api.router, prefix="/api", tags=["Audit"])
 

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core import audit as audit_svc
 from app.core.auth import (
+    DUMMY_HASH,
     consume_reset_token,
     create_token,
     get_user_by_id,
@@ -69,7 +70,10 @@ async def login(request: Request, body: LoginRequest):
     engine = request.app.state.table_manager.engine
     user = get_user_by_username(engine, username)
 
-    if not user or not verify_password(password, user["password_hash"]):
+    # Always run bcrypt regardless of whether the user exists to prevent
+    # timing-based username enumeration.
+    password_ok = verify_password(password, user["password_hash"] if user else DUMMY_HASH)
+    if not user or not password_ok:
         _log_auth(request, "LOGIN_FAILED", _ZERO_UUID, username,
                   reason=f"Failed login attempt for '{username}'")
         raise HTTPException(401, "Invalid username or password")

@@ -120,6 +120,26 @@ def test_list_page_column_headers_in_config_order(client):
     )
 
 
+# ---------------------------------------------------------------------------
+# Owner / steward display
+# ---------------------------------------------------------------------------
+
+def test_list_page_shows_owner_and_steward_when_set(client):
+    """Owner and steward are rendered on the list page when configured."""
+    res = client.get("/test/company")
+    assert res.status_code == 200
+    assert "Data Team" in res.text
+    assert "alice@example.com" in res.text
+
+
+def test_list_page_hides_ownership_block_when_not_set(client):
+    """Owner/steward block is absent when neither field is configured."""
+    res = client.get("/test/contact")
+    assert res.status_code == 200
+    assert "Owner:" not in res.text
+    assert "Steward:" not in res.text
+
+
 def test_list_page_objconfig_json_preserves_attribute_order(client):
     """The objConfig JSON embedded in the page script must keep config order.
 

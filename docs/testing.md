@@ -116,6 +116,18 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Import with `initial_state=draft` creates records as drafts
 - 400 responses for invalid JSON and unknown upsert keys
 
+**`test_api_query_params.py`**
+- `?role=master` returns only active (golden) records
+- `?role=draft` returns only draft candidate records
+- `?role=master` excludes draft records from results
+- `?role=xyz` (invalid value) returns HTTP 400 with list of valid values
+- `?role=` and `?state=` combined always returns HTTP 400 regardless of whether values agree
+
+**`test_schema_loader.py`** (governance metadata)
+- `owner` and `steward` are parsed from YAML object config into the normalized dict
+- Objects without `owner`/`steward` default both fields to `None`
+- Existing `test_defaults_filled` asserts `owner: None` and `steward: None` on object level
+
 **`test_templates.py`**
 - Every page type (home, list, new, detail, edit, history) renders HTTP 200
 - Unknown object returns 404
@@ -124,6 +136,8 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Edit form contains the record UUID in the script block
 - Column headers in the list page follow config order, not alphabetical order
 - `objConfig` JSON embedded in the list page preserves attribute insertion order (regression: Jinja2 `tojson` was applying `sort_keys=True`)
+- Owner and steward are displayed on the list page when configured on the object
+- Owner/steward block is absent when neither field is set
 
 ## Test isolation
 

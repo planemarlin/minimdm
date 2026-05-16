@@ -36,7 +36,7 @@ services:
       PORT: 8000
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-use-a-long-random-string}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     ports:
       - "8000:8000"
     volumes:

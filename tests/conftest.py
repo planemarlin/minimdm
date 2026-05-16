@@ -17,6 +17,8 @@ SAMPLE_CONFIG = {
                 "company": {
                     "name": "Company",
                     "description": "Test company",
+                    "owner": "Data Team",
+                    "steward": "alice@example.com",
                     "parent": None,
                     "attributes": {
                         "code": {"name": "Code", "type": "string", "required": True, "unique": True, "reference": None},  # noqa: E501

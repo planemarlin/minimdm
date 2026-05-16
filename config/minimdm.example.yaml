@@ -25,9 +25,12 @@ minimdm:
 
         # --- Supplier ---
         # A standalone object with required fields, an optional field, and a unique code.
+        # owner and steward are optional free-text governance fields displayed in the UI.
         supplier:
           name: Supplier
           description: External suppliers and vendors
+          # owner: Procurement Team       # Who is responsible for this object type
+          # steward: jane.smith@example.com  # Who maintains data quality day-to-day
           attributes:
             code:
               name: Supplier Code
@@ -109,6 +112,8 @@ minimdm:
         supplier:
           name: Supplier
           description: External suppliers and vendors
+          owner: Procurement Team
+          steward: procurement@nordkraft.example
           attributes:
             code:
               name: Supplier Code
@@ -135,6 +140,7 @@ minimdm:
         product_category:
           name: Product Category
           description: Top-level product grouping
+          owner: Product Management
           attributes:
             code:
               name: Category Code
@@ -153,6 +159,7 @@ minimdm:
           name: Product
           description: Products in the catalog
           parent: product_category
+          steward: catalog@nordkraft.example
           attributes:
             sku:
               name: SKU
