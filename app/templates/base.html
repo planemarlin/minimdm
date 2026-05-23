@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
   <script>(function(){var t=localStorage.getItem('theme')||( window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);})();</script>
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon-180x180.png" />
   <link rel="stylesheet" href="/static/css/tokens.css" />
   <link rel="stylesheet" href="/static/css/styles.css" />
   {% block head %}{% endblock %}

@@ -217,7 +217,9 @@ class RecordList {
           : "";
 
       const rowActions = isDeleted
-        ? `<a class="mdm-rowact" style="opacity:1" href="/${schema}/${obj}/${r._id}/history" title="History">${_SVG.history}</a>
+        ? `<div class="mdm-rowact" style="opacity:1">
+             <a href="/${schema}/${obj}/${r._id}/history" title="History">${_SVG.history}</a>
+           </div>
            <span class="mdm-pill mdm-pill-red" style="margin-left:4px">deleted</span>`
         : `<div class="mdm-rowact">
              <a href="/${schema}/${obj}/${r._id}/edit" title="Edit">${_SVG.edit}</a>
@@ -673,7 +675,7 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
   }
 
   for (const [k, v] of attrs) {
-    if (v.reference || v.type === "boolean") {
+    if (v.type === "boolean") {
       fullWidthFields.push({ key: k, v });
     } else {
       pairableFields.push({ key: k, v });
