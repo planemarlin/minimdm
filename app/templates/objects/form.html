@@ -2,30 +2,41 @@
 {% block title %}{% if record_id %}Edit{% else %}New{% endif %} {{ obj_config.name }} – {{ app_name }}{% endblock %}
 
 {% block content %}
-<div class="breadcrumb">
-  <a href="/">Home</a> / <a href="/{{ schema }}/{{ obj }}">{{ obj_config.name }}</a> /
-  {% if record_id %}<a href="/{{ schema }}/{{ obj }}/{{ record_id }}">Record</a> / Edit{% else %}New{% endif %}
-</div>
+<nav class="mdm-crumbs">
+  <a href="/">Home</a>
+  <span class="sep">/</span>
+  <span class="schema">{{ schema | upper }}</span>
+  <span class="sep">/</span>
+  <a href="/{{ schema }}/{{ obj }}">{{ obj_config.name }}</a>
+  <span class="sep">/</span>
+  {% if record_id %}
+  <a href="/{{ schema }}/{{ obj }}/{{ record_id }}">Record</a>
+  <span class="sep">/</span>
+  <span>Edit</span>
+  {% else %}
+  <span>New</span>
+  {% endif %}
+</nav>
 
-<div class="page-header">
-  <h1 class="page-title">{% if record_id %}Edit{% else %}New{% endif %} {{ obj_config.name }}</h1>
-</div>
-
-<div class="card">
-  <div class="card__body">
-    <form id="record-form" novalidate>
-      <div id="form-fields">
-        <div style="text-align:center;padding:2rem"><span class="spinner"></span></div>
-      </div>
-      <div class="form-actions">
-        <button type="submit" class="btn btn-primary">Save</button>
-        <a class="btn btn-secondary"
-           href="{% if record_id %}/{{ schema }}/{{ obj }}/{{ record_id }}{% else %}/{{ schema }}/{{ obj }}{% endif %}">
-          Cancel
-        </a>
-      </div>
-    </form>
+<div class="mdm-page-head" style="margin-bottom:20px">
+  <div>
+    <h1 class="mdm-page-title">{% if record_id %}Edit{% else %}New{% endif %} {{ obj_config.name }}</h1>
   </div>
+</div>
+
+<div style="max-width:880px">
+  <form id="record-form" novalidate>
+    <div id="form-fields">
+      <div style="text-align:center;padding:2rem"><span class="spinner"></span></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px">
+      <a class="mdm-btn mdm-btn-ghost"
+         href="{% if record_id %}/{{ schema }}/{{ obj }}/{{ record_id }}{% else %}/{{ schema }}/{{ obj }}{% endif %}">
+        Cancel
+      </a>
+      <button type="submit" class="mdm-btn mdm-btn-primary">Save changes</button>
+    </div>
+  </form>
 </div>
 {% endblock %}
 
