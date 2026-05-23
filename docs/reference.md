@@ -80,29 +80,6 @@ Use `reference: <object_key>` instead of `type` to create a foreign-key style li
 | `allow_retire` | `true`/`false` | `true` | When `false`, the retire endpoint returns HTTP 422 for this object. Use this to protect stable reference data (e.g. currency codes, country lists) that should never be retired. |
 | `allow_direct_active_import` | `true`/`false` | `true` | When `false`, bulk import with `initial_state=active` is blocked for this object even for Publishers and Admins. All imported records must enter as `draft` and be published individually. |
 
-### Governance Metadata
-
-Two optional free-text fields can be set at the object level to document data ownership:
-
-| Field | Type | Description |
-|---|---|---|
-| `owner` | string (optional) | Who is responsible for this object type (e.g. a team name or email). Informational only — no enforcement or access control is applied. |
-| `steward` | string (optional) | Who maintains data quality day-to-day. Informational only. |
-
-When set, `owner` and `steward` are displayed on the records list page near the object name and description. When not set, the fields are hidden. They are not included in API record responses and have no effect on the MDM lifecycle.
-
-```yaml
-objects:
-  customer:
-    name: Customer
-    owner: Sales Operations
-    steward: alice@example.com
-    attributes:
-      code:
-        name: Customer Code
-        type: string
-```
-
 Example:
 
 ```yaml
@@ -123,6 +100,29 @@ objects:
     attributes:
       code:
         name: ISO Code
+        type: string
+```
+
+### Governance Metadata
+
+Two optional free-text fields can be set at the object level to document data ownership:
+
+| Field | Type | Description |
+|---|---|---|
+| `owner` | string (optional) | Who is responsible for this object type (e.g. a team name or email). Informational only — no enforcement or access control is applied. |
+| `steward` | string (optional) | Who maintains data quality day-to-day. Informational only. |
+
+When set, `owner` and `steward` are displayed on the records list page near the object name and description. When not set, the fields are hidden. They are not included in API record responses and have no effect on the MDM lifecycle.
+
+```yaml
+objects:
+  customer:
+    name: Customer
+    owner: Sales Operations
+    steward: alice@example.com
+    attributes:
+      code:
+        name: Customer Code
         type: string
 ```
 

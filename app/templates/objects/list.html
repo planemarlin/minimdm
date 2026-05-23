@@ -2,145 +2,146 @@
 {% block title %}{{ obj_config.name }} – {{ app_name }}{% endblock %}
 
 {% block content %}
-<div class="breadcrumb">
-  <a href="/">Home</a> / {{ schema }} / {{ obj_config.name }}
+<nav class="mdm-crumbs">
+  <a href="/">Home</a>
+  <span class="sep">/</span>
+  <span class="schema">{{ schema | upper }}</span>
+  <span class="sep">/</span>
+  <span>{{ obj_config.name }}</span>
+</nav>
+
+<div class="mdm-page-head">
+  <div>
+    <h1 class="mdm-page-title">{{ obj_config.name }}</h1>
+    {% if obj_config.description or obj_config.owner or obj_config.steward %}
+    <div class="mdm-page-sub">
+      {% if obj_config.description %}<span>{{ obj_config.description }}</span>{% endif %}
+      {% if obj_config.owner %}
+      {% if obj_config.description %}<span class="dot"></span>{% endif %}
+      <span>Owner <strong>{{ obj_config.owner }}</strong></span>
+      {% endif %}
+      {% if obj_config.steward %}
+      <span class="dot"></span>
+      <span>Steward <strong>{{ obj_config.steward }}</strong></span>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  <div class="mdm-page-actions">
+    <div class="mdm-search" style="width:260px">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="search" id="search-input" placeholder="Search records…" />
+    </div>
+    <div style="position:relative">
+      <button class="mdm-btn" id="tools-btn" onclick="toggleToolsMenu()">
+        Tools
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div id="tools-menu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--mdm-surface);border:1px solid var(--mdm-border);border-radius:var(--mdm-r-3);box-shadow:var(--mdm-shadow-2);padding:6px;min-width:200px;z-index:10;">
+        <button class="tools-menu-item" onclick="openImportModal()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/></svg>
+          Import…
+        </button>
+        <div style="height:1px;background:var(--mdm-border);margin:4px 6px"></div>
+        <button class="tools-menu-item" onclick="exportRecords('{{ schema }}','{{ obj }}','csv');closeToolsMenu()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          Export CSV
+        </button>
+        <button class="tools-menu-item" onclick="exportRecords('{{ schema }}','{{ obj }}','tsv');closeToolsMenu()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          Export TSV
+        </button>
+        <button class="tools-menu-item" onclick="exportRecords('{{ schema }}','{{ obj }}','json');closeToolsMenu()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          Export JSON
+        </button>
+      </div>
+    </div>
+    {% if can_write %}
+    <a class="mdm-btn mdm-btn-primary" href="/{{ schema }}/{{ obj }}/new">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      New record
+    </a>
+    {% endif %}
+  </div>
 </div>
 
-<div class="page-header">
-  <h1 class="page-title">{{ obj_config.name }}</h1>
-  <div class="import-export">
-    <button class="btn btn-secondary btn-sm" onclick="exportRecords('{{ schema }}','{{ obj }}','csv')">Export CSV</button>
-    <button class="btn btn-secondary btn-sm" onclick="exportRecords('{{ schema }}','{{ obj }}','tsv')">Export TSV</button>
-    <button class="btn btn-secondary btn-sm" onclick="exportRecords('{{ schema }}','{{ obj }}','json')">Export JSON</button>
-    <select id="upsert-key" class="btn btn-secondary btn-sm" title="Insert only: always add as a new record. Upsert: update existing records that match the selected attribute, insert the rest.">
-      <option value="">Insert only</option>
-      {% for attr_key, attr in obj_config.attributes.items() %}
-      {% if not attr.reference %}<option value="{{ attr_key }}">Upsert on: {{ attr.name }}</option>{% endif %}
-      {% endfor %}
-    </select>
-    <input type="text" id="import-reason" placeholder="Import reason (optional)" style="width:14rem" title="Reason stored in the audit log for all imported records" />
-    <label class="btn btn-secondary btn-sm" style="cursor:pointer" title="Import records from a CSV, TSV, or JSON file. Max 10 MB.">
-      Import
-      <input type="file" id="import-file" style="display:none" accept=".csv,.tsv,.json" onchange="importFile(this)" />
-    </label>
+<div class="mdm-toolbar">
+  <div class="mdm-seg" id="state-seg">
+    <button class="is-on" data-state="active" onclick="setStateFilter('active')">Active</button>
+    <button data-state="draft" onclick="setStateFilter('draft')">Draft</button>
+    <button data-state="retired" onclick="setStateFilter('retired')">Retired</button>
+    <button data-state="all" onclick="setStateFilter('all')">All states</button>
   </div>
-  <a class="btn btn-primary" href="/{{ schema }}/{{ obj }}/new">+ New record</a>
-</div>
-
-{% if obj_config.description %}
-<p style="font-size:.875rem; color:var(--text-muted); margin-bottom:.5rem">{{ obj_config.description }}</p>
-{% endif %}
-{% if obj_config.owner or obj_config.steward %}
-<p style="font-size:.8rem; color:var(--text-muted); margin-bottom:1rem">
-  {% if obj_config.owner %}Owner: <strong>{{ obj_config.owner }}</strong>{% endif %}
-  {% if obj_config.owner and obj_config.steward %} &nbsp;·&nbsp; {% endif %}
-  {% if obj_config.steward %}Steward: <strong>{{ obj_config.steward }}</strong>{% endif %}
-</p>
-{% endif %}
-
-<div class="toolbar">
-  <div class="search-box">
-    <input type="search" id="search-input" placeholder="Search..." />
-  </div>
-  <select id="state-filter" class="btn btn-secondary btn-sm" title="Filter records by lifecycle state">
-    <option value="active">Active (Master)</option>
-    <option value="draft">Draft</option>
-    <option value="retired">Retired</option>
-    <option value="all">All states</option>
-  </select>
-  <input type="search" id="source-system-filter" placeholder="Source system…" title="Filter by source system (e.g. erp, crm)" style="width:10rem" />
-  <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.35rem; cursor:pointer; user-select:none">
-    <input type="checkbox" id="show-deleted-toggle" title="Soft-deleted records are hidden by default. Check to include them in the list." />
+  <input class="mdm-input" type="search" id="source-system-filter" placeholder="Source system…" style="width:160px" />
+  <label class="mdm-check">
+    <input type="checkbox" id="show-deleted-toggle" />
     Show deleted
   </label>
-  <span style="font-size:.8rem; color:var(--text-muted)"><span id="total-count">…</span> records</span>
+  <div style="flex:1"></div>
+  <span style="font-size:13px;color:var(--mdm-mute)"><span id="total-count">…</span> records</span>
 </div>
 
-<div class="card">
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          {% set ns = namespace(col=0) %}
-          {% if obj_config.parent %}<th>{{ obj_config.parent }}</th>{% set ns.col = ns.col + 1 %}{% endif %}
-          {% for attr_key, attr in obj_config.attributes.items() %}
-          {% if ns.col < 6 %}{% set ns.col = ns.col + 1 %}
-          {% if not attr.reference %}
-          <th class="th-sortable" id="th-col-{{ attr_key }}" onclick="recordList.setSort('{{ attr_key }}')">{{ attr.name }} <span class="th-sort-icon"></span></th>
-          {% else %}
-          <th>{{ attr.name }}</th>
-          {% endif %}
-          {% endif %}
-          {% endfor %}
-          <th></th>
-        </tr>
-      </thead>
-      <tbody id="record-tbody">
-        <tr><td colspan="20" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
-      </tbody>
-    </table>
-  </div>
+<div class="mdm-table-wrap">
+  <table class="mdm-table">
+    <thead>
+      <tr>
+        {% set ns = namespace(col=0) %}
+        {% if obj_config.parent %}<th>{{ obj_config.parent | upper }}</th>{% set ns.col = ns.col + 1 %}{% endif %}
+        {% for attr_key, attr in obj_config.attributes.items() %}
+        {% if ns.col < 6 %}{% set ns.col = ns.col + 1 %}
+        {% if not attr.reference %}
+        <th class="th-sortable" id="th-col-{{ attr_key }}" onclick="recordList.setSort('{{ attr_key }}')">{{ attr.name | upper }} <span class="th-sort-icon"></span></th>
+        {% else %}
+        <th>{{ attr.name | upper }}</th>
+        {% endif %}
+        {% endif %}
+        {% endfor %}
+        <th class="col-actions"></th>
+      </tr>
+    </thead>
+    <tbody id="record-tbody">
+      <tr><td colspan="20" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
+    </tbody>
+  </table>
 </div>
 
 <div id="pagination" class="pagination"></div>
+<div id="import-status" style="margin-top:12px"></div>
 
-<!-- Import status -->
-<div id="import-status"></div>
+<!-- Import modal -->
+<div class="modal-backdrop" id="import-modal" style="display:none" onclick="if(event.target===this)closeImportModal()">
+  <div class="modal">
+    <div class="modal__header">
+      <span class="modal__title">Import records</span>
+      <button class="modal__close" onclick="closeImportModal()">&times;</button>
+    </div>
+    <div class="form-group">
+      <label for="upsert-key">Import mode</label>
+      <select id="upsert-key" title="Insert only: always add as a new record. Upsert: update existing records that match on that attribute, insert the rest.">
+        <option value="">Insert only</option>
+        {% for attr_key, attr in obj_config.attributes.items() %}
+        {% if not attr.reference %}<option value="{{ attr_key }}">Upsert on: {{ attr.name }}</option>{% endif %}
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="import-reason">Reason <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+      <input type="text" id="import-reason" placeholder="Stored in the audit log for all imported records" />
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeImportModal()">Cancel</button>
+      <label class="btn btn-primary" style="cursor:pointer">
+        Choose file…
+        <input type="file" id="import-file" style="display:none" accept=".csv,.tsv,.json" onchange="importFile('{{ schema }}','{{ obj }}',this)" />
+      </label>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const recordList = new RecordList({
-  schema: "{{ schema }}",
-  obj: "{{ obj }}",
-  objConfig: {{ obj_config | tojson }},
-});
-
-function escHtml(s) {
-  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}
-
-async function importFile(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const ext = file.name.split(".").pop().toLowerCase();
-  const format = ext === "json" ? "json" : ext === "tsv" ? "tsv" : "csv";
-  const upsertKey = document.getElementById("upsert-key")?.value || "";
-  const fd = new FormData();
-  fd.append("file", file);
-  const statusEl = document.getElementById("import-status");
-  statusEl.innerHTML = `<div class="alert alert-info">Importing…</div>`;
-  const stateEl = document.getElementById("state-filter");
-  const initialState = stateEl?.value === "draft" ? "draft" : "active";
-  const importReason = document.getElementById("import-reason")?.value.trim() || "";
-  const params = new URLSearchParams({ format, initial_state: initialState });
-  if (upsertKey) params.set("upsert_key", upsertKey);
-  if (importReason) params.set("reason", importReason);
-  const res = await fetch(`/api/records/{{ schema }}/{{ obj }}/import?${params}`, {
-    method: "POST", body: fd
-  });
-  const data = await res.json();
-  if (res.ok) {
-    const parts = [];
-    if (data.inserted) parts.push(`${data.inserted} inserted`);
-    if (data.updated) parts.push(`${data.updated} updated`);
-    const errHtml = data.errors.length
-      ? `<br>Errors: ${data.errors.map(e => `Row ${escHtml(e.row)}: ${escHtml(e.error)}`).join("; ")}`
-      : "";
-    statusEl.innerHTML = `<div class="alert alert-success">${parts.join(", ") || "0 records"}.${errHtml}</div>`;
-    recordList.load();
-  } else {
-    const detail = data.detail;
-    let msg;
-    if (typeof detail === "object" && detail !== null) {
-      const errLines = (detail.errors || []).map(e => `Row ${escHtml(e.row)}: ${escHtml(e.error)}`).join("<br>");
-      msg = escHtml(detail.detail || "Import failed.") + (errLines ? `<br><br>${errLines}` : "");
-    } else {
-      msg = escHtml(detail) || "Import failed.";
-    }
-    statusEl.innerHTML = `<div class="alert alert-error">${msg}</div>`;
-  }
-  input.value = "";
-}
+initListPage("{{ schema }}", "{{ obj }}", {{ obj_config | tojson }});
 </script>
 {% endblock %}

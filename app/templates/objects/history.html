@@ -2,18 +2,35 @@
 {% block title %}History – {{ obj_config.name }} – {{ app_name }}{% endblock %}
 
 {% block content %}
-<div class="breadcrumb">
-  <a href="/">Home</a> / <a href="/{{ schema }}/{{ obj }}">{{ obj_config.name }}</a> /
-  <a href="/{{ schema }}/{{ obj }}/{{ record_id }}">Record</a> / History
+<nav class="mdm-crumbs">
+  <a href="/">Home</a>
+  <span class="sep">/</span>
+  <span class="schema">{{ schema | upper }}</span>
+  <span class="sep">/</span>
+  <a href="/{{ schema }}/{{ obj }}">{{ obj_config.name }}</a>
+  <span class="sep">/</span>
+  <a href="/{{ schema }}/{{ obj }}/{{ record_id }}">Record</a>
+  <span class="sep">/</span>
+  <span>History</span>
+</nav>
+
+<div class="mdm-page-head">
+  <div>
+    <h1 class="mdm-page-title">Record History</h1>
+  </div>
+  <div class="mdm-page-actions">
+    <a class="mdm-btn" href="/{{ schema }}/{{ obj }}/{{ record_id }}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+      Back to record
+    </a>
+  </div>
 </div>
 
-<div class="page-header">
-  <h1 class="page-title">Record History</h1>
-  <a class="btn btn-secondary" href="/{{ schema }}/{{ obj }}/{{ record_id }}">Back to record</a>
-</div>
-
-<div class="card">
-  <div class="card__body">
+<div class="mdm-card">
+  <div class="mdm-card-head">
+    <div class="mdm-card-title">Version history</div>
+  </div>
+  <div class="mdm-card-body" style="padding:0">
     <div id="history-container">
       <div style="text-align:center;padding:2rem"><span class="spinner"></span></div>
     </div>

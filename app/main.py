@@ -380,6 +380,13 @@ async def object_list(request: Request, schema: str, obj: str):
             {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
+    user = getattr(request.state, "current_user", None)
+    if user and user.get("is_admin"):
+        can_write = True
+    elif user:
+        can_write = check_permission(tm.engine, user["user_id"], schema, write=True)
+    else:
+        can_write = False
     return templates.TemplateResponse(
         request,
         "objects/list.html",
@@ -387,6 +394,7 @@ async def object_list(request: Request, schema: str, obj: str):
             "schema": schema,
             "obj": obj,
             "obj_config": obj_config,
+            "can_write": can_write,
             "schemas": _sidebar_schemas(request),
             "app_name": settings.app_name,
         },

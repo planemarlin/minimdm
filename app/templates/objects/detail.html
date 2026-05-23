@@ -2,27 +2,53 @@
 {% block title %}Record – {{ obj_config.name }} – {{ app_name }}{% endblock %}
 
 {% block content %}
-<div class="breadcrumb">
-  <a href="/">Home</a> / <a href="/{{ schema }}/{{ obj }}">{{ obj_config.name }}</a> / Record
+<nav class="mdm-crumbs">
+  <a href="/">Home</a>
+  <span class="sep">/</span>
+  <span class="schema">{{ schema | upper }}</span>
+  <span class="sep">/</span>
+  <a href="/{{ schema }}/{{ obj }}">{{ obj_config.name }}</a>
+  <span class="sep">/</span>
+  <span id="crumb-record">Record</span>
+</nav>
+
+<div class="mdm-page-head">
+  <div>
+    <h1 class="mdm-page-title" id="detail-page-title">{{ obj_config.name }}</h1>
+    <div class="mdm-page-sub" id="detail-page-sub" style="display:none"></div>
+  </div>
+  <div class="mdm-page-actions">
+    <a class="mdm-btn" id="btn-history" href="/{{ schema }}/{{ obj }}/{{ record_id }}/history">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
+      History
+    </a>
+    {% if can_publish %}
+    <button class="mdm-btn" id="btn-retire" style="display:none" onclick="openRetireModal()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 12.6 12 21l-9-9 8.4-8.4A2 2 0 0 1 12.8 3H20v7.2a2 2 0 0 1-.6 1.4Z"/><circle cx="16" cy="8" r="1.2"/></svg>
+      Retire
+    </button>
+    <button class="mdm-btn mdm-btn-primary" id="btn-publish" style="display:none" onclick="openPublishModal()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-12"/></svg>
+      Publish
+    </button>
+    {% endif %}
+    {% if can_write %}
+    <a class="mdm-btn mdm-btn-primary" id="btn-edit" href="/{{ schema }}/{{ obj }}/{{ record_id }}/edit">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      Edit
+    </a>
+    <button class="mdm-btn mdm-btn-danger mdm-btn-icon" id="btn-delete" onclick="openDeleteModal()" title="Delete this record">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>
+    </button>
+    {% endif %}
+  </div>
 </div>
 
-<div class="page-header">
-  <h1 class="page-title">{{ obj_config.name }}</h1>
-  {% if can_write %}
-  <a class="btn btn-secondary" id="btn-edit" href="/{{ schema }}/{{ obj }}/{{ record_id }}/edit">Edit</a>
-  {% endif %}
-  {% if can_publish %}
-  <button class="btn btn-primary" id="btn-publish" style="display:none" onclick="openPublishModal()" title="Promote this draft to active (Publisher role required).">Publish</button>
-  <button class="btn btn-secondary" id="btn-retire" style="display:none" onclick="openRetireModal()" title="Retire this active record (Publisher role required).">Retire</button>
-  {% endif %}
-  <a class="btn btn-secondary" href="/{{ schema }}/{{ obj }}/{{ record_id }}/history" title="View all versions of this record and revert to any previous one.">History</a>
-  {% if can_write %}
-  <button class="btn btn-danger" id="btn-delete" onclick="openDeleteModal()" title="Soft-delete this record. It remains in the database and can be recovered from the record history.">Delete</button>
-  {% endif %}
-</div>
-
-<div class="card">
-  <div class="card__body">
+<div class="mdm-card">
+  <div class="mdm-card-head">
+    <div class="mdm-card-title">Attributes</div>
+  </div>
+  <div class="mdm-card-body">
     <div id="detail-container">
       <div style="text-align:center;padding:2rem"><span class="spinner"></span></div>
     </div>
@@ -38,16 +64,14 @@
       <span class="modal__title" id="delete-modal-title">Delete record</span>
       <button class="modal__close" onclick="closeDeleteModal()" aria-label="Close">&times;</button>
     </div>
-    <p style="margin-bottom:1rem;color:var(--text-muted)">
-      This action can be undone via the record history.
-    </p>
+    <p style="margin-bottom:1rem;color:var(--mdm-mute)">This action can be undone via the record history.</p>
     <div class="form-group">
       <label for="delete-reason">Reason{% if obj_config.require_change_reason %} <span style="color:var(--danger)">*</span>{% else %} <span style="font-weight:400;color:var(--text-muted)">(optional)</span>{% endif %}</label>
       <input type="text" id="delete-reason" placeholder="Why is this record being deleted?" />
     </div>
     <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.25rem">
-      <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
-      <button class="btn btn-danger" onclick="submitDelete()">Delete</button>
+      <button class="mdm-btn" onclick="closeDeleteModal()">Cancel</button>
+      <button class="mdm-btn mdm-btn-danger" onclick="submitDelete()">Delete</button>
     </div>
   </div>
 </div>
@@ -60,16 +84,14 @@
       <span class="modal__title" id="publish-modal-title">Publish draft</span>
       <button class="modal__close" onclick="closePublishModal()" aria-label="Close">&times;</button>
     </div>
-    <p style="margin-bottom:1rem;color:var(--text-muted)">
-      The draft will be applied to the active record. This action is recorded in the audit log.
-    </p>
+    <p style="margin-bottom:1rem;color:var(--mdm-mute)">The draft will be applied to the active record. This action is recorded in the audit log.</p>
     <div class="form-group">
       <label for="publish-reason">Reason{% if obj_config.require_change_reason %} <span style="color:var(--danger)">*</span>{% else %} <span style="font-weight:400;color:var(--text-muted)">(optional)</span>{% endif %}</label>
       <input type="text" id="publish-reason" placeholder="Why is this draft being published?" />
     </div>
     <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.25rem">
-      <button class="btn btn-secondary" onclick="closePublishModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitPublish()">Publish</button>
+      <button class="mdm-btn" onclick="closePublishModal()">Cancel</button>
+      <button class="mdm-btn mdm-btn-primary" onclick="submitPublish()">Publish</button>
     </div>
   </div>
 </div>
@@ -80,16 +102,14 @@
       <span class="modal__title" id="retire-modal-title">Retire record</span>
       <button class="modal__close" onclick="closeRetireModal()" aria-label="Close">&times;</button>
     </div>
-    <p style="margin-bottom:1rem;color:var(--text-muted)">
-      The record will be moved to the retired state and excluded from default API responses. This action is recorded in the audit log.
-    </p>
+    <p style="margin-bottom:1rem;color:var(--mdm-mute)">The record will be moved to the retired state and excluded from default API responses. This action is recorded in the audit log.</p>
     <div class="form-group">
       <label for="retire-reason">Reason{% if obj_config.require_change_reason %} <span style="color:var(--danger)">*</span>{% else %} <span style="font-weight:400;color:var(--text-muted)">(optional)</span>{% endif %}</label>
       <input type="text" id="retire-reason" placeholder="Why is this record being retired?" />
     </div>
     <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.25rem">
-      <button class="btn btn-secondary" onclick="closeRetireModal()">Cancel</button>
-      <button class="btn btn-danger" onclick="submitRetire()">Retire</button>
+      <button class="mdm-btn" onclick="closeRetireModal()">Cancel</button>
+      <button class="mdm-btn mdm-btn-danger" onclick="submitRetire()">Retire</button>
     </div>
   </div>
 </div>
@@ -98,102 +118,10 @@
 
 {% block scripts %}
 <script>
-loadRecordDetail("{{ schema }}", "{{ obj }}", "{{ record_id }}", {{ obj_config | tojson }},
-  { canPublish: {{ 'true' if can_publish else 'false' }}, canWrite: {{ 'true' if can_write else 'false' }} });
-
-const requireReason = {{ 'true' if obj_config.require_change_reason else 'false' }};
-
-{% if can_write %}
-function openDeleteModal() {
-  document.getElementById("delete-reason").value = "";
-  document.getElementById("delete-modal-backdrop").style.display = "flex";
-  document.getElementById("delete-reason").focus();
-}
-
-function closeDeleteModal(event) {
-  if (event && event.target !== document.getElementById("delete-modal-backdrop")) return;
-  document.getElementById("delete-modal-backdrop").style.display = "none";
-}
-
-async function submitDelete() {
-  const reason = document.getElementById("delete-reason").value.trim();
-  if (requireReason && !reason) {
-    alert("A reason is required to delete this record.");
-    return;
-  }
-  const url = `/api/records/{{ schema }}/{{ obj }}/{{ record_id }}` +
-    (reason ? `?reason=${encodeURIComponent(reason)}` : "");
-  const res = await fetch(url, { method: "DELETE" });
-  if (res.ok || res.status === 204) {
-    window.location.href = `/{{ schema }}/{{ obj }}`;
-  } else {
-    document.getElementById("delete-modal-backdrop").style.display = "none";
-    alert("Failed to delete record.");
-  }
-}
-{% endif %}
-
-{% if can_publish %}
-function openPublishModal() {
-  document.getElementById("publish-reason").value = "";
-  document.getElementById("publish-modal-backdrop").style.display = "flex";
-  document.getElementById("publish-reason").focus();
-}
-function closePublishModal(event) {
-  if (event && event.target !== document.getElementById("publish-modal-backdrop")) return;
-  document.getElementById("publish-modal-backdrop").style.display = "none";
-}
-async function submitPublish() {
-  const reason = document.getElementById("publish-reason").value.trim();
-  if (requireReason && !reason) {
-    alert("A reason is required to publish this record.");
-    return;
-  }
-  const url = `/api/records/{{ schema }}/{{ obj }}/{{ record_id }}/publish` +
-    (reason ? `?reason=${encodeURIComponent(reason)}` : "");
-  const res = await fetch(url, { method: "POST" });
-  if (res.ok) {
-    const data = await res.json();
-    window.location.href = `/{{ schema }}/{{ obj }}/${data.id}`;
-  } else {
-    document.getElementById("publish-modal-backdrop").style.display = "none";
-    const data = await res.json().catch(() => ({}));
-    alert(data.detail || "Failed to publish record.");
-  }
-}
-
-function openRetireModal() {
-  document.getElementById("retire-reason").value = "";
-  document.getElementById("retire-modal-backdrop").style.display = "flex";
-  document.getElementById("retire-reason").focus();
-}
-function closeRetireModal(event) {
-  if (event && event.target !== document.getElementById("retire-modal-backdrop")) return;
-  document.getElementById("retire-modal-backdrop").style.display = "none";
-}
-async function submitRetire() {
-  const reason = document.getElementById("retire-reason").value.trim();
-  if (requireReason && !reason) {
-    alert("A reason is required to retire this record.");
-    return;
-  }
-  const url = `/api/records/{{ schema }}/{{ obj }}/{{ record_id }}/retire` +
-    (reason ? `?reason=${encodeURIComponent(reason)}` : "");
-  const res = await fetch(url, { method: "POST" });
-  if (res.ok) {
-    window.location.reload();
-  } else {
-    document.getElementById("retire-modal-backdrop").style.display = "none";
-    const data = await res.json().catch(() => ({}));
-    alert(data.detail || "Failed to retire record.");
-  }
-}
-{% endif %}
-
-document.addEventListener("keydown", function(e) {
-  if (e.key === "Escape") {
-    document.querySelectorAll(".modal-backdrop").forEach(el => { el.style.display = "none"; });
-  }
-});
+initDetailPage(
+  "{{ schema }}", "{{ obj }}", "{{ record_id }}",
+  {{ obj_config | tojson }},
+  { canPublish: {{ 'true' if can_publish else 'false' }}, canWrite: {{ 'true' if can_write else 'false' }} }
+);
 </script>
 {% endblock %}

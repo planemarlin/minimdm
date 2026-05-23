@@ -2,138 +2,123 @@
 {% block title %}Audit Log – {{ app_name }}{% endblock %}
 
 {% block content %}
-<div class="breadcrumb">
-  <a href="/">Home</a> / Audit Log
+<nav class="mdm-crumbs">
+  <a href="/">Home</a>
+  <span class="sep">/</span>
+  <span>Audit Log</span>
+</nav>
+
+<div class="mdm-page-head">
+  <div>
+    <h1 class="mdm-page-title">Audit Log</h1>
+    <div class="mdm-page-sub"><span id="audit-total">…</span> entries</div>
+  </div>
 </div>
 
-<div class="page-header">
-  <h1 class="page-title">Audit Log</h1>
-  <span style="font-size:.85rem; color:var(--text-muted)"><span id="audit-total">…</span> entries</span>
-</div>
-
-<div class="tabs">
-  <button class="tab-btn tab-btn--active" id="tab-data-btn" onclick="switchTab('data')">Data Changes</button>
-  <button class="tab-btn" id="tab-auth-btn" onclick="switchTab('auth')">Auth Events</button>
+<div class="mdm-toolbar">
+  <div class="mdm-seg">
+    <button class="is-on" id="tab-data-btn" onclick="switchAuditTab('data')">Data Changes</button>
+    <button id="tab-auth-btn" onclick="switchAuditTab('auth')">Auth Events</button>
+  </div>
 </div>
 
 <!-- Data Changes tab -->
 <div id="tab-data">
-  <div class="toolbar" style="flex-wrap:wrap; gap:.5rem">
-    <select id="filter-schema">
+  <div class="mdm-toolbar">
+    <select class="mdm-select" id="filter-schema">
       <option value="">All schemas</option>
       {% for s in schemas %}
       <option value="{{ s.name }}">{{ s.name }}</option>
       {% endfor %}
     </select>
-    <select id="filter-obj">
+    <select class="mdm-select" id="filter-obj">
       <option value="">All objects</option>
     </select>
-    <select id="filter-action">
+    <select class="mdm-select" id="filter-action">
       <option value="">All actions</option>
       <option value="INSERT">INSERT</option>
       <option value="UPDATE">UPDATE</option>
       <option value="DELETE">DELETE</option>
       <option value="REVERT">REVERT</option>
     </select>
-    <input type="text" id="filter-user" placeholder="Filter by user…" style="width:12rem" />
-    <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
-      From <input type="datetime-local" id="filter-from" />
-    </label>
-    <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
-      To <input type="datetime-local" id="filter-to" />
-    </label>
-  </div>
-  <div class="card">
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Timestamp</th>
-            <th>Schema</th>
-            <th>Object</th>
-            <th>Action</th>
-            <th>Record</th>
-            <th>User</th>
-            <th>Reason</th>
-          </tr>
-        </thead>
-        <tbody id="audit-tbody">
-          <tr><td colspan="7" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
-        </tbody>
-      </table>
+    <div class="mdm-search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="text" id="filter-user" placeholder="Filter by user…" />
     </div>
+    <label class="mdm-check">
+      From
+      <input class="mdm-input" type="datetime-local" id="filter-from" style="height:30px;font-size:12.5px" />
+    </label>
+    <label class="mdm-check">
+      To
+      <input class="mdm-input" type="datetime-local" id="filter-to" style="height:30px;font-size:12.5px" />
+    </label>
   </div>
-  <div id="audit-pagination" class="pagination"></div>
+  <div class="mdm-table-wrap">
+    <table class="mdm-table">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>Schema</th>
+          <th>Object</th>
+          <th>Action</th>
+          <th>Record</th>
+          <th>User</th>
+          <th>Reason</th>
+        </tr>
+      </thead>
+      <tbody id="audit-tbody">
+        <tr><td colspan="7" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div id="audit-pagination" class="mdm-pagination"></div>
 </div>
 
 <!-- Auth Events tab -->
 <div id="tab-auth" style="display:none">
-  <div class="toolbar" style="flex-wrap:wrap; gap:.5rem">
-    <select id="auth-filter-action">
+  <div class="mdm-toolbar">
+    <select class="mdm-select" id="auth-filter-action">
       <option value="">All actions</option>
       <option value="LOGIN">LOGIN</option>
       <option value="LOGIN_FAILED">LOGIN_FAILED</option>
       <option value="LOGOUT">LOGOUT</option>
     </select>
-    <input type="text" id="auth-filter-user" placeholder="Filter by user…" style="width:12rem" />
-    <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
-      From <input type="datetime-local" id="auth-filter-from" />
-    </label>
-    <label style="font-size:.85rem; color:var(--text-muted); display:flex; align-items:center; gap:.3rem">
-      To <input type="datetime-local" id="auth-filter-to" />
-    </label>
-  </div>
-  <div class="card">
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Timestamp</th>
-            <th>User</th>
-            <th>Action</th>
-            <th>IP Address</th>
-            <th>Reason</th>
-          </tr>
-        </thead>
-        <tbody id="auth-tbody">
-          <tr><td colspan="5" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
-        </tbody>
-      </table>
+    <div class="mdm-search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="text" id="auth-filter-user" placeholder="Filter by user…" />
     </div>
+    <label class="mdm-check">
+      From
+      <input class="mdm-input" type="datetime-local" id="auth-filter-from" style="height:30px;font-size:12.5px" />
+    </label>
+    <label class="mdm-check">
+      To
+      <input class="mdm-input" type="datetime-local" id="auth-filter-to" style="height:30px;font-size:12.5px" />
+    </label>
   </div>
-  <div id="auth-pagination" class="pagination"></div>
+  <div class="mdm-table-wrap">
+    <table class="mdm-table">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>User</th>
+          <th>Action</th>
+          <th>IP Address</th>
+          <th>Reason</th>
+        </tr>
+      </thead>
+      <tbody id="auth-tbody">
+        <tr><td colspan="5" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div id="auth-pagination" class="mdm-pagination"></div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const _auditSchemas = {{ schemas | tojson }};
-
-function switchTab(name) {
-  document.getElementById("tab-data").style.display = name === "data" ? "" : "none";
-  document.getElementById("tab-auth").style.display = name === "auth" ? "" : "none";
-  document.getElementById("tab-data-btn").classList.toggle("tab-btn--active", name === "data");
-  document.getElementById("tab-auth-btn").classList.toggle("tab-btn--active", name === "auth");
-  document.getElementById("audit-total").textContent = "…";
-  if (name === "data") loadAuditLog(1);
-  else loadAuthLog(1);
-}
-
-document.getElementById("filter-schema").addEventListener("change", () => {
-  _populateObjDropdown();
-  loadAuditLog(1);
-});
-document.getElementById("filter-obj").addEventListener("change", () => loadAuditLog(1));
-document.getElementById("filter-action").addEventListener("change", () => loadAuditLog(1));
-document.getElementById("filter-user").addEventListener("input", () => loadAuditLog(1));
-document.getElementById("filter-from").addEventListener("change", () => loadAuditLog(1));
-document.getElementById("filter-to").addEventListener("change", () => loadAuditLog(1));
-
-document.getElementById("auth-filter-action").addEventListener("change", () => loadAuthLog(1));
-document.getElementById("auth-filter-user").addEventListener("input", () => loadAuthLog(1));
-document.getElementById("auth-filter-from").addEventListener("change", () => loadAuthLog(1));
-document.getElementById("auth-filter-to").addEventListener("change", () => loadAuthLog(1));
-
-loadAuditLog(1);
+initAuditPage({{ schemas | tojson }});
 </script>
 {% endblock %}
