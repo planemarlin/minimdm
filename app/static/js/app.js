@@ -981,6 +981,35 @@ async function importFile(schema, obj, input) {
 
 let _auditPage = 1;
 const _auditPageSize = 50;
+let _auditSchemas = [];
+
+function initAuditPage(schemas) {
+  _auditSchemas = schemas || [];
+
+  document.getElementById("filter-schema").addEventListener("change", () => { _populateObjDropdown(); loadAuditLog(1); });
+  document.getElementById("filter-obj").addEventListener("change", () => loadAuditLog(1));
+  document.getElementById("filter-action").addEventListener("change", () => loadAuditLog(1));
+  document.getElementById("filter-user").addEventListener("input", () => loadAuditLog(1));
+  document.getElementById("filter-from").addEventListener("change", () => loadAuditLog(1));
+  document.getElementById("filter-to").addEventListener("change", () => loadAuditLog(1));
+
+  document.getElementById("auth-filter-action").addEventListener("change", () => loadAuthLog(1));
+  document.getElementById("auth-filter-user").addEventListener("input", () => loadAuthLog(1));
+  document.getElementById("auth-filter-from").addEventListener("change", () => loadAuthLog(1));
+  document.getElementById("auth-filter-to").addEventListener("change", () => loadAuthLog(1));
+
+  loadAuditLog(1);
+}
+
+function switchAuditTab(name) {
+  document.getElementById("tab-data").style.display = name === "data" ? "" : "none";
+  document.getElementById("tab-auth").style.display = name === "auth" ? "" : "none";
+  document.getElementById("tab-data-btn").classList.toggle("is-on", name === "data");
+  document.getElementById("tab-auth-btn").classList.toggle("is-on", name === "auth");
+  document.getElementById("audit-total").textContent = "…";
+  if (name === "data") loadAuditLog(1);
+  else loadAuthLog(1);
+}
 
 function _buildObjNameMap(schemas) {
   const map = {};
@@ -993,12 +1022,11 @@ function _buildObjNameMap(schemas) {
 }
 
 function _populateObjDropdown() {
-  const schemas = typeof _auditSchemas !== "undefined" ? _auditSchemas : [];
   const schemaName = document.getElementById("filter-schema")?.value || "";
   const sel = document.getElementById("filter-obj");
   if (!sel) return;
   sel.innerHTML = '<option value="">All objects</option>';
-  const s = schemas.find((s) => s.name === schemaName);
+  const s = _auditSchemas.find((s) => s.name === schemaName);
   for (const o of (s?.objects || [])) {
     const opt = document.createElement("option");
     opt.value = o.key;
@@ -1041,32 +1069,31 @@ async function loadAuditLog(page) {
   if (totalEl) totalEl.textContent = data.total;
 
   if (!data.records.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted)">No entries found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--mdm-mute)">No entries found.</td></tr>`;
     _renderAuditPagination(paginationEl, data.pages, "loadAuditLog");
     return;
   }
 
-  const schemas = typeof _auditSchemas !== "undefined" ? _auditSchemas : [];
-  const objNames = _buildObjNameMap(schemas);
+  const objNames = _buildObjNameMap(_auditSchemas);
   const actionBadge = (a) => {
-    const cls = { INSERT: "badge-insert", UPDATE: "badge-update", DELETE: "badge-delete", REVERT: "badge-revert" }[a] || "";
-    return `<span class="badge ${cls}">${a}</span>`;
+    const cls = { INSERT: "mdm-pill-green", UPDATE: "mdm-pill-blue", DELETE: "mdm-pill-red", REVERT: "mdm-pill-amber" }[a] || "mdm-pill-slate";
+    return `<span class="mdm-pill ${cls}">${a}</span>`;
   };
 
   tbody.innerHTML = data.records.map((r) => {
     const shortId = r.record_id ? r.record_id.slice(0, 8) + "…" : "—";
     const recordLink = r.record_id
-      ? `<a href="/${r.schema_name}/${r.object_name}/${r.record_id}/history" title="${escHtml(r.record_id)}" style="font-family:monospace">${shortId}</a>`
+      ? `<a href="/${r.schema_name}/${r.object_name}/${r.record_id}/history" title="${escHtml(r.record_id)}" class="mdm-mono" style="font-size:12.5px">${shortId}</a>`
       : "—";
     const objDisplay = objNames[`${r.schema_name}|${r.object_name}`] || r.object_name;
     return `<tr>
-      <td style="white-space:nowrap;font-size:.85rem">${fmtDate(r.timestamp)}</td>
-      <td>${escHtml(r.schema_name)}</td>
+      <td class="mdm-mono" style="font-size:12.5px;white-space:nowrap;color:var(--mdm-ink-2)">${fmtDate(r.timestamp)}</td>
+      <td><span class="mdm-pill mdm-pill-slate" style="letter-spacing:.06em">${escHtml(r.schema_name.toUpperCase())}</span></td>
       <td title="${escHtml(r.object_name)}">${escHtml(objDisplay)}</td>
       <td>${actionBadge(r.action)}</td>
       <td>${recordLink}</td>
-      <td style="font-size:.85rem">${escHtml(r.user_name || "")}</td>
-      <td style="color:var(--text-muted);font-size:.85rem">${escHtml(r.reason || "")}</td>
+      <td style="font-size:13px">${escHtml(r.user_name || "")}</td>
+      <td style="color:var(--mdm-mute);font-size:13px">${escHtml(r.reason || "")}</td>
     </tr>`;
   }).join("");
 
@@ -1103,22 +1130,22 @@ async function loadAuthLog(page) {
   if (totalEl) totalEl.textContent = data.total;
 
   if (!data.records.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted)">No entries found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--mdm-mute)">No entries found.</td></tr>`;
     _renderAuditPagination(paginationEl, data.pages, "loadAuthLog");
     return;
   }
 
   const authBadge = (a) => {
-    const cls = { LOGIN: "badge-insert", LOGIN_FAILED: "badge-delete", LOGOUT: "badge-update" }[a] || "";
-    return `<span class="badge ${cls}">${a}</span>`;
+    const cls = { LOGIN: "mdm-pill-green", LOGIN_FAILED: "mdm-pill-red", LOGOUT: "mdm-pill-slate" }[a] || "mdm-pill-slate";
+    return `<span class="mdm-pill ${cls}">${a}</span>`;
   };
 
   tbody.innerHTML = data.records.map((r) => `<tr>
-    <td style="white-space:nowrap;font-size:.85rem">${fmtDate(r.timestamp)}</td>
-    <td>${escHtml(r.user_name || "")}</td>
+    <td class="mdm-mono" style="font-size:12.5px;white-space:nowrap;color:var(--mdm-ink-2)">${fmtDate(r.timestamp)}</td>
+    <td style="font-size:13px">${escHtml(r.user_name || "")}</td>
     <td>${authBadge(r.action)}</td>
-    <td style="font-family:monospace;font-size:.85rem">${escHtml(r.ip_address || "")}</td>
-    <td style="color:var(--text-muted);font-size:.85rem">${escHtml(r.reason || "")}</td>
+    <td class="mdm-mono" style="font-size:12.5px">${escHtml(r.ip_address || "")}</td>
+    <td style="color:var(--mdm-mute);font-size:13px">${escHtml(r.reason || "")}</td>
   </tr>`).join("");
 
   _renderAuditPagination(paginationEl, data.pages, "loadAuthLog");
@@ -1127,15 +1154,15 @@ async function loadAuthLog(page) {
 function _renderAuditPagination(el, pages, fnName) {
   if (!el) return;
   if (pages <= 1) { el.innerHTML = ""; return; }
-  let html = `<button class="page-btn" ${_auditPage === 1 ? "disabled" : ""} onclick="${fnName}(${_auditPage - 1})">&#8592;</button>`;
+  let html = `<button ${_auditPage === 1 ? "disabled" : ""} onclick="${fnName}(${_auditPage - 1})">←</button>`;
   for (let p = 1; p <= pages; p++) {
     if (pages > 7 && Math.abs(p - _auditPage) > 2 && p !== 1 && p !== pages) {
-      if (p === 2 || p === pages - 1) html += `<span style="padding:0 .3rem">…</span>`;
+      if (p === 2 || p === pages - 1) html += `<span class="pag-ellipsis">…</span>`;
       continue;
     }
-    html += `<button class="page-btn ${p === _auditPage ? "page-btn--active" : ""}" onclick="${fnName}(${p})">${p}</button>`;
+    html += `<button class="${p === _auditPage ? "is-on" : ""}" onclick="${fnName}(${p})">${p}</button>`;
   }
-  html += `<button class="page-btn" ${_auditPage === pages ? "disabled" : ""} onclick="${fnName}(${_auditPage + 1})">&#8594;</button>`;
+  html += `<button ${_auditPage === pages ? "disabled" : ""} onclick="${fnName}(${_auditPage + 1})">→</button>`;
   el.innerHTML = html;
 }
 

@@ -333,6 +333,25 @@
 }
 .mdm-check input { accent-color: var(--mdm-blue); width: 14px; height: 14px; }
 
+/* ---------- Pagination ---------- */
+.mdm-pagination {
+  display: flex; align-items: center; gap: 4px;
+  margin-top: 14px; flex-wrap: wrap;
+}
+.mdm-pagination button {
+  height: 32px; min-width: 32px; padding: 0 10px;
+  border: 1px solid var(--mdm-border);
+  border-radius: var(--mdm-r-2);
+  background: var(--mdm-surface);
+  color: var(--mdm-ink-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+.mdm-pagination button:hover:not(:disabled) { background: var(--mdm-surface-2); border-color: var(--mdm-border-strong); color: var(--mdm-ink); }
+.mdm-pagination button.is-on { background: var(--mdm-blue); border-color: var(--mdm-blue); color: #fff; }
+.mdm-pagination button:disabled { opacity: .4; cursor: default; }
+.mdm-pagination .pag-ellipsis { color: var(--mdm-mute-2); padding: 0 4px; font-size: 13px; line-height: 32px; }
+
 /* ---------- Pills ---------- */
 .mdm-pill {
   display: inline-flex; align-items: center;
