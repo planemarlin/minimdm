@@ -299,6 +299,44 @@ class RecordList {
   }
 }
 
+// ── Record list page bootstrap ───────────────────────────────────────────────
+
+function initListPage(schema, obj, objConfig) {
+  window.recordList = new RecordList({ schema, obj, objConfig });
+  document.addEventListener('click', (e) => {
+    const btn = document.getElementById('tools-btn');
+    const menu = document.getElementById('tools-menu');
+    if (btn && menu && !btn.contains(e.target) && !menu.contains(e.target)) closeToolsMenu();
+  });
+}
+
+function setStateFilter(value) {
+  document.querySelectorAll('#state-seg button').forEach(b => {
+    b.classList.toggle('is-on', b.dataset.state === value);
+  });
+  window.recordList.setStateFilter(value);
+}
+
+function toggleToolsMenu() {
+  const m = document.getElementById('tools-menu');
+  if (m) m.style.display = m.style.display === 'none' ? '' : 'none';
+}
+function closeToolsMenu() {
+  const m = document.getElementById('tools-menu');
+  if (m) m.style.display = 'none';
+}
+function openImportModal() {
+  closeToolsMenu();
+  const m = document.getElementById('import-modal');
+  if (m) m.style.display = 'flex';
+}
+function closeImportModal() {
+  const m = document.getElementById('import-modal');
+  if (m) m.style.display = 'none';
+  const s = document.getElementById('import-status');
+  if (s) s.innerHTML = '';
+}
+
 // ── Record detail page ───────────────────────────────────────────────────────
 
 // Module-level context set by initDetailPage; used by the modal functions.

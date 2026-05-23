@@ -142,38 +142,6 @@
 
 {% block scripts %}
 <script>
-const recordList = new RecordList({
-  schema: "{{ schema }}",
-  obj: "{{ obj }}",
-  objConfig: {{ obj_config | tojson }},
-});
-
-function setStateFilter(value) {
-  document.querySelectorAll('#state-seg button').forEach(b => {
-    b.classList.toggle('is-on', b.dataset.state === value);
-  });
-  recordList.setStateFilter(value);
-}
-
-function toggleToolsMenu() {
-  const m = document.getElementById('tools-menu');
-  m.style.display = m.style.display === 'none' ? '' : 'none';
-}
-function closeToolsMenu() {
-  document.getElementById('tools-menu').style.display = 'none';
-}
-document.addEventListener('click', e => {
-  const btn = document.getElementById('tools-btn');
-  if (btn && !btn.contains(e.target) && !document.getElementById('tools-menu').contains(e.target)) closeToolsMenu();
-});
-
-function openImportModal() {
-  closeToolsMenu();
-  document.getElementById('import-modal').style.display = 'flex';
-}
-function closeImportModal() {
-  document.getElementById('import-modal').style.display = 'none';
-  document.getElementById('import-status').innerHTML = '';
-}
+initListPage("{{ schema }}", "{{ obj }}", {{ obj_config | tojson }});
 </script>
 {% endblock %}
