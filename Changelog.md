@@ -6,8 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.6.1] – 2026-06-06
+
 ### Added
 - **Playwright browser test suite**: 31 end-to-end tests across 7 files in `tests/browser/` verify the full UI from a real browser perspective — authentication flows, record CRUD, edit/delete with reason, the complete draft → publish → retire lifecycle, history and revert, CSV/TSV import and export download, the user management page, and the audit log; tests run headlessly by default and are skipped when `TEST_DATABASE_URL` is not set; `playwright` and `pytest-playwright` added to the `dev` dependency group; run `uv run playwright install chromium` once to install the browser binary; see `docs/testing.md` for full details
+
+### Security
+- **HTML escaping in import error display**: row-level error messages from the import API are now HTML-escaped before rendering in the UI status panel, preventing self-XSS via crafted CSV cell values
 
 ## [0.6.0] – 2026-05-16
 
@@ -26,7 +31,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Webhook URLs hidden from non-admins**: `GET /api/config` no longer returns the `webhooks` list, which could contain API keys embedded in URLs; response is now limited to schema definitions
 - **SSRF guard on webhook URLs**: webhook URLs pointing to private or loopback IP ranges (`127.x`, `10.x`, `172.16.x`, `192.168.x`, `169.254.x`) are now rejected at config load time
 - **Constant-time login**: bcrypt verification now runs even when a username does not exist, closing a timing-based username enumeration channel
-- **HTML escaping in import error display**: row-level error messages from the import API are now HTML-escaped before rendering in the UI status panel, preventing self-XSS via crafted CSV cell values
 - **No default admin password in Docker Compose**: removed the `admin` fallback default for `ADMIN_PASSWORD`; operators must now explicitly set the variable, preventing accidental deployment with trivially guessable credentials
 - **Startup warning for `SECURE_COOKIE=false`**: the application now logs a warning at boot when `SECURE_COOKIE` is disabled, consistent with the existing `SECRET_KEY` placeholder warning
 - **Docker container runs as non-root**: the production image now creates and uses a dedicated `app` system user, following container security best practices

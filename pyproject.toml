@@ -1,6 +1,6 @@
 [project]
 name = "minimdm"
-version = "0.6.0"
+version = "0.6.1"
 description = "A minimal lightweight Master Data Management application"
 readme = "README.md"
 requires-python = ">=3.11"
