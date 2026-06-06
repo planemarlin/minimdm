@@ -7,8 +7,10 @@ A minimal, lightweight, open-source **Master Data Management** application with 
 - Define data objects (tables) in a YAML or JSON config file
 - Create, read, update, and delete records through the web UI or API
 - **Lifecycle states**: records progress through `draft` → `active` → `retired`; editing an active record creates a draft copy, keeping the live record stable until a Publisher approves the change
+- **Lifecycle policy flags**: per-object config flags (`requires_draft`, `allow_retire`, `allow_direct_active_import`) enforce governance rules without code changes
 - Full record versioning with the ability to view and revert to any historical version
 - Complete audit log: what changed, who changed it, when, and why
+- **Data ownership & stewardship**: optional `owner` and `steward` fields on each object type for governance metadata; displayed in the UI alongside the object name
 - JWT-based authentication with four roles: Viewer, Editor, Publisher, and Admin
 - Schema-based access control: grant read, write, and publish access per schema per user
 - User management UI and API for creating and managing accounts
@@ -17,6 +19,7 @@ A minimal, lightweight, open-source **Master Data Management** application with 
 - Cross-object references and parent-child hierarchies
 - Related-record panels on the detail view: child records and back-references displayed inline
 - Sortable column headers in the record list; sorted dropdowns on forms
+- MDM-native API vocabulary: `?role=master` and `?role=draft` as readable aliases for the state filter
 - Auto-generated OpenAPI documentation
 - Responsive web interface (desktop and mobile)
 

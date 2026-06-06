@@ -996,7 +996,7 @@ async function importFile(schema, obj, input) {
     if (data.inserted) parts.push(`${data.inserted} inserted`);
     if (data.updated) parts.push(`${data.updated} updated`);
     const errHtml = data.errors.length
-      ? `<br>Errors: ${data.errors.map(e => `Row ${e.row}: ${e.error}`).join("; ")}`
+      ? `<br>Errors: ${data.errors.map(e => `Row ${escHtml(String(e.row))}: ${escHtml(String(e.error))}`).join("; ")}`
       : "";
     statusEl.innerHTML = `<div class="alert alert-success">${parts.join(", ") || "0 records"}.${errHtml}</div>`;
     if (typeof recordList !== "undefined") recordList.load();
@@ -1004,10 +1004,10 @@ async function importFile(schema, obj, input) {
     const detail = data.detail;
     let msg;
     if (typeof detail === "object" && detail !== null) {
-      const errLines = (detail.errors || []).map(e => `Row ${e.row}: ${e.error}`).join("<br>");
-      msg = (detail.detail || "Import failed.") + (errLines ? `<br><br>${errLines}` : "");
+      const errLines = (detail.errors || []).map(e => `Row ${escHtml(String(e.row))}: ${escHtml(String(e.error))}`).join("<br>");
+      msg = escHtml(detail.detail || "Import failed.") + (errLines ? `<br><br>${errLines}` : "");
     } else {
-      msg = detail || "Import failed.";
+      msg = escHtml(detail || "Import failed.");
     }
     statusEl.innerHTML = `<div class="alert alert-error">${msg}</div>`;
   }
