@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **Playwright browser test suite**: 31 end-to-end tests across 7 files in `tests/browser/` verify the full UI from a real browser perspective — authentication flows, record CRUD, edit/delete with reason, the complete draft → publish → retire lifecycle, history and revert, CSV/TSV import and export download, the user management page, and the audit log; tests run headlessly by default and are skipped when `TEST_DATABASE_URL` is not set; `playwright` and `pytest-playwright` added to the `dev` dependency group; run `uv run playwright install chromium` once to install the browser binary; see `docs/testing.md` for full details
+
 ## [0.6.0] – 2026-05-16
 
 ### Added

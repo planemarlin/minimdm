@@ -83,4 +83,46 @@ jobs:
           DATABASE_URL: postgresql://minimdm:minimdm@localhost:5432/minimdm_test
           SECRET_KEY: ci-test-secret-key-do-not-use-in-production
           CONFIG_FILE: config/minimdm.example.yaml
-        run: uv run pytest --tb=short
+        run: uv run pytest --tb=short --ignore=tests/browser
+
+  # ── Browser tests ────────────────────────────────────────────────────────────
+  # Runs the Playwright end-to-end suite against a real server and database.
+  # Separated from the unit/integration job so the browser binary install and
+  # slower test run do not block the fast feedback loop.
+  browser-test:
+    name: Browser tests (Playwright)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: minimdm
+          POSTGRES_PASSWORD: minimdm
+          POSTGRES_DB: minimdm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Install Playwright browser
+        run: uv run playwright install chromium --with-deps
+
+      - name: Run browser tests
+        env:
+          TEST_DATABASE_URL: postgresql://minimdm:minimdm@localhost:5432/minimdm_test
+          DATABASE_URL: postgresql://minimdm:minimdm@localhost:5432/minimdm_test
+          SECRET_KEY: ci-test-secret-key-do-not-use-in-production
+          CONFIG_FILE: config/minimdm.example.yaml
+        run: uv run pytest tests/browser/ --tb=short

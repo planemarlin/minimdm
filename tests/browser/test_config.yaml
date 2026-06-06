@@ -1,0 +1,45 @@
+schemas:
+  browser:
+    objects:
+      company:
+        name: Company
+        description: Browser test company
+        owner: Data Team
+        steward: alice@example.com
+        attributes:
+          code:
+            name: Code
+            type: string
+            required: true
+            unique: true
+          name:
+            name: Name
+            type: string
+            required: false
+            unique: false
+      governed_item:
+        name: Governed Item
+        description: Starts as a draft — must be published to become active
+        requires_draft: true
+        allow_retire: true
+        attributes:
+          code:
+            name: Code
+            type: string
+            required: true
+            unique: true
+      audited_item:
+        name: Audited Item
+        description: All changes require a reason for the audit log
+        require_change_reason: true
+        attributes:
+          code:
+            name: Code
+            type: string
+            required: true
+            unique: true
+          label:
+            name: Label
+            type: string
+            required: false
+            unique: false

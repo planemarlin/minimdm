@@ -59,9 +59,20 @@ The application is then available at `http://localhost:8000` and the API documen
 
 ## Running Tests
 
+**API and unit tests** (integration tests require `TEST_DATABASE_URL`):
+
 ```bash
-uv run pytest
+TEST_DATABASE_URL=postgresql://minimdm:password@localhost/minimdm_test uv run pytest
 ```
+
+**Browser end-to-end tests** (Playwright — install the browser binary once first):
+
+```bash
+uv run playwright install chromium
+TEST_DATABASE_URL=postgresql://minimdm:password@localhost/minimdm_test uv run pytest tests/browser/
+```
+
+Add `--headed` to watch the browser, or `--headed --slowmo 500` to step through slowly. See [docs/testing.md](docs/testing.md) for the full test suite overview.
 
 ## Documentation
 
