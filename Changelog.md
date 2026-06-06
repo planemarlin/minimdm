@@ -9,10 +9,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [0.6.1] – 2026-06-06
 
 ### Added
+- **UI facelift — new design system**: comprehensive visual refresh across all pages; introduces `tokens.css` as a design token layer (colours, spacing, typography, shadows, component tokens) and `mdm-*` CSS classes used throughout; updated pages include the record list, record detail, edit form, history, user management, and audit log; the sidebar and top bar are rebuilt with a flex-layout shell
 - **Playwright browser test suite**: 31 end-to-end tests across 7 files in `tests/browser/` verify the full UI from a real browser perspective — authentication flows, record CRUD, edit/delete with reason, the complete draft → publish → retire lifecycle, history and revert, CSV/TSV import and export download, the user management page, and the audit log; tests run headlessly by default and are skipped when `TEST_DATABASE_URL` is not set; `playwright` and `pytest-playwright` added to the `dev` dependency group; run `uv run playwright install chromium` once to install the browser binary; see `docs/testing.md` for full details
+- **Favicons**: added browser and PWA favicons (16, 32, 180, 192, and 512 px) wired up in `base.html`
+
+### Changed
+- **Inline scripts extracted to external JS files**: page-level JavaScript for the record list, login, and password-reset pages is now in `app.js` and the new `auth.js`; template script blocks are reduced to single bootstrap calls passing Jinja2 variables; the only remaining inline scripts are config-passing calls that require template variables and the FOUC-prevention theme snippet that must run synchronously before render
+- **CI trigger**: GitHub Actions no longer fires on every branch push; jobs now run on `push` to `main` and on `pull_request` events only, eliminating duplicate parallel runs when a feature branch has an open PR
+
+### Fixed
+- **JSON export 500 on numeric fields**: `numeric`-type attribute values (Python `Decimal`) were not JSON-serialisable, causing a 500 error on JSON export for any object with a numeric column; `Decimal` values are now converted to `float` before serialisation; CSV and TSV export were unaffected
+- **Deleted-record history button**: the History icon button on deleted rows in the record list was mis-rendered because `mdm-rowact` was applied as a class directly on the `<a>` tag instead of a wrapper `<div>`; button now renders with correct icon and hover styling
+- **Reference dropdowns full-width on edit form**: reference attribute dropdowns spanned the full card width instead of fitting into the two-column attribute grid alongside regular fields
+- **`Object-Level Flags` example misplaced in `docs/reference.md`**: the YAML example block for `require_change_reason`, `requires_draft`, `allow_retire`, and `allow_direct_active_import` appeared after the Governance Metadata section; moved to directly follow the flags table
+- **Missing `check_permission` import in record list route**: a `NameError` was raised at runtime when a non-admin user navigated to any record list page because `check_permission` was used but not imported at the top of the `object_list` route handler
 
 ### Security
 - **HTML escaping in import error display**: row-level error messages from the import API are now HTML-escaped before rendering in the UI status panel, preventing self-XSS via crafted CSV cell values
+- Upgraded `pyjwt` to 2.13.0 to resolve PYSEC-2026-175, PYSEC-2026-177, PYSEC-2026-178, and PYSEC-2026-179
+- Pinned `starlette >= 1.0.1` to resolve Dependabot alert #5
+- Upgraded `idna` 3.11 → 3.16 to resolve GHSA-65pc-fj4g-8rjx (CVE-2024-3651, bypass of the IDNA encoding fix via crafted input); not directly exploitable in miniMDM but patched for hygiene
 
 ## [0.6.0] – 2026-05-16
 
