@@ -380,6 +380,8 @@ async def object_list(request: Request, schema: str, obj: str):
             {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
+    from app.core.permissions import check_permission
+
     user = getattr(request.state, "current_user", None)
     if user and user.get("is_admin"):
         can_write = True
