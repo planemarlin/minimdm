@@ -31,6 +31,8 @@ def _serialize_row(row: dict) -> dict:
             result[k] = str(v)
         elif isinstance(v, datetime):
             result[k] = v.isoformat()
+        elif isinstance(v, Decimal):
+            result[k] = float(v)
         else:
             result[k] = v
     return result

@@ -13,8 +13,115 @@
 | `tests/test_api_permissions.py` | Integration – schema-based access control | Yes |
 | `tests/test_api_webhooks.py` | Integration – webhook delivery on publish/retire | Yes |
 | `tests/test_templates.py` | Template rendering – page structure | Yes |
+| `tests/browser/test_auth.py` | Browser – login/logout, auth redirects | Yes |
+| `tests/browser/test_records.py` | Browser – list and create records | Yes |
+| `tests/browser/test_edit_delete.py` | Browser – edit, delete, reason enforcement | Yes |
+| `tests/browser/test_lifecycle.py` | Browser – draft/publish/retire state machine | Yes |
+| `tests/browser/test_history_revert.py` | Browser – history view and revert | Yes |
+| `tests/browser/test_import_export.py` | Browser – CSV/TSV import, CSV export download | Yes |
+| `tests/browser/test_admin.py` | Browser – users page and audit log | Yes |
 
-Unit tests run anywhere. Integration and template tests require a PostgreSQL test database and are automatically skipped when `TEST_DATABASE_URL` is not set.
+Unit tests run anywhere. Integration and template tests require a PostgreSQL test database and are automatically skipped when `TEST_DATABASE_URL` is not set. Browser tests additionally require the Playwright Chromium binary (see below).
+
+## Browser (end-to-end) tests
+
+The browser test suite drives a real Chromium browser against a live miniMDM server to verify that the UI behaves correctly from a user's perspective. These tests complement the API integration tests by catching template bugs, JavaScript errors, and full user flows.
+
+### Prerequisites
+
+Install the Playwright Chromium binary once per machine (this is separate from the Python package):
+
+```bash
+uv run playwright install chromium
+```
+
+The `playwright` and `pytest-playwright` packages are already included in the `dev` dependency group and are installed by `uv sync --group dev`.
+
+### Running browser tests
+
+**Headless (silent, default — same as CI):**
+
+```bash
+TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test \
+  uv run pytest tests/browser/ -v
+```
+
+**Headed (a real browser window opens — useful when writing or debugging tests):**
+
+```bash
+TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test \
+  uv run pytest tests/browser/ --headed
+```
+
+**Slow-motion (headed, 500 ms between each action — useful for stepping through a failing test):**
+
+```bash
+TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test \
+  uv run pytest tests/browser/ --headed --slowmo 500
+```
+
+**Run all suites together:**
+
+```bash
+TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test \
+  uv run pytest tests/ -v
+```
+
+### How browser tests work
+
+Each test session spins up a real `uvicorn` subprocess on port 8765, pointing at `TEST_DATABASE_URL`. A dedicated `browser` schema is synced from `tests/browser/test_config.yaml`. An admin user (`browser_admin`) is pre-created in the test database before the server starts.
+
+A `clean_browser_records` fixture (autouse) truncates all `browser`-schema tables and audit log entries before each test, so tests are fully isolated. The server process is terminated when the session ends.
+
+All tests skip automatically when `TEST_DATABASE_URL` is not set, consistent with the rest of the test suite.
+
+### What the browser tests cover
+
+**`test_auth.py`**
+- Login page renders for unauthenticated users
+- Successful login redirects to home and shows the username in the header
+- Wrong password shows an inline error and stays on the login page
+- Logout redirects to `/login`
+- Direct navigation to a protected route redirects to `/login`
+
+**`test_records.py`**
+- Company list page loads and finishes rendering records
+- Admin sees the New record button
+- New record form submits and navigates to the detail page
+- A record created via API appears in the list
+
+**`test_edit_delete.py`**
+- Editing a record updates the values shown on the draft detail page
+- Edit form pre-fills current field values
+- Deleting a record redirects to the object list
+- Soft-deleted records do not appear in the default active list view
+- A reason supplied at deletion is stored and visible in the record history
+- Saving an `audited_item` (require_change_reason) without a reason shows an inline server error
+
+**`test_lifecycle.py`**
+- Editing an active record creates a draft with a different UUID
+- The draft detail page shows the Publish button
+- Publishing a draft navigates back to the original active record with the Retire button visible
+- Retiring an active record transitions it to Retired and hides the Edit and Retire buttons
+- Creating a `governed_item` (requires_draft) produces a Draft record directly
+
+**`test_history_revert.py`**
+- A newly created record shows a Version 1 INSERT entry in history
+- A reason supplied during an edit is visible in the draft's history entry
+- Reverting to an earlier version (via the `window.prompt` dialog) restores the original field values
+
+**`test_import_export.py`**
+- Clicking Export CSV in the Tools menu triggers a `.csv` file download
+- Uploading a CSV file via the import modal adds records to the list
+- Uploading a TSV file via the import modal adds records to the list
+
+**`test_admin.py`**
+- User Management page renders with the correct heading
+- The `browser_admin` user appears in the users table
+- Creating a user via the New user modal adds them to the table
+- Audit Log page renders with the correct heading
+- After creating a record, its INSERT entry appears in the audit log filtered by schema
+- The Auth Events tab shows login activity for the admin user
 
 ## Setting up the test database
 

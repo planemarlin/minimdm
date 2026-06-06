@@ -35,44 +35,6 @@
   </p>
   </div>
 
-  <script>
-    document.getElementById("login-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const btn = document.getElementById("login-btn");
-      const errEl = document.getElementById("login-error");
-      errEl.style.display = "none";
-      btn.disabled = true;
-      btn.textContent = "Signing in…";
-
-      const username = document.getElementById("username").value;
-      const password = document.getElementById("password").value;
-
-      try {
-        const res = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password }),
-        });
-
-        if (res.ok) {
-          const rawNext = new URLSearchParams(window.location.search).get("next") || "/";
-          // Reject external redirects: must start with "/" but not "//" (protocol-relative)
-          const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/";
-          window.location.href = next;
-        } else {
-          const data = await res.json().catch(() => ({}));
-          errEl.textContent = data.detail || "Invalid username or password.";
-          errEl.style.display = "flex";
-          btn.disabled = false;
-          btn.textContent = "Sign in";
-        }
-      } catch {
-        errEl.textContent = "Could not reach the server. Please try again.";
-        errEl.style.display = "flex";
-        btn.disabled = false;
-        btn.textContent = "Sign in";
-      }
-    });
-  </script>
+  <script src="/static/js/auth.js"></script>
 </body>
 </html>
