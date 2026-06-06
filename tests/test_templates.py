@@ -155,8 +155,8 @@ def test_list_page_objconfig_json_preserves_attribute_order(client):
     # If sort_keys was True, "name" would appear before "code" inside "attributes".
     # Note: obj_config has a top-level "name" key ("Company") that appears before "attributes",
     # so we must search for key order within the "attributes" section only.
-    script_start = html.find("const recordList")
-    assert script_start != -1, "RecordList script block not found"
+    script_start = html.find("initListPage(")
+    assert script_start != -1, "initListPage script call not found"
     script_block = html[script_start:]
 
     attr_start = script_block.find('"attributes"')
