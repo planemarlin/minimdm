@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **SECURITY.md**: security policy documenting the preferred reporting channel (GitHub private vulnerability reporting), fallback contact (minimdmsecurity@gmail.com), 5-day response target, supported versions, and coordinated disclosure process
+
 ## [0.6.1] – 2026-06-06
 
 ### Added
