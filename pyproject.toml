@@ -1,6 +1,6 @@
 [project]
 name = "minimdm"
-version = "0.6.1"
+version = "0.6.2"
 description = "A minimal lightweight Master Data Management application"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -11,7 +11,7 @@ dependencies = [
     "psycopg2-binary>=2.9.9",
     "pyyaml>=6.0.0",
     "jinja2>=3.1.0",
-    "python-multipart>=0.0.27",
+    "python-multipart>=0.0.31",
     "pydantic-settings>=2.0.0",
     "aiofiles>=24.0.0",
     "pyjwt>=2.13.0",
@@ -19,7 +19,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "alembic>=1.18.4",
     "mako>=1.3.12",
-    "starlette>=1.0.1",
+    "starlette>=1.3.1",
     "httpx>=0.28.1",
 ]
 
