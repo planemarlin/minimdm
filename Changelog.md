@@ -6,8 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.6.2] – 2026-06-17
+
 ### Added
 - **SECURITY.md**: security policy documenting the preferred reporting channel (GitHub private vulnerability reporting), fallback contact (minimdmsecurity@gmail.com), 5-day response target, supported versions, and coordinated disclosure process
+
+### Security
+- **python-multipart 0.0.27 → 0.0.32**: resolves four CVEs — quadratic-time querystring parsing with semicolon separators causing CPU DoS (GHSA-r7v4-jwx9-wx43, **high**), negative `Content-Length` in `parse_form` buffering the entire body in memory (GHSA-59g4-hpg3-3gfx), semicolon-separated querystring field smuggling (GHSA-2jv5-9r88-3w3p), and `Content-Disposition` parameter smuggling via RFC 2231/5987 extended parameters (GHSA-hxf5-99xg-86hw)
+- **starlette 1.2.1 → 1.3.1**: resolves two CVEs — `request.form()` per-field and total size limits silently ignored for `application/x-www-form-urlencoded` bodies, enabling DoS (GHSA-qxjg-jhgw-qhrv, **high**), and unvalidated request path concatenated into the authority component poisoning `request.url.hostname` (GHSA-f96h-pmfr-66vw)
 
 ## [0.6.1] – 2026-06-06
 
