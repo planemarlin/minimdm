@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.6.3] – 2026-06-27
+
+### Security
+- **pydantic-settings 2.13.1 → 2.14.2**: resolves GHSA-4xgf-cpjx-pc3j — `NestedSecretsSettingsSource` followed symbolic links outside `secrets_dir` when `secrets_nested_subdir=True`, enabling unintended local file reads and bypassing `secrets_dir_max_size` (CVSS 5.3 Medium); miniMDM does not use `NestedSecretsSettingsSource` and is not directly affected, but the package is upgraded for hygiene
+
 ## [0.6.2] – 2026-06-17
 
 ### Added
