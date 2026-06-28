@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # Set to True when serving over HTTPS to add the Secure flag to the session cookie
     secure_cookie: bool = False
 
+    # Set to True when miniMDM runs behind a trusted reverse proxy that sets
+    # X-Forwarded-For. When False (default), the direct TCP peer address is
+    # used for audit log IP recording to prevent header spoofing.
+    trusted_proxy: bool = False
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

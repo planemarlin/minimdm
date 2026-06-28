@@ -143,7 +143,7 @@ _PUBLIC_PATHS = {
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path in _PUBLIC_PATHS or path.startswith("/static"):
+        if path in _PUBLIC_PATHS or path.startswith("/static") or path.startswith("/api/inbound/"):
             request.state.current_user = None
             return await call_next(request)
 
@@ -249,6 +249,7 @@ from app.api import (  # noqa: E402
     audit_api,
     auth_api,
     import_export,
+    inbound,
     objects,
     schemas_api,
 )
@@ -257,6 +258,7 @@ from app.api import (  # noqa: E402
 # matched by the /{record_id} wildcard route.
 app.include_router(auth_api.router, prefix="/api", tags=["Auth"])
 app.include_router(admin_api.router, prefix="/api", tags=["Admin"])
+app.include_router(inbound.router, prefix="/api", tags=["Inbound"])
 app.include_router(import_export.router, prefix="/api", tags=["Import / Export"])
 app.include_router(objects.router, prefix="/api", tags=["MDM Records"])
 app.include_router(schemas_api.router, prefix="/api", tags=["Schemas"])
@@ -365,6 +367,59 @@ async def home(request: Request):
             "schemas": _sidebar_schemas(request),
             "any_schemas_configured": bool(tm.list_schemas()),
             "app_name": settings.app_name,
+        },
+    )
+
+
+@app.get("/pending", response_class=HTMLResponse, include_in_schema=False)
+async def pending_drafts(request: Request):
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    tm = request.app.state.table_manager
+    user = getattr(request.state, "current_user", None)
+    is_admin = user and user.get("is_admin")
+    accessible = None if is_admin else get_accessible_schemas(tm.engine, user["user_id"])
+
+    groups = []
+    for schema_name in tm.list_schemas():
+        if accessible is not None and schema_name not in accessible:
+            continue
+        for obj_meta in tm.list_objects(schema_name):
+            obj_key = obj_meta["key"]
+            obj_config = tm.get_object_config(schema_name, obj_key)
+            try:
+                table = tm.get_table(schema_name, obj_key)
+            except KeyError:
+                continue
+            with Session(tm.engine) as db:
+                rows = db.execute(
+                    select(table)
+                    .where(table.c._state == "draft")
+                    .where(table.c._deleted_at.is_(None))
+                    .order_by(table.c._updated_at.desc())
+                ).mappings().all()
+            if rows:
+                attr_keys = list(obj_config.get("attributes", {}).keys())[:3]
+                attr_labels = {
+                    k: obj_config["attributes"][k].get("name", k) for k in attr_keys
+                }
+                groups.append({
+                    "schema": schema_name,
+                    "obj": obj_key,
+                    "obj_name": obj_config.get("name", obj_key),
+                    "attr_keys": attr_keys,
+                    "attr_labels": attr_labels,
+                    "rows": [dict(r) for r in rows],
+                })
+
+    return templates.TemplateResponse(
+        request,
+        "pending.html",
+        {
+            "schemas": _sidebar_schemas(request),
+            "app_name": settings.app_name,
+            "groups": groups,
         },
     )
 

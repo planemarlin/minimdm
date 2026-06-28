@@ -49,6 +49,26 @@ def load_config(config_path: str) -> dict:
     return _normalize(raw)
 
 
+def _parse_inbound_sources(raw_list: list) -> list:
+    """Parse and validate inbound_sources entries from raw YAML."""
+    sources = []
+    for entry in raw_list or []:
+        name = entry.get("name", "")
+        if not name:
+            raise ValueError("Each inbound_sources entry must have a 'name' field.")
+        _validate_identifier(name, "inbound_sources")
+        field_map = entry.get("field_map")
+        if not isinstance(field_map, dict) or not field_map:
+            raise ValueError(
+                f"inbound_sources entry '{name}' must have a non-empty 'field_map' dict."
+            )
+        match_key = entry.get("match_key")
+        if match_key is not None:
+            _validate_identifier(match_key, "inbound_sources.match_key")
+        sources.append({"name": name, "field_map": dict(field_map), "match_key": match_key})
+    return sources
+
+
 def _normalize(raw: dict) -> dict:
     """Normalize raw config into a consistent internal structure.
 
@@ -118,6 +138,9 @@ def _normalize(raw: dict) -> dict:
                     obj_body.get("allow_direct_active_import", True)
                 ),
                 "attributes": attributes,
+                "inbound_sources": _parse_inbound_sources(
+                    obj_body.get("inbound_sources", [])
+                ),
             }
 
         schemas[schema_name] = {"objects": objects}
@@ -163,6 +186,38 @@ def validate_config(config: dict) -> list[str]:
                     errors.append(
                         f"[{schema_name}.{obj_key}.{attr_key}]"
                         f" reference '{ref}' not found in schema"
+                    )
+
+            valid_targets = set(obj_body.get("attributes", {}).keys()) | {"_source_id"}
+            seen_source_names = set()
+            for src in obj_body.get("inbound_sources", []):
+                src_name = src.get("name", "")
+                if src_name in seen_source_names:
+                    errors.append(
+                        f"[{schema_name}.{obj_key}] duplicate inbound_sources name '{src_name}'"
+                    )
+                seen_source_names.add(src_name)
+                field_map = src.get("field_map", {})
+                has_source_id = False
+                for target in field_map.values():
+                    if target == "_source_id":
+                        has_source_id = True
+                    elif target not in valid_targets:
+                        errors.append(
+                            f"[{schema_name}.{obj_key}.inbound_sources.{src_name}]"
+                            f" field_map target '{target}' is not a valid attribute"
+                        )
+                if not has_source_id:
+                    errors.append(
+                        f"[{schema_name}.{obj_key}.inbound_sources.{src_name}]"
+                        f" field_map must map at least one field to '_source_id'"
+                    )
+                match_key = src.get("match_key")
+                valid_attrs = set(obj_body.get("attributes", {}).keys())
+                if match_key is not None and match_key not in valid_attrs:
+                    errors.append(
+                        f"[{schema_name}.{obj_key}.inbound_sources.{src_name}]"
+                        f" match_key '{match_key}' is not a valid attribute key"
                     )
 
     return errors

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Pending Drafts – {{ app_name }}{% endblock %}
+
+{% block content %}
+<nav class="mdm-crumbs">
+  <a href="/">Home</a>
+  <span class="sep">/</span>
+  <span>Pending Drafts</span>
+</nav>
+
+<div class="mdm-page-head">
+  <div>
+    <h1 class="mdm-page-title">Pending Drafts</h1>
+    <div class="mdm-page-sub">Records awaiting review and publishing</div>
+  </div>
+</div>
+
+{% if groups %}
+  {% for group in groups %}
+  <div style="margin-bottom:2rem">
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:.5rem">
+      <h2 style="font-size:.95rem;font-weight:700;color:var(--mdm-ink);margin:0">
+        <a href="/{{ group.schema }}/{{ group.obj }}" style="color:inherit;text-decoration:none">{{ group.obj_name }}</a>
+      </h2>
+      <span class="schema">{{ group.schema | upper }}</span>
+      <span class="mdm-badge mdm-badge--draft" style="font-size:.72rem">{{ group.rows | length }} draft{% if group.rows | length != 1 %}s{% endif %}</span>
+    </div>
+    <div class="mdm-table-wrap">
+      <table class="mdm-table">
+        <thead>
+          <tr>
+            {% for key in group.attr_keys %}
+            <th>{{ group.attr_labels[key] | upper }}</th>
+            {% endfor %}
+            <th>SOURCE</th>
+            <th>UPDATED</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in group.rows %}
+          {% set record_url = '/' ~ group.schema ~ '/' ~ group.obj ~ '/' ~ row['_id'] | string %}
+          <tr style="cursor:pointer" onclick="location.href='{{ record_url }}'">
+            {% for key in group.attr_keys %}
+            <td>{{ row.get(key, '') or '' }}</td>
+            {% endfor %}
+            <td>
+              {% if row.get('_source_system') %}
+              <span style="font-family:monospace;font-size:.78rem;color:var(--mdm-mute)">{{ row['_source_system'] }}</span>
+              {% endif %}
+            </td>
+            <td class="mdm-mono" style="white-space:nowrap;color:var(--mdm-ink-2);font-size:12.5px"
+                data-ts="{{ row.get('_updated_at', row.get('_created_at', '')) }}"></td>
+            <td style="text-align:right" onclick="event.stopPropagation()">
+              <a class="mdm-btn" style="font-size:.78rem;padding:3px 10px"
+                 href="{{ record_url }}">Review</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+<div style="padding:3rem;text-align:center;color:var(--mdm-mute)">
+  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"
+       stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:.75rem;opacity:.4">
+    <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+  </svg>
+  <div style="font-size:.95rem;font-weight:600;color:var(--mdm-ink)">No pending drafts</div>
+  <div style="font-size:.85rem;margin-top:.25rem">All records are published or there is nothing awaiting review.</div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll("td[data-ts]").forEach(function(td) {
+  var v = td.getAttribute("data-ts");
+  try { td.textContent = v ? new Date(v).toLocaleString() : ""; } catch { td.textContent = v; }
+});
+</script>
+{% endblock %}

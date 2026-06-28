@@ -1,6 +1,8 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core.permissions import get_accessible_schemas, require_schema_access
@@ -111,3 +113,35 @@ def reload_config(request: Request):
 def get_config(request: Request):
     cfg = request.app.state.app_config
     return {k: v for k, v in cfg.items() if k != "webhooks"}
+
+
+@router.get("/pending-count")
+def pending_draft_count(request: Request):
+    """Return the total number of pending draft records across accessible schemas.
+
+    Used by the publisher badge in the top navigation bar.
+    """
+    tm = request.app.state.table_manager
+    user = getattr(request.state, "current_user", None)
+    if not user:
+        return {"total": 0}
+
+    is_admin = user.get("is_admin")
+    accessible = None if is_admin else get_accessible_schemas(tm.engine, user["user_id"])
+    total = 0
+    for schema_name in tm.list_schemas():
+        if accessible is not None and schema_name not in accessible:
+            continue
+        for obj in tm.list_objects(schema_name):
+            try:
+                table = tm.get_table(schema_name, obj["key"])
+            except KeyError:
+                continue
+            with Session(tm.engine) as db:
+                count = db.execute(
+                    select(func.count()).select_from(table)
+                    .where(table.c._state == "draft")
+                    .where(table.c._deleted_at.is_(None))
+                ).scalar() or 0
+            total += count
+    return {"total": total}

@@ -103,6 +103,28 @@ minimdm:
               name: Preferred Supplier
               reference: supplier
 
+        # inbound_sources enables external systems to push records via
+        # POST /api/inbound/{schema}/{object} authenticated with an API key
+        # managed in the admin UI (Users → Inbound Keys tab).
+        #
+        # Each source must map at least one field to _source_id so that
+        # miniMDM can match incoming records to existing ones for upsert.
+        # All inbound records always land as drafts; _source_system is set
+        # automatically to the source name and cannot be overridden by the payload.
+        #
+        # supplier:
+        #   ...
+        #   inbound_sources:
+        #     - name: erp_system             # becomes _source_system value
+        #       field_map:                   # source_field: minimdm_field
+        #         erp_supplier_id: _source_id
+        #         company_name: name
+        #         supplier_code: code
+        #       match_key: code              # optional fallback: if _source_id lookup misses,
+        #                                    # try matching on this attribute; if exactly one
+        #                                    # record matches, it is claimed (_source_id stamped
+        #                                    # on it) and future pushes use the primary path
+
     # --- Demo schema ---
     # A fuller example showing more attribute types and a customer object.
     # Sample import data for all four objects is provided in the demo/ folder.

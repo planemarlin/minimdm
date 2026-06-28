@@ -8,6 +8,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     MetaData,
     Numeric,
@@ -72,6 +73,7 @@ class TableManager:
                 self._define_history_table(schema_name, obj_key, obj_body)
 
         self._ensure_audit_log_table()
+        self._ensure_inbound_keys_table()
 
         # Add any new columns to existing tables before create_all runs.
         self._alter_existing_tables()
@@ -93,6 +95,16 @@ class TableManager:
 
     def get_audit_table(self) -> Table:
         return self.get_table("_system", "audit_log")
+
+    def get_inbound_keys_table(self) -> Table:
+        return self.get_table("_system", "inbound_keys")
+
+    def get_inbound_sources(self, schema: str, obj: str) -> list[dict]:
+        """Return the inbound_sources list for a given schema/object, or []."""
+        obj_config = self.get_object_config(schema, obj)
+        if obj_config is None:
+            return []
+        return obj_config.get("inbound_sources", [])
 
     def list_schemas(self) -> list[str]:
         return list(self._config.get("schemas", {}).keys())
@@ -251,6 +263,32 @@ class TableManager:
         self._tables[table_key] = table
         return table
 
+    def _ensure_inbound_keys_table(self) -> Table:
+        table_key = "_system.inbound_keys"
+        if table_key in self._tables:
+            return self._tables[table_key]
+
+        columns = [
+            Column("id", PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
+            Column("schema_name", Text, nullable=False),
+            Column("source_name", Text, nullable=False),
+            Column("key_prefix", Text, nullable=False),
+            Column("key_hash", Text, nullable=False),
+            Column("description", Text, nullable=True),
+            Column("created_at", DateTime(timezone=True), nullable=False),
+            Column("last_used_at", DateTime(timezone=True), nullable=True),
+            Column("is_active", Boolean, nullable=False, server_default="true"),
+        ]
+
+        table = Table("inbound_keys", self.metadata, *columns, schema="_system")
+        Index(
+            "ix_inbound_keys_schema_active",
+            table.c.schema_name,
+            table.c.is_active,
+        )
+        self._tables[table_key] = table
+        return table
+
     def _alter_existing_tables(self) -> None:
         """Add columns that are in the Python metadata but missing from the database."""
         insp = sa_inspect(self.engine)
@@ -273,7 +311,7 @@ class TableManager:
                             # Guard: only interpolate quoted string literals (e.g. "'active'").
                             # All server_default values in this codebase are hardcoded constants,
                             # but this assertion prevents a future accidental injection.
-                            assert re.match(r"^'[a-z_]+'$", sd.arg), (
+                            assert re.match(r"^(?:'[a-z_]+'|true|false)$", sd.arg), (
                                 f"Unexpected server_default value: {sd.arg!r}"
                             )
                             default_clause = f" DEFAULT {sd.arg}"
@@ -286,7 +324,7 @@ class TableManager:
                         # without a DEFAULT (e.g. _state added by an earlier migration).
                         sd = col.server_default
                         if sd is not None and hasattr(sd, "arg") and isinstance(sd.arg, str):
-                            assert re.match(r"^'[a-z_]+'$", sd.arg), (
+                            assert re.match(r"^(?:'[a-z_]+'|true|false)$", sd.arg), (
                                 f"Unexpected server_default value: {sd.arg!r}"
                             )
                             conn.execute(text(

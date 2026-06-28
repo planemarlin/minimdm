@@ -1,12 +1,19 @@
 """Admin-only API endpoints for user management."""
+import re
+import secrets
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import audit as audit_svc
 from app.core.auth import create_reset_token, create_user, get_user_by_id, list_users, update_user
+from app.core.keys import hash_api_key
 from app.core.permissions import delete_permission, get_user_permissions, set_permission
+
+_IDENTIFIER_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 router = APIRouter()
 
@@ -18,10 +25,8 @@ def _require_admin(request: Request):
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    from app.core.network import client_ip
+    return client_ip(request)
 
 
 def _log_admin(request: Request, action: str, target_user_id: uuid.UUID, reason: str = None):
@@ -184,3 +189,131 @@ def remove_permission(user_id: str, schema_name: str, request: Request):
     delete_permission(engine, user_id, schema_name)
     _log_admin(request, "PERMISSION_REVOKED", uuid.UUID(user_id),
                reason=f"Revoked access to schema '{schema_name}' from '{target['username']}'")
+
+
+# ------------------------------------------------------------------
+# Inbound API key management
+# ------------------------------------------------------------------
+
+def _serialize_key_row(row: dict) -> dict:
+    return {
+        "id": str(row["id"]),
+        "schema_name": row["schema_name"],
+        "source_name": row["source_name"],
+        "key_prefix": row["key_prefix"],
+        "description": row["description"],
+        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        "last_used_at": row["last_used_at"].isoformat() if row["last_used_at"] else None,
+        "is_active": row["is_active"],
+    }
+
+
+@router.get("/admin/inbound-keys")
+def list_inbound_keys(request: Request):
+    _require_admin(request)
+    tm = request.app.state.table_manager
+    table = tm.get_inbound_keys_table()
+    with Session(tm.engine) as db:
+        rows = db.execute(
+            select(table).order_by(table.c.created_at.desc())
+        ).mappings().all()
+    return [_serialize_key_row(dict(r)) for r in rows]
+
+
+@router.get("/admin/inbound-keys/sources")
+def list_inbound_sources(request: Request):
+    """Return all configured inbound_sources entries from the loaded config."""
+    _require_admin(request)
+    tm = request.app.state.table_manager
+    result = []
+    for schema_name in tm.list_schemas():
+        for obj in tm.list_objects(schema_name):
+            obj_config = tm.get_object_config(schema_name, obj["key"])
+            for src in (obj_config or {}).get("inbound_sources", []):
+                result.append({
+                    "schema_name": schema_name,
+                    "object_name": obj["key"],
+                    "source_name": src["name"],
+                })
+    return result
+
+
+@router.post("/admin/inbound-keys", status_code=201)
+async def create_inbound_key(request: Request):
+    _require_admin(request)
+    data = await request.json()
+    schema_name = (data.get("schema_name") or "").strip()
+    source_name = (data.get("source_name") or "").strip()
+    description = (data.get("description") or "").strip() or None
+
+    if not schema_name or not source_name:
+        raise HTTPException(400, "schema_name and source_name are required")
+    if not _IDENTIFIER_RE.match(source_name):
+        raise HTTPException(
+            400,
+            "source_name must be a valid identifier "
+            "(letters, digits, underscores; must start with a letter or underscore)",
+        )
+
+    tm = request.app.state.table_manager
+    if schema_name not in tm.list_schemas():
+        raise HTTPException(404, f"Schema '{schema_name}' not found")
+
+    raw_key = secrets.token_urlsafe(32)
+    key_hash = hash_api_key(raw_key)
+    key_prefix = raw_key[:8]
+    key_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    table = tm.get_inbound_keys_table()
+    with Session(tm.engine) as db:
+        db.execute(table.insert().values(
+            id=key_id,
+            schema_name=schema_name,
+            source_name=source_name,
+            key_prefix=key_prefix,
+            key_hash=key_hash,
+            description=description,
+            created_at=now,
+            last_used_at=None,
+            is_active=True,
+        ))
+        db.commit()
+
+    _log_admin(request, "INBOUND_KEY_CREATED", key_id,
+               reason=f"Inbound key created for source '{source_name}' in schema '{schema_name}'")
+
+    return {
+        "id": str(key_id),
+        "schema_name": schema_name,
+        "source_name": source_name,
+        "key_prefix": key_prefix,
+        "description": description,
+        "created_at": now.isoformat(),
+        "key": raw_key,
+    }
+
+
+@router.delete("/admin/inbound-keys/{key_id}", status_code=204)
+def revoke_inbound_key(key_id: str, request: Request):
+    _require_admin(request)
+    tm = request.app.state.table_manager
+    table = tm.get_inbound_keys_table()
+    try:
+        key_uuid = uuid.UUID(key_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid key ID")
+    with Session(tm.engine) as db:
+        row = db.execute(
+            select(table).where(table.c.id == key_uuid)
+        ).mappings().first()
+        if not row:
+            raise HTTPException(404, "Inbound key not found")
+        db.execute(
+            table.update().where(table.c.id == key_uuid).values(is_active=False)
+        )
+        db.commit()
+    prefix = row["key_prefix"]
+    src = row["source_name"]
+    _log_admin(request, "INBOUND_KEY_REVOKED", key_uuid,
+               reason=f"Inbound key '{prefix}...' for source '{src}' revoked")

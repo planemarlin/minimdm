@@ -1,4 +1,6 @@
+import hashlib
 import os
+import secrets
 
 # Override DATABASE_URL with the test database URL before any app module is
 # imported (app.database creates the engine at import time via settings).
@@ -24,6 +26,17 @@ SAMPLE_CONFIG = {
                         "code": {"name": "Code", "type": "string", "required": True, "unique": True, "reference": None},  # noqa: E501
                         "name": {"name": "Name", "type": "string", "required": False, "unique": False, "reference": None},  # noqa: E501
                     },
+                    "inbound_sources": [
+                        {
+                            "name": "test_erp",
+                            "field_map": {
+                                "erp_id": "_source_id",
+                                "company_name": "name",
+                                "company_code": "code",
+                            },
+                            "match_key": "code",
+                        }
+                    ],
                 },
                 "division": {
                     "name": "Division",
@@ -136,3 +149,41 @@ def clean_records(client):
 @pytest.fixture
 def sample_config():
     return SAMPLE_CONFIG
+
+
+@pytest.fixture
+def inbound_key(client):
+    """Insert a test inbound API key for the 'test_erp' source and yield the raw key.
+
+    Cleans up the key after the test.
+    """
+    from datetime import datetime, timezone
+
+    from app.main import app as fastapi_app
+    tm = fastapi_app.state.table_manager
+    table = tm.get_inbound_keys_table()
+
+    import uuid
+    raw_key = secrets.token_urlsafe(32)
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    key_id = uuid.uuid4()
+
+    with tm.engine.connect() as conn:
+        conn.execute(table.insert().values(
+            id=key_id,
+            schema_name="test",
+            source_name="test_erp",
+            key_prefix=raw_key[:8],
+            key_hash=key_hash,
+            description="Test key",
+            created_at=datetime.now(timezone.utc),
+            last_used_at=None,
+            is_active=True,
+        ))
+        conn.commit()
+
+    yield raw_key
+
+    with tm.engine.connect() as conn:
+        conn.execute(table.delete().where(table.c.id == key_id))
+        conn.commit()

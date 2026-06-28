@@ -38,6 +38,8 @@ Set these in your `.env` file or via your process manager before starting miniMD
 | `MAX_UPLOAD_SIZE` | No | Max import file size in bytes (default: 10485760 = 10 MB) |
 | `LOG_FORMAT` | No | Log output format: `text` (default, human-readable) or `json` (one JSON object per line, recommended for production) |
 | `SECURE_COOKIE` | No | Set to `true` when serving over HTTPS to add the `Secure` flag to the session cookie (default: `false`). **Enable this in production.** |
+| `TRUSTED_PROXY` | No | Set to `true` when miniMDM runs behind a trusted reverse proxy that sets `X-Forwarded-For` (default: `false`). When `false`, the direct TCP connection IP is used for audit log entries, preventing header spoofing. **Set this alongside your nginx/load-balancer config.** |
+| `RATE_LIMIT_ENABLED` | No | Set to `false` to disable the built-in rate limiter (default: `true`). Disable in test environments only. |
 
 ## Nginx example
 
@@ -52,6 +54,7 @@ server {
     ssl_prefer_server_ciphers on;
 
     # Forward real client IP to the application
+    # Set TRUSTED_PROXY=true in .env when using this header
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header Host $host;

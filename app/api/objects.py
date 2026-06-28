@@ -999,10 +999,8 @@ def _filter_columns(body: dict, table) -> dict:
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    from app.core.network import client_ip
+    return client_ip(request)
 
 
 def _integrity_error_message(exc: IntegrityError) -> str:
