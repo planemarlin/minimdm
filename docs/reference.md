@@ -49,6 +49,10 @@ minimdm:
             <ref_attribute_key>:
               name: <display name>
               reference: <object_key of referenced object>
+          inbound_sources:
+            - name: <source_system_name>
+              field_map:
+                <source_field>: <minimdm_field_or_system_column>
 ```
 
 ### Attribute Types
@@ -166,6 +170,64 @@ Note: `record.created` and `record.published` are distinct events. `record.creat
 
 Webhooks are delivered asynchronously after the API response is sent, so a slow or unreachable endpoint never delays the caller. Failures are logged as warnings and silently swallowed — the API response is unaffected. Multiple URLs can be configured for the same event. The same URL can appear for multiple events; use the `event` field in the payload to distinguish them.
 
+### Inbound Sources
+
+`inbound_sources` allows external systems to push records into miniMDM via HTTP POST. All inbound records always land as **drafts** — the lifecycle is never bypassed. Each source authenticates with an API key managed in the Admin UI.
+
+```yaml
+objects:
+  supplier:
+    name: Supplier
+    attributes:
+      code:
+        name: Supplier Code
+        type: string
+      name:
+        name: Supplier Name
+        type: string
+    inbound_sources:
+      - name: erp_system          # becomes the _source_system value on every record
+        field_map:                 # source_payload_field: minimdm_field
+          erp_id: _source_id      # required — used to match incoming records for upsert
+          company_name: name
+          supplier_code: code
+        match_key: code           # optional — fallback attribute for initial record matching
+```
+
+**How it works:**
+
+1. An external system sends `POST /api/inbound/{schema}/{object}` with `X-Api-Key: <key>` and a JSON body.
+2. miniMDM looks up the matching API key and `inbound_sources` entry for the schema.
+3. The `field_map` is applied — source field names are renamed to miniMDM attribute names. Fields not in the map are ignored.
+4. `_source_system` is set to the `name` from the config. Payload attempts to override it are silently discarded.
+5. miniMDM looks for an existing record using a two-step lookup:
+   - **Primary** — `_source_system = name` AND `_source_id = <mapped value>`. Fast and unambiguous.
+   - **Fallback** (if `match_key` is configured and the primary lookup found nothing) — match on the business-key attribute (e.g. `code`). If exactly one record matches, it is **claimed**: `_source_system` and `_source_id` are written onto the active record immediately, so future pushes use the primary path. If more than one record matches the fallback is skipped and a new draft is created.
+6. Once a match is found (via either path):
+   - **Found, state = active** → a draft copy is created alongside the active record (draft-copy-on-edit semantics; any fields the publisher has enriched but that are not in the `field_map` are preserved on the draft).
+   - **Found, state = draft** → the existing draft is updated in place. No duplicate draft is created.
+   - **Not found** → a new draft is created.
+7. The audit log records two entries: a **data change** entry (`user_name = inbound:<source_name>`) on the record table, and an **`INBOUND_CALL`** entry in the Auth Events audit log (schema `_system`, object `inbound`) with the schema, object, and outcome (`created` or `updated`). Failed authentication attempts are recorded as **`INBOUND_CALL_FAILED`** entries so revoked keys or misconfigured clients are visible to admins.
+
+**Rules:**
+- At least one `field_map` entry must map to `_source_id`. Without a stable source identifier, upsert matching is impossible and the config will be rejected at startup.
+- `field_map` values may be any attribute key defined on the object, or `_source_id`. System columns other than `_source_id` cannot be targeted.
+- `match_key` is optional. When set, it must be a user-defined attribute key (not `_source_id`). Using a `unique: true` attribute is recommended — it eliminates the ambiguous-match case entirely.
+- Each `name` within an object's `inbound_sources` list must be unique.
+- `name` must be a valid identifier (letters, digits, underscores; must start with a letter or underscore).
+
+**Rate limiting and body size:**
+
+The inbound endpoint is rate-limited to **120 requests per minute per IP address**. Requests exceeding the limit receive `429 Too Many Requests`. The request body must not exceed `MAX_UPLOAD_SIZE` (default 10 MB); oversized requests receive `413 Request Entity Too Large` before any DB work occurs.
+
+**API key management:**
+
+API keys are stored as SHA-256 hashes in `_system.inbound_keys`. Each key is scoped to a **schema and source name** — a key with `source_name = erp` grants push access to every object in that schema that has an `inbound_sources` entry with `name: erp`. The Generate Key modal in the Admin UI shows exactly which objects a source name covers before you confirm. Keys are generated and revoked in the Admin UI under **Users → Inbound Keys**. The raw key value is shown **once** at generation time and never stored in plaintext — copy it immediately. Keys can be revoked (soft-deleted) at any time; revoked keys are rejected immediately.
+
+See the [Inbound Webhooks](#inbound-webhooks) section of the REST API reference for endpoint details and response codes.
+
+---
+
 ## System Columns
 
 Every object table includes these system-managed columns (not in the config):
@@ -236,6 +298,8 @@ All changes are recorded in `_system.audit_log`:
 
 All routes require authentication. The web UI uses an httpOnly cookie (`access_token`) set at login. API clients should pass `Authorization: Bearer <token>` on every request.
 
+**Inbound webhook routes** (`POST /api/inbound/{schema}/{obj}`) are the exception: they do not accept JWT tokens. Instead they require the `X-Api-Key: <key>` header. API keys are generated and managed in the Admin UI (Users → Inbound Keys tab) and stored as SHA-256 hashes — the raw value is shown once at creation and never retrievable afterwards.
+
 ## Browser storage
 
 miniMDM stores the following data in the browser:
@@ -271,6 +335,34 @@ On first startup, if no users exist, an admin account is created automatically f
 | `GET` | `/api/admin/users/{user_id}/permissions` | List schema permissions for a user |
 | `PUT` | `/api/admin/users/{user_id}/permissions/{schema_name}` | Grant or update access (`{"can_read": true, "can_write": false}`) |
 | `DELETE` | `/api/admin/users/{user_id}/permissions/{schema_name}` | Revoke all access to a schema |
+
+### Inbound Key Management (Admin only)
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/admin/inbound-keys` | List all inbound API keys (key hash never returned) |
+| `GET` | `/api/admin/inbound-keys/sources` | List all `inbound_sources` entries from the loaded config |
+| `POST` | `/api/admin/inbound-keys` | Generate a new API key — returns the raw key **once** |
+| `DELETE` | `/api/admin/inbound-keys/{key_id}` | Revoke a key (soft-delete; rejected immediately on next use) |
+
+**Generate key request body:**
+```json
+{ "schema_name": "nordkraft", "source_name": "erp_system", "description": "ERP integration key" }
+```
+
+**Generate key response (201):**
+```json
+{
+  "id": "<uuid>",
+  "key": "<raw-43-char-key>",
+  "key_prefix": "<first-8-chars>",
+  "schema_name": "nordkraft",
+  "source_name": "erp_system",
+  "created_at": "2026-06-28T10:00:00Z"
+}
+```
+
+The `key` field is **never returned again** after this response. Store it securely.
 
 ### Schema-Based Access Control
 
@@ -339,6 +431,43 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 | `GET` | `/api/schemas/{schema}/objects/{obj}` | Get object definition |
 | `GET` | `/api/config` | Get current loaded config (schema definitions only; webhook URLs are excluded) |
 | `POST` | `/api/config/reload` | Reload config from disk and sync database schema — **Admin only** |
+| `GET` | `/api/pending-count` | Return total count of pending draft records across all schemas accessible to the current user — used by the publisher badge in the navigation bar |
+
+### Inbound Webhooks
+
+These endpoints accept pushes from external source systems. They use `X-Api-Key` authentication, not JWT. See [Inbound Sources](#inbound-sources) for configuration.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/inbound/{schema}/{obj}` | `X-Api-Key` header | Push a record from an external source system |
+
+**Request:**
+```
+POST /api/inbound/nordkraft/supplier
+X-Api-Key: <api-key>
+Content-Type: application/json
+
+{ "erp_id": "ERP-001", "company_name": "Acme Corp", "supplier_code": "ACM" }
+```
+
+**Response — new draft created (201):**
+```json
+{ "status": "created", "id": "<draft-uuid>" }
+```
+
+**Response — existing record updated (200):**
+```json
+{ "status": "updated", "id": "<draft-uuid>" }
+```
+
+**Error codes:**
+
+| Code | Meaning |
+|---|---|
+| 401 | Missing or invalid `X-Api-Key` |
+| 403 | Key is valid but the target object has no `inbound_sources` entry matching this source |
+| 404 | Schema or object not found |
+| 422 | Payload missing required mapped fields |
 
 ### Audit
 

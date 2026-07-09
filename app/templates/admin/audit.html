@@ -25,22 +25,27 @@
 <!-- Data Changes tab -->
 <div id="tab-data">
   <div class="mdm-toolbar">
-    <select class="mdm-select" id="filter-schema">
-      <option value="">All schemas</option>
-      {% for s in schemas %}
-      <option value="{{ s.name }}">{{ s.name }}</option>
-      {% endfor %}
-    </select>
-    <select class="mdm-select" id="filter-obj">
-      <option value="">All objects</option>
-    </select>
-    <select class="mdm-select" id="filter-action">
-      <option value="">All actions</option>
-      <option value="INSERT">INSERT</option>
-      <option value="UPDATE">UPDATE</option>
-      <option value="DELETE">DELETE</option>
-      <option value="REVERT">REVERT</option>
-    </select>
+    <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+      <select class="mdm-select" id="filter-schema">
+        <option value="">All schemas</option>
+        {% for s in schemas %}
+        <option value="{{ s.name }}">{{ s.name }}</option>
+        {% endfor %}
+      </select>
+      <select class="mdm-select" id="filter-obj">
+        <option value="">All objects</option>
+      </select>
+      <select class="mdm-select" id="filter-action">
+        <option value="">All actions</option>
+        <option value="INSERT">INSERT — Record created</option>
+        <option value="UPDATE">UPDATE — Record updated</option>
+        <option value="DELETE">DELETE — Record soft-deleted</option>
+        <option value="PUBLISH">PUBLISH — Draft promoted to active</option>
+        <option value="RETIRE">RETIRE — Active record retired</option>
+        <option value="DRAFT_CREATED">DRAFT_CREATED — Draft copy created for editing</option>
+        <option value="REVERT">REVERT — Record reverted to earlier version</option>
+      </select>
+    </div>
     <div class="mdm-search">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input type="text" id="filter-user" placeholder="Filter by user…" />
@@ -80,9 +85,28 @@
   <div class="mdm-toolbar">
     <select class="mdm-select" id="auth-filter-action">
       <option value="">All actions</option>
-      <option value="LOGIN">LOGIN</option>
-      <option value="LOGIN_FAILED">LOGIN_FAILED</option>
-      <option value="LOGOUT">LOGOUT</option>
+      <optgroup label="Session">
+        <option value="LOGIN">LOGIN — Successful login</option>
+        <option value="LOGIN_FAILED">LOGIN_FAILED — Failed login attempt</option>
+        <option value="LOGOUT">LOGOUT — User logged out</option>
+      </optgroup>
+      <optgroup label="User management">
+        <option value="USER_CREATED">USER_CREATED — New user account created</option>
+        <option value="USER_DELETED">USER_DELETED — User account deleted</option>
+        <option value="USER_ROLE_CHANGED">USER_ROLE_CHANGED — User role changed</option>
+        <option value="USER_PASSWORD_CHANGED">USER_PASSWORD_CHANGED — Password changed by admin</option>
+        <option value="PASSWORD_RESET_LINK_CREATED">PASSWORD_RESET_LINK_CREATED — Password reset link sent</option>
+      </optgroup>
+      <optgroup label="Permissions">
+        <option value="PERMISSION_GRANTED">PERMISSION_GRANTED — Schema access granted</option>
+        <option value="PERMISSION_REVOKED">PERMISSION_REVOKED — Schema access revoked</option>
+      </optgroup>
+      <optgroup label="Inbound keys">
+        <option value="INBOUND_KEY_CREATED">INBOUND_KEY_CREATED — Inbound API key generated</option>
+        <option value="INBOUND_KEY_REVOKED">INBOUND_KEY_REVOKED — Inbound API key revoked</option>
+        <option value="INBOUND_CALL">INBOUND_CALL — Inbound webhook received</option>
+        <option value="INBOUND_CALL_FAILED">INBOUND_CALL_FAILED — Inbound webhook rejected (auth failure)</option>
+      </optgroup>
     </select>
     <div class="mdm-search">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>

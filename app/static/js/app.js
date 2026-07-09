@@ -1116,7 +1116,15 @@ async function loadAuditLog(page) {
 
   const objNames = _buildObjNameMap(_auditSchemas);
   const actionBadge = (a) => {
-    const cls = { INSERT: "mdm-pill-green", UPDATE: "mdm-pill-blue", DELETE: "mdm-pill-red", REVERT: "mdm-pill-amber" }[a] || "mdm-pill-slate";
+    const cls = {
+      INSERT: "mdm-pill-green",
+      UPDATE: "mdm-pill-blue",
+      DELETE: "mdm-pill-red",
+      PUBLISH: "mdm-pill-green",
+      RETIRE: "mdm-pill-slate",
+      DRAFT_CREATED: "mdm-pill-amber",
+      REVERT: "mdm-pill-amber",
+    }[a] || "mdm-pill-slate";
     return `<span class="mdm-pill ${cls}">${a}</span>`;
   };
 
@@ -1176,7 +1184,22 @@ async function loadAuthLog(page) {
   }
 
   const authBadge = (a) => {
-    const cls = { LOGIN: "mdm-pill-green", LOGIN_FAILED: "mdm-pill-red", LOGOUT: "mdm-pill-slate" }[a] || "mdm-pill-slate";
+    const cls = {
+      LOGIN: "mdm-pill-green",
+      LOGIN_FAILED: "mdm-pill-red",
+      LOGOUT: "mdm-pill-slate",
+      USER_CREATED: "mdm-pill-green",
+      USER_DELETED: "mdm-pill-red",
+      USER_ROLE_CHANGED: "mdm-pill-amber",
+      USER_PASSWORD_CHANGED: "mdm-pill-amber",
+      PASSWORD_RESET_LINK_CREATED: "mdm-pill-amber",
+      PERMISSION_GRANTED: "mdm-pill-green",
+      PERMISSION_REVOKED: "mdm-pill-red",
+      INBOUND_KEY_CREATED: "mdm-pill-green",
+      INBOUND_KEY_REVOKED: "mdm-pill-red",
+      INBOUND_CALL: "mdm-pill-blue",
+      INBOUND_CALL_FAILED: "mdm-pill-red",
+    }[a] || "mdm-pill-slate";
     return `<span class="mdm-pill ${cls}">${a}</span>`;
   };
 
@@ -1549,3 +1572,184 @@ document.addEventListener("click", e => {
   if (e.target.classList.contains("modal-backdrop")) closeModal();
   closeUserMenus();
 });
+
+// ------------------------------------------------------------------
+// Publisher pending-draft badge
+// ------------------------------------------------------------------
+
+async function loadPendingBadge() {
+  try {
+    const res = await fetch("/api/pending-count");
+    if (!res.ok) return;
+    const data = await res.json();
+    const count = data.total || 0;
+    const badge = document.getElementById("pending-badge");
+    const countEl = document.getElementById("pending-badge-count");
+    if (badge && count > 0) {
+      countEl.textContent = count > 99 ? "99+" : count;
+      badge.style.display = "";
+    }
+  } catch (_) { /* non-critical — badge is optional */ }
+}
+
+document.addEventListener("DOMContentLoaded", loadPendingBadge);
+
+// ------------------------------------------------------------------
+// Users page — tab switching
+// ------------------------------------------------------------------
+
+function switchUsersTab(name) {
+  document.getElementById("tab-users").style.display = name === "users" ? "" : "none";
+  document.getElementById("tab-keys").style.display  = name === "keys"  ? "" : "none";
+  document.getElementById("tab-users-btn").classList.toggle("is-on", name === "users");
+  document.getElementById("tab-keys-btn").classList.toggle("is-on",  name === "keys");
+  if (name === "keys") loadInboundKeys();
+}
+
+// ------------------------------------------------------------------
+// Inbound key management
+// ------------------------------------------------------------------
+
+let _inboundKeys = [];
+let _inboundSources = [];
+
+async function loadInboundKeys() {
+  const tbody = document.getElementById("keys-tbody");
+  tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>';
+  const [keysRes, srcRes] = await Promise.all([
+    fetch("/api/admin/inbound-keys"),
+    fetch("/api/admin/inbound-keys/sources"),
+  ]);
+  if (!keysRes.ok) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--mdm-red)">Failed to load keys.</td></tr>';
+    return;
+  }
+  _inboundKeys   = await keysRes.json();
+  _inboundSources = srcRes.ok ? await srcRes.json() : [];
+  renderInboundKeys();
+}
+
+function renderInboundKeys() {
+  const tbody = document.getElementById("keys-tbody");
+  if (!_inboundKeys.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--mdm-mute)">No inbound keys yet. Generate one to get started.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = _inboundKeys.map(k => {
+    const statusPill = k.is_active
+      ? '<span class="mdm-pill mdm-pill-green">Active</span>'
+      : '<span class="mdm-pill mdm-pill-slate">Revoked</span>';
+    const lastUsed = k.last_used_at ? k.last_used_at.slice(0,10) : '—';
+    const revokeBtn = k.is_active
+      ? `<button class="mdm-btn mdm-btn-ghost" style="height:28px;padding:0 10px;font-size:12.5px;color:var(--mdm-red)" data-key-id="${escHtml(k.id)}" data-source-name="${escHtml(k.source_name)}" onclick="revokeInboundKey(this)">Revoke</button>`
+      : '';
+    return `<tr class="${k.is_active ? '' : 'row--inactive'}">
+      <td class="mdm-mono" style="font-size:13px">${escHtml(k.schema_name)}</td>
+      <td>${escHtml(k.source_name)}</td>
+      <td class="mdm-mono" style="font-size:13px">${escHtml(k.key_prefix)}…</td>
+      <td style="color:var(--mdm-ink-2)">${k.description ? escHtml(k.description) : '<span style="color:var(--mdm-mute)">—</span>'}</td>
+      <td class="mdm-mono" style="font-size:13px;color:var(--mdm-ink-2)">${k.created_at ? k.created_at.slice(0,10) : '—'}</td>
+      <td class="mdm-mono" style="font-size:13px;color:var(--mdm-ink-2)">${lastUsed}</td>
+      <td>${statusPill}</td>
+      <td class="col-actions">${revokeBtn}</td>
+    </tr>`;
+  }).join("");
+}
+
+function openGenKeyModal() {
+  const schemaEl = document.getElementById("gk-schema");
+  const sourceEl = document.getElementById("gk-source");
+  const schemas = [...new Set(_inboundSources.map(s => s.schema_name))];
+  schemaEl.innerHTML = '<option value="">Select schema…</option>' +
+    schemas.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join("");
+  sourceEl.innerHTML = '<option value="">Select schema first…</option>';
+  sourceEl.disabled = true;
+  document.getElementById("gk-description").value = "";
+  document.getElementById("gen-key-error").style.display = "none";
+  document.getElementById("gk-scope-note").style.display = "none";
+  document.getElementById("gen-key-modal").style.display = "flex";
+}
+
+function onGenKeySchemaChange() {
+  const schema = document.getElementById("gk-schema").value;
+  const sourceEl = document.getElementById("gk-source");
+  const sources = _inboundSources.filter(s => s.schema_name === schema);
+  if (!schema || !sources.length) {
+    sourceEl.innerHTML = '<option value="">No sources configured for this schema</option>';
+    sourceEl.disabled = true;
+  } else {
+    sourceEl.innerHTML = '<option value="">Select source…</option>' +
+      sources.map(s => `<option value="${escHtml(s.source_name)}">${escHtml(s.source_name)}</option>`).join("");
+    sourceEl.disabled = false;
+  }
+  document.getElementById("gk-scope-note").style.display = "none";
+}
+
+function onGenKeySourceChange() {
+  const schema = document.getElementById("gk-schema").value;
+  const source = document.getElementById("gk-source").value;
+  const noteEl = document.getElementById("gk-scope-note");
+  if (!source) { noteEl.style.display = "none"; return; }
+  const objects = _inboundSources
+    .filter(s => s.schema_name === schema && s.source_name === source)
+    .map(s => escHtml(s.object_name));
+  if (!objects.length) { noteEl.style.display = "none"; return; }
+  const plural = objects.length === 1 ? "object" : "objects";
+  noteEl.innerHTML = `<strong>Scope:</strong> this key grants push access to ${objects.length} ${plural}: ${objects.join(", ")}`;
+  noteEl.style.display = "";
+}
+
+async function submitGenKey(e) {
+  e.preventDefault();
+  const schema = document.getElementById("gk-schema").value;
+  const source = document.getElementById("gk-source").value;
+  const description = document.getElementById("gk-description").value.trim();
+  const errEl = document.getElementById("gen-key-error");
+  if (!schema || !source) {
+    errEl.textContent = "Please select a schema and source.";
+    errEl.style.display = "";
+    return;
+  }
+  const res = await fetch("/api/admin/inbound-keys", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ schema_name: schema, source_name: source, description: description || null }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    errEl.textContent = err.detail || "Failed to generate key.";
+    errEl.style.display = "";
+    return;
+  }
+  const data = await res.json();
+  document.getElementById("gen-key-modal").style.display = "none";
+  showRevealKeyModal(data.key, data.schema_name, data.source_name);
+  loadInboundKeys();
+}
+
+function showRevealKeyModal(key, schema, source) {
+  document.getElementById("reveal-key-value").value = key;
+  document.getElementById("reveal-key-label").textContent = `${schema} / ${source}`;
+  document.getElementById("reveal-key-copied").style.display = "none";
+  document.getElementById("reveal-key-modal").style.display = "flex";
+}
+
+function copyRevealKey() {
+  const input = document.getElementById("reveal-key-value");
+  navigator.clipboard.writeText(input.value).then(() => {
+    document.getElementById("reveal-key-copied").style.display = "block";
+  }).catch(() => {
+    input.select();
+    document.execCommand("copy");
+    document.getElementById("reveal-key-copied").style.display = "block";
+  });
+}
+
+async function revokeInboundKey(btn) {
+  const keyId = btn.dataset.keyId;
+  const sourceName = btn.dataset.sourceName;
+  if (!confirm(`Revoke this key for source '${sourceName}'? Any source system using it will immediately lose access.`)) return;
+  const res = await fetch(`/api/admin/inbound-keys/${keyId}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) { alert("Failed to revoke key."); return; }
+  loadInboundKeys();
+}

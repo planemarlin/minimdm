@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -9,6 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import Boolean, DateTime, Integer, Numeric, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -17,6 +19,7 @@ from app.core.limiter import limiter
 from app.core.permissions import check_permission, require_schema_access
 from app.database import get_db
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -264,6 +267,238 @@ async def import_records(
         "errors": errors,
         "total": len(rows),
     }
+
+
+def _inbound_upsert(
+    db, table, history_table, audit_table, source_name: str, mapped_data: dict,
+    reason: str, request, schema: str, obj: str, match_key: Optional[str] = None,
+) -> tuple[str, uuid.UUID]:
+    """Upsert an inbound webhook payload as a draft record.
+
+    Lookup order:
+    1. Primary: (_source_system, _source_id) compound key.
+    2. Fallback (if match_key is set and the value is present): match on the
+       named attribute. If exactly one record matches, it is "claimed" —
+       _source_system and _source_id are written onto the active record so that
+       future pushes hit the primary path. Ambiguous matches (>1) are logged and
+       fall through to creating a new draft.
+
+    Only fields present in mapped_data are written; all other fields on an
+    existing record are preserved (partial update semantics).
+
+    Returns ("created" | "updated", record_uuid).
+    """
+    from app.api.objects import _client_ip, _get_username, _integrity_error_message
+    now = datetime.now(timezone.utc)
+    values = _coerce_row(mapped_data, table)
+    values["_source_system"] = source_name
+
+    source_id_val = values.get("_source_id")
+    existing = None
+    if source_id_val is not None:
+        from sqlalchemy import case as sa_case
+        existing = db.execute(
+            select(table)
+            .where(table.c._source_system == source_name)
+            .where(table.c._source_id == source_id_val)
+            .where(table.c._deleted_at.is_(None))
+            .where(table.c._state != "retired")
+            .order_by(sa_case((table.c._state == "draft", 0), else_=1))
+        ).mappings().first()
+
+    # Fallback: match by business key when _source_id lookup missed
+    if existing is None and match_key and match_key in mapped_data:
+        match_val = mapped_data[match_key]
+        col = getattr(table.c, match_key, None)
+        if col is not None and match_val is not None:
+            candidates = db.execute(
+                select(table)
+                .where(col == match_val)
+                .where(table.c._deleted_at.is_(None))
+                .where(table.c._state != "retired")
+                .with_for_update()
+            ).mappings().all()
+
+            # Separate active records from their draft copies.
+            # One active record + any number of its own draft children is NOT
+            # ambiguous — it is one logical entity in the draft/publish lifecycle.
+            active_cands = [c for c in candidates if c.get("_state") == "active"]
+            draft_cands = [c for c in candidates if c.get("_state") == "draft"]
+
+            if len(active_cands) == 1:
+                active_cand = active_cands[0]
+                # All drafts must be children of this active record
+                unrelated = [d for d in draft_cands
+                             if d.get("_draft_of_id") != active_cand["_id"]]
+                if not unrelated:
+                    existing = active_cand
+                    # Claim: stamp _source_system (and _source_id if available) so
+                    # future pushes can use the primary lookup path.
+                    claim_vals: dict = {"_source_system": source_name}
+                    if source_id_val is not None:
+                        claim_vals["_source_id"] = source_id_val
+                    db.execute(
+                        table.update()
+                        .where(table.c._id == active_cand["_id"])
+                        .values(**claim_vals)
+                    )
+                else:
+                    logger.warning(
+                        "inbound %s/%s: match_key '%s'=%r matched %d records — "
+                        "ambiguous, creating new draft",
+                        schema, obj, match_key, match_val, len(candidates),
+                    )
+            elif len(active_cands) == 0 and len(draft_cands) == 1:
+                # Only a standalone draft (no active record yet)
+                existing = draft_cands[0]
+                claim_target_id = existing["_id"]
+                claim_vals = {"_source_system": source_name}
+                if source_id_val is not None:
+                    claim_vals["_source_id"] = source_id_val
+                db.execute(
+                    table.update()
+                    .where(table.c._id == claim_target_id)
+                    .values(**claim_vals)
+                )
+            elif len(candidates) > 0:
+                logger.warning(
+                    "inbound %s/%s: match_key '%s'=%r matched %d records — "
+                    "ambiguous, creating new draft",
+                    schema, obj, match_key, match_val, len(candidates),
+                )
+
+    user_name = _get_username(request)
+
+    if existing is None:
+        record_id = uuid.uuid4()
+        insert_values = {**values, "_id": record_id, "_created_at": now,
+                         "_updated_at": now, "_state": "draft"}
+        try:
+            db.execute(table.insert().values(**insert_values))
+        except IntegrityError as e:
+            db.rollback()
+            raise HTTPException(422, _integrity_error_message(e)) from e
+        audit_svc.write_history(
+            db, history_table, insert_values, version=1, action="INSERT",
+            valid_from=now, reason=reason, user_name=user_name,
+        )
+        audit_svc.log_change(
+            db, audit_table, schema, obj, record_id, "INSERT",
+            old_values=None, new_values=audit_svc._serialize(insert_values),
+            reason=reason, ip_address=_client_ip(request), user_name=user_name,
+        )
+        return "created", record_id
+
+    rid = existing["_id"]
+    existing_state = existing.get("_state", "active")
+    old_values = dict(existing)
+
+    if existing_state == "active":
+        existing_draft = db.execute(
+            select(table)
+            .where(table.c._draft_of_id == rid)
+            .where(table.c._state == "draft")
+            .where(table.c._deleted_at.is_(None))
+        ).mappings().first()
+
+        if existing_draft:
+            draft_id = existing_draft["_id"]
+            draft_updates = {**values, "_updated_at": now}
+            try:
+                db.execute(table.update().where(table.c._id == draft_id).values(**draft_updates))
+            except IntegrityError as e:
+                db.rollback()
+                from app.api.objects import _integrity_error_message
+                raise HTTPException(422, _integrity_error_message(e)) from e
+            current_version_row = db.execute(
+                select(history_table)
+                .where(history_table.c._id == draft_id)
+                .where(history_table.c._valid_to.is_(None))
+                .with_for_update()
+            ).mappings().first()
+            current_version = current_version_row["_version"] if current_version_row else 0
+            if current_version_row:
+                db.execute(
+                    history_table.update()
+                    .where(history_table.c._history_id == current_version_row["_history_id"])
+                    .values(_valid_to=now)
+                )
+            new_draft_values = {**dict(existing_draft), **draft_updates}
+            audit_svc.write_history(
+                db, history_table, new_draft_values, version=current_version + 1,
+                action="UPDATE", valid_from=now, reason=reason, user_name=user_name,
+            )
+            audit_svc.log_change(
+                db, audit_table, schema, obj, draft_id, "UPDATE",
+                old_values=audit_svc._serialize(dict(existing_draft)),
+                new_values=audit_svc._serialize(new_draft_values),
+                reason=reason, ip_address=_client_ip(request), user_name=user_name,
+            )
+            return "updated", draft_id
+
+        # No existing draft — create draft copy, overlaying only the mapped fields
+        draft_id = uuid.uuid4()
+        draft_values = {
+            k: v for k, v in old_values.items()
+            if k not in ("_id", "_created_at", "_updated_at", "_deleted_at",
+                         "_state", "_draft_of_id")
+        }
+        draft_values.update(values)
+        draft_values["_id"] = draft_id
+        draft_values["_created_at"] = now
+        draft_values["_updated_at"] = now
+        draft_values["_deleted_at"] = None
+        draft_values["_state"] = "draft"
+        draft_values["_draft_of_id"] = rid
+        try:
+            db.execute(table.insert().values(**draft_values))
+        except IntegrityError as e:
+            db.rollback()
+            raise HTTPException(422, _integrity_error_message(e)) from e
+        audit_svc.write_history(
+            db, history_table, draft_values, version=1, action="INSERT",
+            valid_from=now, reason=reason, user_name=user_name,
+        )
+        audit_svc.log_change(
+            db, audit_table, schema, obj, draft_id, "DRAFT_CREATED",
+            old_values=None, new_values=audit_svc._serialize(draft_values),
+            reason=reason, ip_address=_client_ip(request), user_name=user_name,
+        )
+        return "updated", draft_id
+
+    # Existing record is a draft — update it in place (only mapped fields)
+    updates = {**values, "_updated_at": now}
+    current_version_row = db.execute(
+        select(history_table)
+        .where(history_table.c._id == rid)
+        .where(history_table.c._valid_to.is_(None))
+        .with_for_update()
+    ).mappings().first()
+    current_version = current_version_row["_version"] if current_version_row else 0
+    if current_version_row:
+        db.execute(
+            history_table.update()
+            .where(history_table.c._history_id == current_version_row["_history_id"])
+            .values(_valid_to=now)
+        )
+    try:
+        db.execute(table.update().where(table.c._id == rid).values(**updates))
+    except IntegrityError as e:
+        db.rollback()
+        from app.api.objects import _integrity_error_message
+        raise HTTPException(422, _integrity_error_message(e)) from e
+    new_values = {**old_values, **updates}
+    audit_svc.write_history(
+        db, history_table, new_values, version=current_version + 1,
+        action="UPDATE", valid_from=now, reason=reason, user_name=user_name,
+    )
+    audit_svc.log_change(
+        db, audit_table, schema, obj, rid, "UPDATE",
+        old_values=audit_svc._serialize(old_values),
+        new_values=audit_svc._serialize(new_values),
+        reason=reason, ip_address=_client_ip(request), user_name=user_name,
+    )
+    return "updated", rid
 
 
 def _coerce_value(val: str, col_type):

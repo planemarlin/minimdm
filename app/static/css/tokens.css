@@ -79,11 +79,15 @@
   padding: 22px 0;
 }
 .mdm-side-brand {
+  display: block;
   padding: 0 22px 18px;
   font-size: 19px;
   font-weight: 700;
   letter-spacing: -0.01em;
+  text-decoration: none;
+  color: var(--mdm-on-dark);
 }
+.mdm-side-brand:hover { text-decoration: none; }
 .mdm-side-group { padding: 14px 0 4px; }
 .mdm-side-group-label {
   padding: 0 22px 6px;

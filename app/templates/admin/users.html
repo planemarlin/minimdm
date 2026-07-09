@@ -11,11 +11,23 @@
 <div class="mdm-page-head">
   <div>
     <h1 class="mdm-page-title">User Management</h1>
-    <div class="mdm-page-sub" id="users-meta">
+  </div>
+</div>
+
+<div class="mdm-toolbar">
+  <div class="mdm-seg">
+    <button class="is-on" id="tab-users-btn" onclick="switchUsersTab('users')">Users</button>
+    <button id="tab-keys-btn" onclick="switchUsersTab('keys')">Inbound Keys</button>
+  </div>
+</div>
+
+<!-- ===== Users tab ===== -->
+<div id="tab-users">
+  <div class="mdm-toolbar">
+    <div id="users-meta" style="font-size:.85rem;color:var(--mdm-mute)">
       <span class="spinner" style="width:14px;height:14px"></span>
     </div>
-  </div>
-  <div class="mdm-page-actions">
+    <div style="flex:1"></div>
     <div class="mdm-search" style="width:220px">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
       <input type="search" id="user-search" placeholder="Search users…" oninput="filterUsers()" />
@@ -25,98 +37,189 @@
       New user
     </button>
   </div>
-</div>
 
-<div class="mdm-table-wrap">
-  <table class="mdm-table" id="users-table">
-    <thead>
-      <tr>
-        <th style="width:2rem"></th>
-        <th class="th-sortable" id="th-col-username" onclick="setUserSort('username')">Username <span class="th-sort-icon"></span></th>
-        <th class="th-sortable" id="th-col-role" onclick="setUserSort('role')">Type <span class="th-sort-icon"></span></th>
-        <th class="th-sortable" id="th-col-status" onclick="setUserSort('status')">Status <span class="th-sort-icon"></span></th>
-        <th class="th-sortable" id="th-col-created" onclick="setUserSort('created')">Created <span class="th-sort-icon"></span></th>
-        <th class="col-actions"></th>
-      </tr>
-    </thead>
-    <tbody id="users-tbody">
-      <tr><td colspan="6" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
-    </tbody>
-  </table>
-</div>
+  <div class="mdm-table-wrap">
+    <table class="mdm-table" id="users-table">
+      <thead>
+        <tr>
+          <th style="width:2rem"></th>
+          <th class="th-sortable" id="th-col-username" onclick="setUserSort('username')">Username <span class="th-sort-icon"></span></th>
+          <th class="th-sortable" id="th-col-role" onclick="setUserSort('role')">Type <span class="th-sort-icon"></span></th>
+          <th class="th-sortable" id="th-col-status" onclick="setUserSort('status')">Status <span class="th-sort-icon"></span></th>
+          <th class="th-sortable" id="th-col-created" onclick="setUserSort('created')">Created <span class="th-sort-icon"></span></th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody id="users-tbody">
+        <tr><td colspan="6" style="text-align:center;padding:2rem"><span class="spinner"></span></td></tr>
+      </tbody>
+    </table>
+  </div>
 
-<!-- New user modal -->
-<div class="modal-backdrop" id="new-user-modal" style="display:none">
-  <div class="modal">
-    <div class="modal__header">
-      <h2 class="modal__title">New User</h2>
-      <button class="modal__close" onclick="closeModal()">&times;</button>
+  <!-- New user modal -->
+  <div class="modal-backdrop" id="new-user-modal" style="display:none">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title">New User</h2>
+        <button class="modal__close" onclick="closeModal()">&times;</button>
+      </div>
+      <form id="new-user-form" onsubmit="submitNewUser(event)">
+        <div class="form-group">
+          <label for="nu-username">Username</label>
+          <input type="text" id="nu-username" name="username" required autocomplete="off" />
+        </div>
+        <div class="form-group">
+          <label for="nu-password">Password</label>
+          <input type="password" id="nu-password" name="password" required autocomplete="new-password" />
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="nu-admin" name="is_admin" />
+            Administrator
+          </label>
+        </div>
+        <div id="new-user-error" class="alert alert-error" style="display:none"></div>
+        <div class="form-actions">
+          <button type="button" class="mdm-btn" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="mdm-btn mdm-btn-primary">Create user</button>
+        </div>
+      </form>
     </div>
-    <form id="new-user-form" onsubmit="submitNewUser(event)">
-      <div class="form-group">
-        <label for="nu-username">Username</label>
-        <input type="text" id="nu-username" name="username" required autocomplete="off" />
+  </div>
+
+  <!-- Change password modal -->
+  <div class="modal-backdrop" id="pw-modal" style="display:none">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title">Change Password</h2>
+        <button class="modal__close" onclick="closeModal()">&times;</button>
       </div>
-      <div class="form-group">
-        <label for="nu-password">Password</label>
-        <input type="password" id="nu-password" name="password" required autocomplete="new-password" />
+      <form id="pw-form" onsubmit="submitPassword(event)">
+        <input type="hidden" id="pw-user-id" />
+        <div class="form-group">
+          <label for="pw-new">New Password</label>
+          <input type="password" id="pw-new" required autocomplete="new-password" />
+        </div>
+        <div id="pw-error" class="alert alert-error" style="display:none"></div>
+        <div class="form-actions">
+          <button type="button" class="mdm-btn" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="mdm-btn mdm-btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Reset link modal -->
+  <div class="modal-backdrop" id="reset-link-modal" style="display:none">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title">Password Reset Link</h2>
+        <button class="modal__close" onclick="closeModal()">&times;</button>
       </div>
-      <div class="form-group">
-        <label class="checkbox-label">
-          <input type="checkbox" id="nu-admin" name="is_admin" />
-          Administrator
-        </label>
+      <p style="margin-bottom:.75rem;font-size:.9rem;color:var(--mdm-mute)">
+        Copy this link and send it to the user. It expires in 24 hours and can only be used once.
+      </p>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <input type="text" id="reset-link-url" readonly style="flex:1;font-size:.8rem;font-family:monospace" />
+        <button class="mdm-btn mdm-btn-primary" onclick="copyResetLink()">Copy</button>
       </div>
-      <div id="new-user-error" class="alert alert-error" style="display:none"></div>
-      <div class="form-actions">
-        <button type="button" class="mdm-btn" onclick="closeModal()">Cancel</button>
-        <button type="submit" class="mdm-btn mdm-btn-primary">Create user</button>
+      <div id="reset-link-copied" style="display:none;font-size:.8rem;color:var(--mdm-green);margin-top:.4rem">
+        Copied to clipboard!
       </div>
-    </form>
+      <div class="form-actions" style="margin-top:1rem">
+        <button class="mdm-btn" onclick="closeModal()">Close</button>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- Change password modal -->
-<div class="modal-backdrop" id="pw-modal" style="display:none">
-  <div class="modal">
-    <div class="modal__header">
-      <h2 class="modal__title">Change Password</h2>
-      <button class="modal__close" onclick="closeModal()">&times;</button>
-    </div>
-    <form id="pw-form" onsubmit="submitPassword(event)">
-      <input type="hidden" id="pw-user-id" />
-      <div class="form-group">
-        <label for="pw-new">New Password</label>
-        <input type="password" id="pw-new" required autocomplete="new-password" />
-      </div>
-      <div id="pw-error" class="alert alert-error" style="display:none"></div>
-      <div class="form-actions">
-        <button type="button" class="mdm-btn" onclick="closeModal()">Cancel</button>
-        <button type="submit" class="mdm-btn mdm-btn-primary">Save</button>
-      </div>
-    </form>
+<!-- ===== Inbound Keys tab ===== -->
+<div id="tab-keys" style="display:none">
+  <div class="mdm-toolbar">
+    <div style="flex:1"></div>
+    <button class="mdm-btn mdm-btn-primary" onclick="openGenKeyModal()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+      Generate Key
+    </button>
   </div>
-</div>
 
-<!-- Reset link modal -->
-<div class="modal-backdrop" id="reset-link-modal" style="display:none">
-  <div class="modal">
-    <div class="modal__header">
-      <h2 class="modal__title">Password Reset Link</h2>
-      <button class="modal__close" onclick="closeModal()">&times;</button>
+  <div class="mdm-table-wrap">
+    <table class="mdm-table" id="keys-table">
+      <thead>
+        <tr>
+          <th>Schema</th>
+          <th>Source</th>
+          <th>Key Prefix</th>
+          <th>Description</th>
+          <th>Created</th>
+          <th>Last Used</th>
+          <th>Status</th>
+          <th class="col-actions"></th>
+        </tr>
+      </thead>
+      <tbody id="keys-tbody">
+        <tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--mdm-mute)">Switch to this tab to load keys.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Generate Key modal -->
+  <div class="modal-backdrop" id="gen-key-modal" style="display:none">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title">Generate Inbound Key</h2>
+        <button class="modal__close" onclick="closeModal()">&times;</button>
+      </div>
+      <form id="gen-key-form" onsubmit="submitGenKey(event)">
+        <div class="form-group">
+          <label for="gk-schema">Schema</label>
+          <select class="mdm-select" id="gk-schema" style="width:100%" onchange="onGenKeySchemaChange()" required>
+            <option value="">Select schema…</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="gk-source">Source</label>
+          <select class="mdm-select" id="gk-source" style="width:100%" required disabled onchange="onGenKeySourceChange()">
+            <option value="">Select schema first…</option>
+          </select>
+          <div id="gk-scope-note" style="display:none;margin-top:6px;padding:8px 10px;background:var(--mdm-blue-tint);border-radius:6px;font-size:12.5px;color:var(--mdm-ink-2)"></div>
+        </div>
+        <div class="form-group">
+          <label for="gk-description">Description <span style="color:var(--mdm-mute);font-weight:400">(optional)</span></label>
+          <input type="text" id="gk-description" placeholder="e.g. Production ERP webhook" autocomplete="off" />
+        </div>
+        <div id="gen-key-error" class="alert alert-error" style="display:none"></div>
+        <div class="form-actions">
+          <button type="button" class="mdm-btn" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="mdm-btn mdm-btn-primary">Generate</button>
+        </div>
+      </form>
     </div>
-    <p style="margin-bottom:.75rem;font-size:.9rem;color:var(--mdm-mute)">
-      Copy this link and send it to the user. It expires in 24 hours and can only be used once.
-    </p>
-    <div style="display:flex;gap:.5rem;align-items:center">
-      <input type="text" id="reset-link-url" readonly style="flex:1;font-size:.8rem;font-family:monospace" />
-      <button class="mdm-btn mdm-btn-primary" onclick="copyResetLink()">Copy</button>
-    </div>
-    <div id="reset-link-copied" style="display:none;font-size:.8rem;color:var(--mdm-green);margin-top:.4rem">
-      Copied to clipboard!
-    </div>
-    <div class="form-actions" style="margin-top:1rem">
-      <button class="mdm-btn" onclick="closeModal()">Close</button>
+  </div>
+
+  <!-- Reveal Key modal (shown once after generation) -->
+  <div class="modal-backdrop" id="reveal-key-modal" style="display:none">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title">API Key Generated</h2>
+        <button class="modal__close" onclick="closeModal()">&times;</button>
+      </div>
+      <p style="margin-bottom:.5rem;font-size:.9rem;color:var(--mdm-mute)">
+        Key for <strong id="reveal-key-label"></strong>
+      </p>
+      <p style="margin-bottom:.75rem;font-size:.85rem;color:var(--mdm-red);font-weight:500">
+        Copy this key now — it will not be shown again.
+      </p>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <input type="text" id="reveal-key-value" readonly style="flex:1;font-size:.8rem;font-family:monospace" />
+        <button class="mdm-btn mdm-btn-primary" onclick="copyRevealKey()">Copy</button>
+      </div>
+      <div id="reveal-key-copied" style="display:none;font-size:.8rem;color:var(--mdm-green);margin-top:.4rem">
+        Copied to clipboard!
+      </div>
+      <div class="form-actions" style="margin-top:1rem">
+        <button class="mdm-btn" onclick="closeModal()">Close</button>
+      </div>
     </div>
   </div>
 </div>

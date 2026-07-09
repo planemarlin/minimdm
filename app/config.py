@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://minimdm:minimdm@localhost:5432/minimdm"
     config_file: str = "config/minimdm.yaml"
     app_name: str = "miniMDM"
-    app_version: str = "0.6.3"
+    app_version: str = "0.7.0"
     debug: bool = False
     host: str = "0.0.0.0"  # nosec B104 — intentional; bind address is configured by the operator
     port: int = 8000
@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     admin_password: str = ""
     # Set to True when serving over HTTPS to add the Secure flag to the session cookie
     secure_cookie: bool = False
+
+    # Set to True when miniMDM runs behind a trusted reverse proxy that sets
+    # X-Forwarded-For. When False (default), the direct TCP peer address is
+    # used for audit log IP recording to prevent header spoofing.
+    trusted_proxy: bool = False
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

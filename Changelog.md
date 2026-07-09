@@ -6,6 +6,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.7.0] – 2026-07-09
+
+### Added
+- **Inbound webhook receiver**: external source systems can push records into miniMDM via `POST /api/inbound/{schema}/{object}` authenticated with an API key (`X-Api-Key` header); all inbound records always land as **drafts** — the lifecycle is never bypassed; field mapping between the source payload and miniMDM attributes is declared in the YAML config per object under `inbound_sources`
+- **`inbound_sources` config block**: new optional object-level config key; each entry has a `name` (used as `_source_system`), a `field_map` dict mapping source field names to miniMDM attribute keys, and an optional `match_key`; at least one mapping to `_source_id` is required (validated at startup) to enable compound upsert matching; source names must be unique within an object and valid identifiers
+- **`match_key` fallback matching**: an optional attribute name on each `inbound_sources` entry; when the primary lookup by `_source_system` + `_source_id` finds no record, miniMDM falls back to matching on this business-key attribute (e.g. `code`); if exactly one record matches it is **claimed** — `_source_system` and `_source_id` are stamped onto the active record immediately so future pushes use the fast primary path; if more than one record matches the fallback is skipped and a new draft is created; using a `unique: true` attribute as `match_key` eliminates ambiguity entirely
+- **Partial field update semantics for inbound pushes**: only the fields present in the `field_map` are written on an upsert; any attributes the publisher has enriched that are outside the mapping (e.g. contact email, rating) are preserved on the draft without being overwritten by the source; `_source_system` is always forced to the config `name` and cannot be overridden by the payload
+- **Inbound API key management**: API keys are generated as 43-character `secrets.token_urlsafe(32)` values, stored as SHA-256 hashes in the new `_system.inbound_keys` table, and scoped to a schema and source name; the raw key is shown **once** at generation time; `hmac.compare_digest` is used for constant-time comparison; keys can be revoked (soft-deleted) at any time
+- **Inbound Keys admin UI**: new tab on the Users admin page (`/admin/users`) lists all API keys with schema, source name, key prefix, last-used timestamp, and status; Generate Key button opens a modal to select schema, source, and optional description; raw key shown once in a copyable modal after generation; Revoke button per row
+- **Inbound Key Management API** (Admin only): `GET /api/admin/inbound-keys` (list all keys), `GET /api/admin/inbound-keys/sources` (list configured sources from YAML), `POST /api/admin/inbound-keys` (generate and store key, returns raw key once), `DELETE /api/admin/inbound-keys/{key_id}` (revoke)
+- **Alembic migration 0003**: creates `_system.inbound_keys` with `CREATE TABLE IF NOT EXISTS` for idempotency — safe to run against databases where `sync_schema` created the table at app startup before the migration was applied
+- **`GET /api/pending-count`** endpoint: returns the total number of pending draft records across all schemas accessible to the current user; used by the publisher notification badge
+- **Publisher pending-draft badge**: top navigation bar shows a count of pending draft records for all authenticated users with access to at least one schema; badge is hidden when the count is zero; links to the new Pending Drafts page
+- **Pending Drafts page** (`/pending`): server-rendered list of all draft records across all accessible schemas; records are grouped by object type with the first three attributes, source system, and last-updated timestamp shown; each row is clickable and links to the record detail page; empty state shown when no drafts exist
+- **Logo clickable and dual-colour**: the miniMDM brand in the sidebar now links to the home page; "mini" is rendered bold white and "MDM" in a muted tone matching the minimdm.dev brand treatment; hover underline suppressed
+- **Audit log filter row**: the three filter dropdowns (All Schemas, All Objects, All Actions) on the Data Changes tab now sit in a single inline flex row instead of stacking full-width, giving more vertical space to the log table
+- **Inbound call audit events**: every successful inbound push now writes an `INBOUND_CALL` entry to the Auth Events audit log (`_system`/`inbound`) recording the target schema, object, and outcome (`created`/`updated`); failed authentication attempts write `INBOUND_CALL_FAILED` so revoked keys or misconfigured clients are visible to admins without checking server logs
+- **Expanded audit log action filters**: the Data Changes action filter now lists all seven record lifecycle actions (`INSERT`, `UPDATE`, `DELETE`, `PUBLISH`, `RETIRE`, `DRAFT_CREATED`, `REVERT`) each with a short description; the Auth Events action filter lists all thirteen auth/admin actions grouped into Session, User management, Permissions, and Inbound keys sections; all action badges are colour-coded
+- **Key scope note in Generate Key modal**: when a source name is selected in the Inbound Keys generation modal, a scope note appears showing exactly which objects that source name has push access to in the chosen schema
+- **Quick Reference card layout**: the help modal (? button) is redesigned as a two-column card grid; each topic (Records, Lifecycle states, Source & provenance, History & Revert, Reason for change, Import & Export, Audit log, Access control) is its own card with a blue left-border accent and blue title
+
+### Security
+- **Rate limiting on inbound endpoint**: `POST /api/inbound/{schema}/{obj}` is now limited to 120 requests per minute per IP using the same SlowAPI limiter applied to other write endpoints; requests over the limit receive `429 Too Many Requests`
+- **Request body size limit on inbound endpoint**: body size is checked against `MAX_UPLOAD_SIZE` (default 10 MB) before JSON parsing — oversized requests receive `413` immediately, preventing memory exhaustion from large payloads
+- **`source_name` identifier validation in key creation API**: `POST /api/admin/inbound-keys` now validates that `source_name` matches the same `^[a-zA-Z_][a-zA-Z0-9_]*$` identifier pattern enforced by the YAML parser, closing a stored-XSS gap in the admin UI
+- **Revoke button XSS hardening**: the Revoke button in the Inbound Keys table now uses `data-key-id` / `data-source-name` attributes instead of interpolating values directly into an `onclick` string, eliminating the injection vector for attacker-controlled `source_name` values
+- **Row-level lock on `match_key` candidate query**: the `SELECT` that finds records by business key in the match_key fallback path now uses `WITH FOR UPDATE`, preventing a TOCTOU race where two concurrent pushes could both see zero candidates and create duplicate drafts
+- **DB index on `inbound_keys (schema_name, is_active)`**: key verification no longer requires a full table scan as the number of keys grows
+- **`X-Forwarded-For` spoofing**: IP address recording in the audit log is now controlled by `TRUSTED_PROXY` (default `false`); when `false` the direct TCP peer address is used and the header is ignored, preventing callers from injecting arbitrary IPs into audit log entries; set `TRUSTED_PROXY=true` when running behind a trusted reverse proxy
+- **Shared API key hash and IP utilities**: `hash_api_key()` extracted to `app/core/keys.py` (previously duplicated in `admin_api.py` and `inbound.py`); `client_ip()` extracted to `app/core/network.py` (previously duplicated in `objects.py`, `admin_api.py`, and `auth_api.py`) and now respects the `TRUSTED_PROXY` setting
+
+### Tests
+- **6 new inbound security tests**: `test_generate_key_invalid_source_name`, `test_inbound_oversized_body` (413), `test_inbound_invalid_json` (400), `test_inbound_non_object_json` (400), `test_inbound_call_audit_event`, `test_inbound_call_failed_audit_event` — `tests/test_api_inbound.py` now has 29 cases
+
+### Fixed
+- **`table_manager.py` server_default regex**: the injection guard `^'[a-z_]+'$` did not allow the SQL boolean literal `true`, causing an `AssertionError` on startup when the new `is_active` column (with `server_default="true"`) was encountered; regex widened to `^(?:'[a-z_]+'|true|false)$`
+- **Inbound audit log test**: `GET /api/audit` returns a paginated envelope `{"records": [...], "total": ...}` — the test was iterating over the top-level dict keys (strings) instead of unwrapping `["records"]`
+
 ## [0.6.3] – 2026-06-27
 
 ### Security

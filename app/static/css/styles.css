@@ -86,6 +86,26 @@ a:hover { text-decoration: underline; }
 .help-body h3 { font-size: .9rem; margin: 1rem 0 .25rem; }
 .help-body p { font-size: .85rem; color: var(--mdm-mute); margin: 0; }
 .help-body { max-height: 70vh; overflow-y: auto; }
+.help-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: .5rem;
+}
+.help-card {
+  background: var(--mdm-surface-2);
+  border: 1px solid var(--mdm-border);
+  border-left: 3px solid var(--mdm-blue);
+  border-radius: var(--mdm-r-3);
+  padding: 12px 14px;
+}
+.help-card p { font-size: .82rem; color: var(--mdm-mute); margin: 0; }
+.help-card-title {
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--mdm-blue);
+  margin-bottom: 5px;
+}
 
 /* ===== Page title ===== */
 .page-header {

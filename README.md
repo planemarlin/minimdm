@@ -11,6 +11,7 @@ A minimal, lightweight, open-source **Master Data Management** application with 
 - Full record versioning with the ability to view and revert to any historical version
 - Complete audit log: what changed, who changed it, when, and why
 - **Data ownership & stewardship**: optional `owner` and `steward` fields on each object type for governance metadata; displayed in the UI alongside the object name
+- **Inbound webhook receiver**: external systems (ERP, CRM, etc.) can push records via `POST /api/inbound/{schema}/{object}`; field mapping is configured in YAML per source; all inbound records land as drafts and follow the normal lifecycle; API keys managed in the Admin UI
 - JWT-based authentication with four roles: Viewer, Editor, Publisher, and Admin
 - Schema-based access control: grant read, write, and publish access per schema per user
 - User management UI and API for creating and managing accounts

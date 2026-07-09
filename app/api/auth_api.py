@@ -33,10 +33,8 @@ _ZERO_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    from app.core.network import client_ip
+    return client_ip(request)
 
 
 def _log_auth(request: Request, action: str, user_id: uuid.UUID, username: str, reason: str = None):
