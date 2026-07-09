@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
-## [0.7.0] – Unreleased
+## [0.7.0] – 2026-07-09
 
 ### Added
 - **Inbound webhook receiver**: external source systems can push records into miniMDM via `POST /api/inbound/{schema}/{object}` authenticated with an API key (`X-Api-Key` header); all inbound records always land as **drafts** — the lifecycle is never bypassed; field mapping between the source payload and miniMDM attributes is declared in the YAML config per object under `inbound_sources`
