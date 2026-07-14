@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Docs
+- **Codebase analysis backlog**: `docs/known_issues.md` now tracks a punch list of dead code, tooling gaps (missing `mypy`/`pyright`, minimal `ruff` rule selection, no CI coverage gate, missing Dockerfile `HEALTHCHECK`), and architecture cleanups (duplicated lifecycle-transition logic in `app/api/objects.py`, unsplit `app.js`, business logic embedded in `app/main.py` route handlers) identified during a full 2026 architecture/best-practices review
+- **Test coverage gap audit**: `docs/testing.md` now documents known gaps ahead of the next release, found by cross-checking the v0.5.0 manual test plan and a broader sweep against the automated suite — most notably that the publish/retire permission boundary (`can_publish`) has zero test coverage anywhere, plus a set of UI-only gaps (behavior tested at the API level but never driven through a browser) and untested backend behaviors (rate limiting, security headers, the webhook SSRF guard, config-reload validation errors); also corrects a stale claim that `test_api_permissions.py` covered "Editors cannot publish"
+
 ## [0.7.0] – 2026-07-09
 
 ### Added
