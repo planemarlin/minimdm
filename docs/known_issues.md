@@ -126,4 +126,28 @@ Alembic manages all `_system` schema tables. Migration `0001` creates the five s
 
 ## Open Issues
 
-There are no open issues at this time.
+### Improvements from 2026 codebase analysis
+
+Identified during a full architecture/best-practices review (branch `chore/codebase-analysis-2026`). None are urgent — the codebase is already ahead of average on security and migrations — but these are worth doing deliberately.
+
+**Dead code**
+
+1. Remove four orphaned table-bootstrap helpers in `app/core/`, superseded by Alembic migration `0001_initial_system_tables.py`: `auth.py`'s `ensure_token_blocklist_table()`, `ensure_password_reset_tokens_table()`, `ensure_users_table()`, and `permissions.py`'s `ensure_permissions_table()`. Verified zero call sites anywhere in `app/` or `tests/`.
+
+**Tooling — high value, low effort**
+
+2. Expand the `ruff` rule selection beyond `E, F, W, I` to include `B` (bugbear), `UP` (pyupgrade), `SIM`, `C4` — cheap to adopt given the existing lint gate in CI.
+3. Add `mypy`/`pyright` as a dev dependency and CI job. Type hints are already used throughout; nothing currently enforces them.
+4. Add a coverage floor to the CI test job (`pytest --cov=app --cov-fail-under=NN`); `pytest-cov` is installed but unused in CI today.
+5. Add a `HEALTHCHECK` to the Dockerfile using the existing `/health` endpoint; simplify the install step to `uv sync --frozen --no-dev`.
+
+**Architecture — medium effort**
+
+6. Extract the repeated "close history row → write history → audit log → commit → webhook" sequence in `app/api/objects.py` (duplicated near-identically across create/update/delete/revert/publish/retire, ~500 lines) into a single internal helper.
+7. Split `app/static/js/app.js` (1755 lines, ~77 global functions) into native ES modules (`<script type="module">`, no build step needed) — e.g. `list.js`, `detail.js`, `admin.js`, `audit.js`, shared `api.js`.
+8. Move business logic currently embedded in `app/main.py` route handlers (e.g. `pending_drafts()`'s per-object DB query loop) into `table_manager.py` or a small service module, consistent with how `objects.py`/`import_export.py` are already separated out.
+
+**Decisions worth making explicitly, not urgent**
+
+9. Decide and document an API versioning stance (`/api/` has none today) before inbound webhook integrations proliferate.
+10. `check_permission()` opens a fresh SQLAlchemy session per call, up to twice per request. Fine at current scale; revisit if permission checks become a hot path.
