@@ -211,7 +211,9 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Setting a permission creates or updates the row (all three flags: read/write/publish)
 - Deleting a permission removes the row
 - Non-admin users are blocked from schemas they have no grant for
-- Read-only users cannot write; Editors cannot publish
+- Read-only users cannot write
+
+> **Note:** the publish/retire authorization boundary (`can_publish`) is not yet covered — see Known test gaps below.
 
 **`test_api_import_export.py`**
 - Export CSV, TSV, and JSON (empty table and with data)
@@ -249,3 +251,37 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 ## Test isolation
 
 Each integration test that creates or modifies data requests the `clean_records` fixture, which deletes all rows from the test schema tables before the test runs. The session-scoped `client` fixture creates the schema once for the whole run and drops it on teardown. Tests that only read HTML (template tests) do not need `clean_records`.
+
+## Known test gaps (pre-next-release)
+
+Found via a full coverage audit: the v0.5.0 manual test plan cross-checked against the automated suite, plus a broader sweep of API/UI surfaces. To be closed before the next release. Grouped by priority.
+
+### Publish/retire authorization — untested, highest priority
+`can_publish` has zero references anywhere in `tests/`. No test verifies:
+- A write-only (Editor) permission is blocked from `/publish` or `/retire` (expect 403)
+- A `can_publish=true` user succeeds on both
+- `allow_direct_active_import: false` still blocks a Publisher (role doesn't override the object-level flag)
+
+### Backend behavior — no coverage at any level
+- **Rate limiting**: none of the 10/min login, 10/min import, or 120/min inbound limits are ever driven to a 429.
+- **Security headers**: `SecurityHeadersMiddleware` output (CSP, `X-Frame-Options`, `X-Content-Type-Options`) is never asserted.
+- **Webhook SSRF guard**: `_is_private_ip()` in `schema_loader.py`, which blocks webhook URLs targeting private/loopback addresses, has zero test exercise.
+- **`POST /api/config/reload` validation path**: only the admin/auth boundary (401/403) is tested — no test posts malformed YAML or an invalid parent/reference and checks the validation-error response.
+- **Natural JWT/reset-token expiry**: explicit revocation (logout) and reset-token reuse-after-consumption are both tested; a token that's simply timed out (past `exp`) is not.
+- **Webhook non-delivery on draft creation**: the existing test for `requires_draft` only asserts `_state == "draft"`; it doesn't verify `record.created` was actually suppressed.
+
+### UI copy/interaction — behavior exists and may be API-tested, but never driven through a browser
+- State filter label "Active (Master)"; detail-page state badges are covered, the filter label text is not.
+- Help modal (Lifecycle states / Source & provenance / Import & Export sections) — no test ever opens it.
+- Audit log user-filter typing/clearing, on both Data Changes and Auth Events tabs (only the underlying `?user=` query param is tested).
+- Source metadata strip text ("Source: erp / ERP-001") on the detail page.
+- "Show deleted" checkbox toggle (the `include_deleted` API param is tested).
+- Inbound-keys admin UI — Keys tab, generate-key modal, revoke button (the API is fully tested in `test_api_inbound.py`).
+- Password-reset form driven end-to-end through the browser (the API flow, including reuse rejection, is solidly tested).
+- Column-header click-to-sort (API sorting itself is tested in `test_api_query_params.py`).
+- Child-record panels and reference dropdowns on detail/form pages.
+- Client-side numeric `badInput` validation before submit.
+- Deleted-reference display-name resolution and "deleted" badge when a record references a soft-deleted record — the `include_deleted` primitive is tested on the record's own endpoint, but not the display-time resolution behavior on a referencing record.
+
+### Documentation debt
+This table previously claimed `test_api_permissions.py` covers "Editors cannot publish" — it doesn't (see above). If you add tests for a gap listed here, update the relevant table entry in the same PR so this file stays accurate.
