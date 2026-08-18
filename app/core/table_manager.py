@@ -381,19 +381,28 @@ class TableManager:
                                         f'ALTER TABLE "{schema_name}"."{obj_key}" '
                                         f'DROP CONSTRAINT "{old_cname}"'
                                     ))
-                            # Partial unique index: only active records participate.
-                            # Drafts may share a value with their master active record.
+                            # Partial unique index: only active, non-deleted records
+                            # participate. Drafts may share a value with their master
+                            # active record, and a deleted record must free up its
+                            # value for reuse.
                             idx_row = conn.execute(text("""
-                                SELECT 1 FROM pg_indexes
+                                SELECT indexdef FROM pg_indexes
                                 WHERE schemaname = :s
                                   AND tablename  = :t
                                   AND indexname  = :i
                             """), {"s": schema_name, "t": obj_key, "i": idx_name}).first()
+                            if idx_row and "_deleted_at" not in idx_row[0]:
+                                # Predates the _deleted_at exclusion (issue #44):
+                                # rebuild with the corrected predicate.
+                                conn.execute(text(
+                                    f'DROP INDEX "{schema_name}"."{idx_name}"'
+                                ))
+                                idx_row = None
                             if not idx_row:
                                 conn.execute(text(
                                     f'CREATE UNIQUE INDEX "{idx_name}" '
                                     f'ON "{schema_name}"."{obj_key}" ("{attr_key}") '
-                                    f"WHERE _state = 'active'"
+                                    f"WHERE _state = 'active' AND _deleted_at IS NULL"
                                 ))
             conn.commit()
 

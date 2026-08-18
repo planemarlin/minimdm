@@ -499,6 +499,15 @@ def test_unique_constraint_rejects_duplicate_value(client):
     assert res.status_code == 422
 
 
+def test_unique_constraint_allows_reuse_after_delete(client):
+    """A deleted record must free up its unique value for reuse (issue #44)."""
+    rid = client.post("/api/records/test/company", json={"code": "UNIQ02"}).json()["id"]
+    client.delete(f"/api/records/test/company/{rid}")
+
+    res = client.post("/api/records/test/company", json={"code": "UNIQ02"})
+    assert res.status_code == 201
+
+
 def test_parent_fk_rejects_nonexistent_parent(client):
     """Creating a division with a non-existent company ID must fail."""
     fake_id = str(uuid.uuid4())
