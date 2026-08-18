@@ -4,7 +4,7 @@ All notable changes to miniMDM are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.1] – 2026-08-18
 
 ### Fixed
 - **Unique constraint ignored soft-deleted records**: attributes marked `unique: true` are enforced via a partial index scoped to `_state = 'active'`, but soft-deleted records keep `_state = 'active'` (only `_deleted_at` is set), so deleting a record and re-creating one with the same value raised a duplicate-key error; the index predicate now also requires `_deleted_at IS NULL`, and `_ensure_constraints()` detects indexes built under the old predicate and rebuilds them on startup so existing deployments self-heal without a manual migration; new regression test `test_unique_constraint_allows_reuse_after_delete` in `tests/test_api_records.py` ([#44](../../issues/44))
