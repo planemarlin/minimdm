@@ -114,6 +114,8 @@ All tests skip automatically when `TEST_DATABASE_URL` is not set, consistent wit
 - Clicking Export CSV in the Tools menu triggers a `.csv` file download
 - Uploading a CSV file via the import modal adds records to the list
 - Uploading a TSV file via the import modal adds records to the list
+- A non-JSON error response from the import endpoint shows an error message instead of hanging on "Importing…" forever
+- Uploading a non-UTF-8 CSV file shows a clear error message instead of hanging
 
 **`test_admin.py`**
 - User Management page renders with the correct heading
@@ -224,6 +226,7 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Upsert creates correct history entries for updated records
 - Import with `initial_state=draft` creates records as drafts
 - 400 responses for invalid JSON and unknown upsert keys
+- 400 response (not an unhandled `UnicodeDecodeError`) for non-UTF-8 CSV and UTF-16 TSV files
 
 **`test_api_query_params.py`**
 - `?role=master` returns only active (golden) records

@@ -159,6 +159,26 @@ def test_import_json_non_list_returns_400(client):
     assert res.status_code == 400
 
 
+def test_import_non_utf8_csv_returns_400(client):
+    """A CSV saved in a non-UTF-8 encoding (e.g. Windows-1252 from Excel) must
+    fail with a clear 400 error instead of an unhandled UnicodeDecodeError."""
+    csv_content = "code,name\nC001,Caf\xe9 Corp\n".encode("windows-1252")
+    files = {"file": ("data.csv", csv_content, "text/csv")}
+    res = client.post("/api/records/test/company/import?format=csv", files=files)
+    assert res.status_code == 400
+    assert "utf-8" in res.json()["detail"].lower()
+
+
+def test_import_utf16_tsv_returns_400(client):
+    """Excel's 'Unicode Text' export produces UTF-16 .tsv files; these must
+    fail with a clear 400 error instead of an unhandled UnicodeDecodeError."""
+    tsv_content = "code\tname\nC001\tAlpha Corp\n".encode("utf-16")
+    files = {"file": ("data.tsv", tsv_content, "text/tab-separated-values")}
+    res = client.post("/api/records/test/company/import?format=tsv", files=files)
+    assert res.status_code == 400
+    assert "utf-8" in res.json()["detail"].lower()
+
+
 # ---------------------------------------------------------------------------
 # Import – upsert
 # ---------------------------------------------------------------------------

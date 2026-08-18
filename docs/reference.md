@@ -523,6 +523,8 @@ Content-Type: application/json
 | `source_system` | — | Source system name applied to all imported records (sets `_source_system`). Per-row values in the file take precedence if the file includes a `_source_system` column. |
 | `reason` | — | Audit note attached to every inserted or updated record |
 
+> **Note:** CSV/TSV/JSON import files must be UTF-8 encoded. Files in another encoding (e.g. Excel's Windows-1252 "CSV" or UTF-16 "Unicode Text" export) are rejected with HTTP 400 — re-save as "CSV UTF-8" or convert with `iconv` first. See `docs/troubleshooting.md`.
+
 ### Record Body Format
 
 When creating or updating a record, send a JSON object with attribute keys as field names. Use `_reason` to attach an audit note:

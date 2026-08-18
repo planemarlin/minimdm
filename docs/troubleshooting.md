@@ -43,15 +43,17 @@
 
 ---
 
-## Import fails with encoding errors
+## Import fails with "is not valid UTF-8"
 
-**Cause:** The CSV/TSV file uses a non-UTF-8 encoding.
+**Cause:** The CSV/TSV file uses a non-UTF-8 encoding — common when exporting from Excel, which defaults to Windows-1252 for "CSV" and UTF-16 for "Unicode Text" (`.tsv`).
 
 **Solution:** Convert the file to UTF-8 before importing. On Linux/macOS:
 
 ```bash
-iconv -f latin1 -t utf-8 input.csv > output.csv
+iconv -f windows-1252 -t utf-8 input.csv > output.csv
 ```
+
+In Excel, use "CSV UTF-8" from the Save As format list instead of plain "CSV" or "Unicode Text".
 
 ---
 

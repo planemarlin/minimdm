@@ -201,7 +201,14 @@ async def import_records(
             f"File too large. "
             f"Maximum upload size is {settings.max_upload_size // (1024 * 1024)} MB.",
         )
-    text = content.decode("utf-8-sig")  # handle BOM
+    try:
+        text = content.decode("utf-8-sig")  # handle BOM
+    except UnicodeDecodeError:
+        raise HTTPException(
+            400,
+            f"File '{file.filename}' is not valid UTF-8. Re-save or export the file "
+            "as UTF-8 (in Excel: 'CSV UTF-8' rather than 'CSV' or 'Unicode Text') and try again.",
+        )
 
     if format == "json":
         try:

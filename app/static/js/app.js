@@ -989,27 +989,36 @@ async function importFile(schema, obj, input) {
   if (upsertKey) params.set("upsert_key", upsertKey);
   if (importReason) params.set("reason", importReason);
 
-  const res = await fetch(`/api/records/${schema}/${obj}/import?${params}`, { method: "POST", body: fd });
-  const data = await res.json();
-  if (res.ok) {
-    const parts = [];
-    if (data.inserted) parts.push(`${data.inserted} inserted`);
-    if (data.updated) parts.push(`${data.updated} updated`);
-    const errHtml = data.errors.length
-      ? `<br>Errors: ${data.errors.map(e => `Row ${escHtml(String(e.row))}: ${escHtml(String(e.error))}`).join("; ")}`
-      : "";
-    statusEl.innerHTML = `<div class="alert alert-success">${parts.join(", ") || "0 records"}.${errHtml}</div>`;
-    if (typeof recordList !== "undefined") recordList.load();
-  } else {
-    const detail = data.detail;
-    let msg;
-    if (typeof detail === "object" && detail !== null) {
-      const errLines = (detail.errors || []).map(e => `Row ${escHtml(String(e.row))}: ${escHtml(String(e.error))}`).join("<br>");
-      msg = escHtml(detail.detail || "Import failed.") + (errLines ? `<br><br>${errLines}` : "");
-    } else {
-      msg = escHtml(detail || "Import failed.");
+  try {
+    const res = await fetch(`/api/records/${schema}/${obj}/import?${params}`, { method: "POST", body: fd });
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      throw new Error(`Import failed: the server returned an unexpected response (status ${res.status}).`);
     }
-    statusEl.innerHTML = `<div class="alert alert-error">${msg}</div>`;
+    if (res.ok) {
+      const parts = [];
+      if (data.inserted) parts.push(`${data.inserted} inserted`);
+      if (data.updated) parts.push(`${data.updated} updated`);
+      const errHtml = data.errors.length
+        ? `<br>Errors: ${data.errors.map(e => `Row ${escHtml(String(e.row))}: ${escHtml(String(e.error))}`).join("; ")}`
+        : "";
+      statusEl.innerHTML = `<div class="alert alert-success">${parts.join(", ") || "0 records"}.${errHtml}</div>`;
+      if (typeof recordList !== "undefined") recordList.load();
+    } else {
+      const detail = data.detail;
+      let msg;
+      if (typeof detail === "object" && detail !== null) {
+        const errLines = (detail.errors || []).map(e => `Row ${escHtml(String(e.row))}: ${escHtml(String(e.error))}`).join("<br>");
+        msg = escHtml(detail.detail || "Import failed.") + (errLines ? `<br><br>${errLines}` : "");
+      } else {
+        msg = escHtml(detail || "Import failed.");
+      }
+      statusEl.innerHTML = `<div class="alert alert-error">${msg}</div>`;
+    }
+  } catch (err) {
+    statusEl.innerHTML = `<div class="alert alert-error">${escHtml(err.message || "Import failed.")}</div>`;
   }
   input.value = "";
   // Close import modal after completion
