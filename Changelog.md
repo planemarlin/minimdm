@@ -4,6 +4,15 @@ All notable changes to miniMDM are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **`docker-compose.yml` host ports are now configurable via `.env`**: `APP_PORT` (default `8000`) and `POSTGRES_PORT` (default `5432`) replace the hardcoded port mappings, so a local port customization no longer means hand-editing a tracked file — and no longer conflicts with `git pull`/`git checkout` on the next upgrade; `docker-compose.override.yml` is now gitignored as the supported place for any other host-specific Compose customization (extra volumes, resource limits, additional services); `docs/docker-setup.md` updated accordingly
+
+### Docs
+- **Upgrade guide**: new `docs/upgrading.md` documents how to upgrade an existing installation — git-tag-based upgrades for both bare-metal and Docker deployments (no versioned container image is published yet), a pre-upgrade backup/Changelog checklist, and how to carry `docker-compose.yml` customizations across an upgrade using the new `APP_PORT`/`POSTGRES_PORT` env vars and `docker-compose.override.yml`, including a one-time migration path for installs that edited `docker-compose.yml` directly before this pattern existed ([#49](../../issues/49))
+- **Container image backlog item**: `docs/known_issues.md` now tracks publishing versioned container images to a registry (e.g. GHCR) as a possible future addition — not started; Docker deployments still build from source
+
 ## [0.7.1] – 2026-08-18
 
 ### Fixed
