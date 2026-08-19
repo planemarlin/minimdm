@@ -4,7 +4,7 @@ All notable changes to miniMDM are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.2] – 2026-08-19
 
 ### Changed
 - **`docker-compose.yml` host ports are now configurable via `.env`**: `APP_PORT` (default `8000`) and `POSTGRES_PORT` (default `5432`) replace the hardcoded port mappings, so a local port customization no longer means hand-editing a tracked file — and no longer conflicts with `git pull`/`git checkout` on the next upgrade; `docker-compose.override.yml` is now gitignored as the supported place for any other host-specific Compose customization (extra volumes, resource limits, additional services); `docs/docker-setup.md` updated accordingly
