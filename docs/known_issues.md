@@ -151,3 +151,7 @@ Identified during a full architecture/best-practices review (branch `chore/codeb
 
 9. Decide and document an API versioning stance (`/api/` has none today) before inbound webhook integrations proliferate.
 10. `check_permission()` opens a fresh SQLAlchemy session per call, up to twice per request. Fine at current scale; revisit if permission checks become a hot path.
+
+### Publish versioned container images
+
+Raised via [#49](https://github.com/planemarlin/minimdm/issues/49). Docker deployments currently build from source (`docker compose build`) — there's no CI job that publishes tagged images to a registry (e.g. `ghcr.io/planemarlin/minimdm:vX.Y.Z`), so upgrading a Docker deployment still means a `git checkout` + rebuild, documented in [upgrading.md](upgrading.md). Adding one would need a new publish-on-tag GitHub Actions workflow; not started.

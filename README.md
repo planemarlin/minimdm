@@ -89,6 +89,7 @@ Add `--headed` to watch the browser, or `--headed --slowmo 500` to step through 
 | [docs/logging.md](docs/logging.md) | Log formats, request IDs, and log aggregator setup |
 | [docs/migrations.md](docs/migrations.md) | Database migrations and Alembic usage |
 | [docs/backup-restore.md](docs/backup-restore.md) | Database backup and restore procedures |
+| [docs/upgrading.md](docs/upgrading.md) | Upgrading an existing installation |
 | [docs/reference.md](docs/reference.md) | Feature and API reference |
 | [docs/testing.md](docs/testing.md) | Running tests and test suite overview |
 | [docs/software.md](docs/software.md) | Open-source software used |

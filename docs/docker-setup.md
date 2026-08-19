@@ -110,7 +110,9 @@ All environment variables can be set in `.env`. Key variables:
 - `ADMIN_USERNAME`: Initial admin user (created on first run)
 - `ADMIN_PASSWORD`: Initial admin password — must be set explicitly; no default exists
 - `DEBUG`: Enable debug logging (default: `false`)
-- `PORT`: Application port (default: `8000`)
+- `PORT`: Port the app listens on **inside** the container (default: `8000`)
+- `APP_PORT`: Host port mapped to the app container (default: `8000`) — set this in `.env` to change the port you access miniMDM on, rather than editing `docker-compose.yml`
+- `POSTGRES_PORT`: Host port mapped to the PostgreSQL container (default: `5432`)
 
 ## Database Initialization
 
@@ -140,12 +142,14 @@ chmod +x scripts/docker-setup.sh
 ### "Port 5432 already in use"
 PostgreSQL port is already taken. Either:
 1. Stop the conflicting service
-2. Change the port mapping in `docker-compose.yml` (e.g., `5433:5432`)
+2. Set `POSTGRES_PORT` in `.env` (e.g., `POSTGRES_PORT=5433`) and restart
 
 ### "Port 8000 already in use"
 Application port is already taken. Either:
 1. Stop the conflicting service
-2. Change the port mapping in `docker-compose.yml` (e.g., `8001:8000`)
+2. Set `APP_PORT` in `.env` (e.g., `APP_PORT=8001`) and restart
+
+Don't edit the port mapping directly in `docker-compose.yml` — that file is tracked in the repo and a hand edit will conflict with future upgrades. See [upgrading.md](upgrading.md#keeping-local-customizations-across-upgrades) for the supported ways to customize it.
 
 ## Development
 

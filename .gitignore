@@ -212,3 +212,6 @@ __marimo__/
 # miniMDM local config (deployment-specific, like .env)
 config/minimdm.yaml
 config/minimdm.json
+
+# Local Docker Compose overrides (host-specific customizations; merged automatically by Compose)
+docker-compose.override.yml
