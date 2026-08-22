@@ -14,28 +14,9 @@ Non-admins have no access unless a row explicitly grants it.
 import uuid
 
 from fastapi import HTTPException, Request
-from sqlalchemy import Boolean, Column, MetaData, Table, Text, select, text
+from sqlalchemy import Boolean, Column, MetaData, Table, Text, select
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Session
-
-
-def ensure_permissions_table(engine) -> None:
-    with engine.connect() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS _system.schema_permissions (
-                user_id     UUID NOT NULL REFERENCES _system.users(id) ON DELETE CASCADE,
-                schema_name TEXT NOT NULL,
-                can_read    BOOLEAN NOT NULL DEFAULT TRUE,
-                can_write   BOOLEAN NOT NULL DEFAULT FALSE,
-                can_publish BOOLEAN NOT NULL DEFAULT FALSE,
-                PRIMARY KEY (user_id, schema_name)
-            )
-        """))
-        conn.execute(text("""
-            ALTER TABLE _system.schema_permissions
-            ADD COLUMN IF NOT EXISTS can_publish BOOLEAN NOT NULL DEFAULT FALSE
-        """))
-        conn.commit()
 
 
 def _perms_table(engine) -> Table:

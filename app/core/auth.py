@@ -59,17 +59,6 @@ def decode_token(token: str) -> Optional[dict]:
 # Token blocklist
 # ---------------------------------------------------------------------------
 
-def ensure_token_blocklist_table(engine) -> None:
-    with engine.connect() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS _system.token_blocklist (
-                jti        UUID PRIMARY KEY,
-                expires_at TIMESTAMPTZ NOT NULL
-            )
-        """))
-        conn.commit()
-
-
 def revoke_token(engine, jti: str, expires_at: datetime) -> None:
     with engine.connect() as conn:
         conn.execute(text(
@@ -102,25 +91,6 @@ def cleanup_expired_tokens(engine) -> None:
 # ---------------------------------------------------------------------------
 
 _RESET_TOKEN_EXPIRE_HOURS = 24
-
-
-def ensure_password_reset_tokens_table(engine) -> None:
-    with engine.connect() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS _system.password_reset_tokens (
-                id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                user_id    UUID NOT NULL,
-                token      TEXT NOT NULL UNIQUE,
-                expires_at TIMESTAMPTZ NOT NULL,
-                used_at    TIMESTAMPTZ
-            )
-        """))
-        # Prune expired / used tokens on every startup
-        conn.execute(text("""
-            DELETE FROM _system.password_reset_tokens
-            WHERE expires_at < NOW() OR used_at IS NOT NULL
-        """))
-        conn.commit()
 
 
 def create_reset_token(engine, user_id: str) -> tuple[str, datetime]:
@@ -158,21 +128,6 @@ def consume_reset_token(engine, token: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # Users table
 # ---------------------------------------------------------------------------
-
-def ensure_users_table(engine) -> None:
-    with engine.connect() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS _system.users (
-                id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                username    VARCHAR(100) UNIQUE NOT NULL,
-                password_hash VARCHAR(255) NOT NULL,
-                is_admin    BOOLEAN NOT NULL DEFAULT FALSE,
-                is_active   BOOLEAN NOT NULL DEFAULT TRUE,
-                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-        """))
-        conn.commit()
-
 
 def _users_table(engine) -> Table:
     meta = MetaData()

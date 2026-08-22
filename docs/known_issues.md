@@ -132,14 +132,14 @@ Identified during a full architecture/best-practices review (branch `chore/codeb
 
 **Dead code**
 
-1. Remove four orphaned table-bootstrap helpers in `app/core/`, superseded by Alembic migration `0001_initial_system_tables.py`: `auth.py`'s `ensure_token_blocklist_table()`, `ensure_password_reset_tokens_table()`, `ensure_users_table()`, and `permissions.py`'s `ensure_permissions_table()`. Verified zero call sites anywhere in `app/` or `tests/`.
+1. ~~Remove four orphaned table-bootstrap helpers in `app/core/`, superseded by Alembic migration `0001_initial_system_tables.py`: `auth.py`'s `ensure_token_blocklist_table()`, `ensure_password_reset_tokens_table()`, `ensure_users_table()`, and `permissions.py`'s `ensure_permissions_table()`. Verified zero call sites anywhere in `app/` or `tests/`.~~ **Done in v0.7.3.**
 
 **Tooling — high value, low effort**
 
 2. Expand the `ruff` rule selection beyond `E, F, W, I` to include `B` (bugbear), `UP` (pyupgrade), `SIM`, `C4` — cheap to adopt given the existing lint gate in CI.
 3. Add `mypy`/`pyright` as a dev dependency and CI job. Type hints are already used throughout; nothing currently enforces them.
 4. Add a coverage floor to the CI test job (`pytest --cov=app --cov-fail-under=NN`); `pytest-cov` is installed but unused in CI today.
-5. Add a `HEALTHCHECK` to the Dockerfile using the existing `/health` endpoint; simplify the install step to `uv sync --frozen --no-dev`.
+5. ~~Add a `HEALTHCHECK` to the Dockerfile using the existing `/health` endpoint~~ **Done in v0.7.3.** Simplifying the install step to `uv sync --frozen --no-dev` is still open — left alone for now since it changes how dependencies are installed (venv-based vs. the current `uv export | pip install` into system site-packages), a bigger change than a patch release should carry.
 
 **Architecture — medium effort**
 
