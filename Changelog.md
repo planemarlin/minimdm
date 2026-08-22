@@ -4,6 +4,12 @@ All notable changes to miniMDM are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Docker Compose startup crashed when `APP_PORT`/`POSTGRES_PORT` were set in `.env`**: `docker-compose.yml` bind-mounts the project directory into the app container, so `app/config.py`'s `Settings(env_file=".env")` parses the very same `.env` file `docker-compose.yml` reads for host-port substitution; pydantic-settings' dotenv source loads the whole file as a flat dict (unlike its env-var source, which looks up only known fields), so the two Compose-only keys reached model validation as unrecognized fields and crashed the app at import time under the pydantic-settings default `extra="forbid"` — meaning the port parameterization shipped in v0.7.2 (#49, #50) crashed on first real use, and a fresh install following `docs/docker-setup.md`'s `cp .env.docker .env` step crashed immediately since `.env.docker` already sets both keys; `Settings.model_config` now sets `extra="ignore"`; regression test `test_ignores_docker_compose_only_env_vars` in new `tests/test_config.py` ([#49](../../issues/49))
+- **`scripts/init-db.sh` committed without the executable bit**: PostgreSQL's official image entrypoint refuses to run a non-executable `.sh` init script, so `docker compose up` failed on the `postgres` container on every fresh clone, on every released version since Docker support was added — never caught because nothing exercised the Docker Compose startup path end-to-end; file mode corrected to `755`
+
 ## [0.7.2] – 2026-08-19
 
 ### Changed
