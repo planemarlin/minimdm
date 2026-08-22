@@ -15,6 +15,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -31,6 +32,7 @@ jobs:
   security:
     name: Dependency security audit
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -47,6 +49,7 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     strategy:
       matrix:
@@ -92,6 +95,7 @@ jobs:
   browser-test:
     name: Browser tests (Playwright)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:

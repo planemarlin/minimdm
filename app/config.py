@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     # used for audit log IP recording to prevent header spoofing.
     trusted_proxy: bool = False
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # "ignore" (not the pydantic-settings default "forbid") because .env is shared
+    # with docker-compose.yml, which reads host-only values like APP_PORT and
+    # POSTGRES_PORT that Settings has no field for and never needs to parse.
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()

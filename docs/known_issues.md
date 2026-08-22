@@ -132,14 +132,14 @@ Identified during a full architecture/best-practices review (branch `chore/codeb
 
 **Dead code**
 
-1. Remove four orphaned table-bootstrap helpers in `app/core/`, superseded by Alembic migration `0001_initial_system_tables.py`: `auth.py`'s `ensure_token_blocklist_table()`, `ensure_password_reset_tokens_table()`, `ensure_users_table()`, and `permissions.py`'s `ensure_permissions_table()`. Verified zero call sites anywhere in `app/` or `tests/`.
+1. ~~Remove four orphaned table-bootstrap helpers in `app/core/`, superseded by Alembic migration `0001_initial_system_tables.py`: `auth.py`'s `ensure_token_blocklist_table()`, `ensure_password_reset_tokens_table()`, `ensure_users_table()`, and `permissions.py`'s `ensure_permissions_table()`. Verified zero call sites anywhere in `app/` or `tests/`.~~ **Done in v0.7.3.**
 
 **Tooling — high value, low effort**
 
 2. Expand the `ruff` rule selection beyond `E, F, W, I` to include `B` (bugbear), `UP` (pyupgrade), `SIM`, `C4` — cheap to adopt given the existing lint gate in CI.
 3. Add `mypy`/`pyright` as a dev dependency and CI job. Type hints are already used throughout; nothing currently enforces them.
 4. Add a coverage floor to the CI test job (`pytest --cov=app --cov-fail-under=NN`); `pytest-cov` is installed but unused in CI today.
-5. Add a `HEALTHCHECK` to the Dockerfile using the existing `/health` endpoint; simplify the install step to `uv sync --frozen --no-dev`.
+5. ~~Add a `HEALTHCHECK` to the Dockerfile using the existing `/health` endpoint~~ **Done in v0.7.3.** Simplifying the install step to `uv sync --frozen --no-dev` is still open — left alone for now since it changes how dependencies are installed (venv-based vs. the current `uv export | pip install` into system site-packages), a bigger change than a patch release should carry.
 
 **Architecture — medium effort**
 
@@ -155,3 +155,7 @@ Identified during a full architecture/best-practices review (branch `chore/codeb
 ### Publish versioned container images
 
 Raised via [#49](https://github.com/planemarlin/minimdm/issues/49). Docker deployments currently build from source (`docker compose build`) — there's no CI job that publishes tagged images to a registry (e.g. `ghcr.io/planemarlin/minimdm:vX.Y.Z`), so upgrading a Docker deployment still means a `git checkout` + rebuild, documented in [upgrading.md](upgrading.md). Adding one would need a new publish-on-tag GitHub Actions workflow; not started.
+
+### `Settings.host`/`Settings.port` aren't wired to the actual server bind
+
+Found while adding the Dockerfile `HEALTHCHECK` in v0.7.3 (hardcoded to port `8000` — correct, since that's the container's fixed internal port; only `APP_PORT` varies the host-side mapping in `docker-compose.yml`). Investigating that hardcoded value surfaced a separate, unrelated gap: `app/config.py`'s `host` and `port` fields on `Settings` are read by nothing. The actual `--host`/`--port` uvicorn flags are hardcoded on three separate command lines instead — the Dockerfile `CMD`, `docker-compose.yml`'s `command:`, and the manual `uvicorn` invocation documented in `docs/installation.md`. Not a functional bug today (the container's internal port never needs to change for Docker users, and bare-metal users pass `--host`/`--port` directly on their own command line anyway) — but the `Settings` fields are effectively dead config surface: someone setting `PORT=8001` in `.env` expecting it to change where the app binds would see no effect and no error. Worth deciding deliberately: either wire the three command lines to read `HOST`/`PORT` from the environment, or remove the fields from `Settings` so they stop implying a configuration option that doesn't work. Not started.
