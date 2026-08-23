@@ -89,6 +89,8 @@ curl -X POST "http://localhost:8000/api/records/mycompany/supplier/import?format
   -F "file=@suppliers.csv"
 ```
 
+> **Note:** import files must be UTF-8 encoded. If Excel is your source, save as "CSV UTF-8" rather than plain "CSV" or "Unicode Text" — see `docs/troubleshooting.md` if you hit an encoding error.
+
 ## 5. Search and Browse
 
 Use the search bar on the object list page to filter records. Results update as you type.

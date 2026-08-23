@@ -7,8 +7,6 @@ class Settings(BaseSettings):
     app_name: str = "miniMDM"
     app_version: str = "0.7.3"
     debug: bool = False
-    host: str = "0.0.0.0"  # nosec B104 — intentional; bind address is configured by the operator
-    port: int = 8000
 
     # Logging: "json" for structured output (production), "text" for human-readable (development)
     log_format: str = "text"

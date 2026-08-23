@@ -9,6 +9,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Tests
 - **`can_publish` permission boundary now covered**: 7 new tests in `tests/test_api_permissions.py` exercise `require_publish_access()` as a non-admin for the first time — every existing publish/retire test ran as admin, which short-circuits the permission check entirely, so an Editor's inability to publish/retire had never actually been verified; new cases cover a user with no permission, an Editor (`can_write`, no `can_publish`) blocked from both `/publish` and `/retire`, a granted Publisher succeeding at both, and `set_permission`'s "publish implies write" rule; flagged in the 2026-07-14 codebase analysis as the highest-priority test gap and skipped ahead of both v0.7.1 and v0.7.3 before being closed here
 
+### Removed
+- **Dead `Settings.host`/`Settings.port` config fields**: neither field was read anywhere in the codebase — the actual `--host`/`--port` uvicorn flags are hardcoded on three separate command lines (Dockerfile `CMD`, `docker-compose.yml`'s `command:`, and the manual invocation in `docs/installation.md`), so setting `HOST`/`PORT` in `.env` had no effect and no error. Removed rather than wired up: no deployment path has a demonstrated need for `.env`-based bind control — bare-metal users already pass `--host`/`--port` directly, and the container's internal port never needs to change for Docker users ([known_issues.md](docs/known_issues.md))
+
+### Docs
+- **`can_publish` coverage reflected in `docs/testing.md`**: the "Known test gaps" and `test_api_permissions.py` summary sections updated to match the new tests; the one remaining sub-case (`allow_direct_active_import: false` blocking a real Publisher, not just admin) is called out as still open
+- **Quickstart UTF-8 import note**: `docs/quickstart.md`'s Bulk Import section now mentions the UTF-8 encoding requirement (already documented in `docs/reference.md` and `docs/troubleshooting.md`, but missing from a first-time user's likely entry point)
+
 ## [0.7.3] – 2026-08-22
 
 ### Fixed
