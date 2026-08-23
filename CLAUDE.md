@@ -22,6 +22,8 @@ uv run ruff format .                   # format
 Integration and browser tests are skipped unless `TEST_DATABASE_URL` is set (e.g. `postgresql://user:pass@localhost/minimdm_test`). Browser tests also require the Playwright Chromium binary — install once with `uv run playwright install chromium`.
 
 ## Git
+- **Before editing any file for a task, create a feature branch first — never edit directly on `main` or on an old/stale branch.** Run `git branch --show-current` as your first action; if it's `main` (or a branch you didn't just create for this task), run `git fetch minimdm && git checkout -b <branch> minimdm/main` before making any Edit/Write call. This applies even to small changes and even mid-session after a `/clear`.
+- Branch naming: `fix/...`, `feat/...`, `test/...`, `chore/...`, `docs/...`, `security/...` matching the conventional-commit type
 - Remote is named `minimdm`, not `origin` — use `git push minimdm <branch>`
 - PR target branch is `main`
 - Commit messages follow conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `security:`)
