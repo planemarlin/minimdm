@@ -367,3 +367,24 @@ def test_set_permission_publish_grant_implies_write(client):
     assert entry["can_write"] is True
     assert entry["can_publish"] is True
     _clear_permissions(engine)
+
+
+def test_non_admin_publisher_blocked_by_allow_direct_active_import_false(client, clean_records):
+    """allow_direct_active_import: false blocks a real Publisher, not just admin — role doesn't
+    override the object-level flag."""
+    engine = _get_engine()
+    client.put(
+        f"/api/admin/users/{_NON_ADMIN_USER_ID}/permissions/test",
+        json={"can_read": True, "can_write": True, "can_publish": True},
+    )
+
+    csv_content = "code\nREF-PUB-01\n"
+    files = {"file": ("ref.csv", csv_content.encode(), "text/csv")}
+    res = client.post(
+        "/api/records/test/reference_data/import?format=csv&initial_state=active",
+        files=files,
+        headers=_non_admin_headers(),
+    )
+    assert res.status_code == 422
+    assert "allow_direct_active_import" in res.json()["detail"]
+    _clear_permissions(engine)
