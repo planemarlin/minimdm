@@ -4,6 +4,11 @@ All notable changes to miniMDM are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Tests
+- **`can_publish` permission boundary now covered**: 7 new tests in `tests/test_api_permissions.py` exercise `require_publish_access()` as a non-admin for the first time — every existing publish/retire test ran as admin, which short-circuits the permission check entirely, so an Editor's inability to publish/retire had never actually been verified; new cases cover a user with no permission, an Editor (`can_write`, no `can_publish`) blocked from both `/publish` and `/retire`, a granted Publisher succeeding at both, and `set_permission`'s "publish implies write" rule; flagged in the 2026-07-14 codebase analysis as the highest-priority test gap and skipped ahead of both v0.7.1 and v0.7.3 before being closed here
+
 ## [0.7.3] – 2026-08-22
 
 ### Fixed

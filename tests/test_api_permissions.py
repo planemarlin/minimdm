@@ -256,3 +256,114 @@ def test_admin_sees_all_schemas(client):
     assert res.status_code == 200
     names = [s["name"] for s in res.json()]
     assert "test" in names
+
+
+# ---------------------------------------------------------------------------
+# Access enforcement — publish/retire (Publisher role)
+# ---------------------------------------------------------------------------
+
+def test_non_admin_without_permission_cannot_publish(client, clean_records):
+    record_id = client.post(
+        "/api/records/test/governed_item", json={"code": "PUB-NOPERM"}
+    ).json()["id"]
+
+    res = client.post(f"/api/records/test/governed_item/{record_id}/publish",
+                      headers=_non_admin_headers())
+    assert res.status_code == 403
+
+
+def test_non_admin_without_permission_cannot_retire(client, clean_records):
+    record_id = client.post(
+        "/api/records/test/company", json={"code": "RET-NOPERM"}
+    ).json()["id"]
+
+    res = client.post(f"/api/records/test/company/{record_id}/retire",
+                      headers=_non_admin_headers())
+    assert res.status_code == 403
+
+
+def test_non_admin_with_write_permission_cannot_publish(client, clean_records):
+    """An Editor (write, no publish) must not be able to publish a draft."""
+    engine = _get_engine()
+    record_id = client.post(
+        "/api/records/test/governed_item", json={"code": "PUB-EDITOR"}
+    ).json()["id"]
+    client.put(
+        f"/api/admin/users/{_NON_ADMIN_USER_ID}/permissions/test",
+        json={"can_read": True, "can_write": True},
+    )
+
+    res = client.post(f"/api/records/test/governed_item/{record_id}/publish",
+                      headers=_non_admin_headers())
+    assert res.status_code == 403
+    _clear_permissions(engine)
+
+
+def test_non_admin_with_write_permission_cannot_retire(client, clean_records):
+    """An Editor (write, no publish) must not be able to retire an active record."""
+    engine = _get_engine()
+    record_id = client.post(
+        "/api/records/test/company", json={"code": "RET-EDITOR"}
+    ).json()["id"]
+    client.put(
+        f"/api/admin/users/{_NON_ADMIN_USER_ID}/permissions/test",
+        json={"can_read": True, "can_write": True},
+    )
+
+    res = client.post(f"/api/records/test/company/{record_id}/retire",
+                      headers=_non_admin_headers())
+    assert res.status_code == 403
+    _clear_permissions(engine)
+
+
+def test_non_admin_with_publish_permission_can_publish(client, clean_records):
+    engine = _get_engine()
+    record_id = client.post(
+        "/api/records/test/governed_item", json={"code": "PUB-PUBLISHER"}
+    ).json()["id"]
+    client.put(
+        f"/api/admin/users/{_NON_ADMIN_USER_ID}/permissions/test",
+        json={"can_read": True, "can_write": True, "can_publish": True},
+    )
+
+    res = client.post(f"/api/records/test/governed_item/{record_id}/publish",
+                      headers=_non_admin_headers())
+    assert res.status_code == 200
+
+    record = client.get(f"/api/records/test/governed_item/{record_id}").json()
+    assert record["_state"] == "active"
+    _clear_permissions(engine)
+
+
+def test_non_admin_with_publish_permission_can_retire(client, clean_records):
+    engine = _get_engine()
+    record_id = client.post(
+        "/api/records/test/company", json={"code": "RET-PUBLISHER"}
+    ).json()["id"]
+    client.put(
+        f"/api/admin/users/{_NON_ADMIN_USER_ID}/permissions/test",
+        json={"can_read": True, "can_write": True, "can_publish": True},
+    )
+
+    res = client.post(f"/api/records/test/company/{record_id}/retire",
+                      headers=_non_admin_headers())
+    assert res.status_code == 200
+
+    record = client.get(f"/api/records/test/company/{record_id}").json()
+    assert record["_state"] == "retired"
+    _clear_permissions(engine)
+
+
+def test_set_permission_publish_grant_implies_write(client):
+    """Granting can_publish alone should still set can_write (Publisher implies Editor)."""
+    engine = _get_engine()
+    client.put(
+        f"/api/admin/users/{_NON_ADMIN_USER_ID}/permissions/test",
+        json={"can_publish": True},
+    )
+
+    perms = client.get(f"/api/admin/users/{_NON_ADMIN_USER_ID}/permissions").json()
+    entry = next(p for p in perms if p["schema_name"] == "test")
+    assert entry["can_write"] is True
+    assert entry["can_publish"] is True
+    _clear_permissions(engine)
