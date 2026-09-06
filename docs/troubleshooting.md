@@ -82,3 +82,15 @@ In Excel, use "CSV UTF-8" from the Save As format list instead of plain "CSV" or
 ```sql
 GRANT CREATE ON DATABASE minimdm TO minimdm;
 ```
+
+---
+
+## Changing `unique: false` doesn't stop duplicate-key errors on insert
+
+**Cause:** Before this fix ([#56](https://github.com/planemarlin/minimdm/issues/56)), `_ensure_constraints()` only ever added a unique index when an attribute had `unique: true` in config — it never removed one. If you set `unique: true`, reloaded config, then later changed the same attribute back to `unique: false` and reloaded again, the old unique index stayed in the database and kept rejecting inserts with a duplicate value, even though config no longer requires uniqueness.
+
+**Solution:** Upgrade to a version containing this fix and call `POST /api/config/reload` (or restart the app) — the stale index is now dropped automatically. If you're still on an older version, drop it manually:
+
+```sql
+DROP INDEX "<schema>"."uq_<object>_<attribute>";
+```

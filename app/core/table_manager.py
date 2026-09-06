@@ -404,6 +404,18 @@ class TableManager:
                                     f'ON "{schema_name}"."{obj_key}" ("{attr_key}") '
                                     f"WHERE _state = 'active' AND _deleted_at IS NULL"
                                 ))
+                        else:
+                            # Attribute is no longer marked unique: drop the
+                            # partial index (or a pre-partial-index legacy
+                            # constraint) if either still exists.
+                            idx_name = f"uq_{obj_key}_{attr_key}"
+                            conn.execute(text(
+                                f'DROP INDEX IF EXISTS "{schema_name}"."{idx_name}"'
+                            ))
+                            conn.execute(text(
+                                f'ALTER TABLE "{schema_name}"."{obj_key}" '
+                                f'DROP CONSTRAINT IF EXISTS "{obj_key}_{attr_key}_key"'
+                            ))
             conn.commit()
 
     @staticmethod

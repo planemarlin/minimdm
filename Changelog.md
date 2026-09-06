@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+- **Unique constraint not removed when `unique: false` is set in config**: `TableManager._ensure_constraints()` only ever added the `uq_<object>_<attribute>` partial unique index when an attribute had `unique: true` — there was no path that dropped the index when an attribute was later changed back to `unique: false`, so the old constraint stayed in the database indefinitely and kept rejecting inserts that should now be allowed. `_ensure_constraints()` now drops the partial index (and any pre-partial-index legacy constraint) when `unique` is no longer set. Regression tests in `tests/test_table_manager.py` cover both toggle directions, idempotency of an unchanged re-sync, and the interaction with the `_deleted_at` partial-index predicate from #44 ([#56](../../issues/56))
+
 ### Tests
 - **`can_publish` permission boundary now covered**: 8 new tests in `tests/test_api_permissions.py` exercise `require_publish_access()` as a non-admin for the first time — every existing publish/retire test ran as admin, which short-circuits the permission check entirely, so an Editor's inability to publish/retire had never actually been verified; new cases cover a user with no permission, an Editor (`can_write`, no `can_publish`) blocked from both `/publish` and `/retire`, a granted Publisher succeeding at both, `set_permission`'s "publish implies write" rule, and a real Publisher still being blocked by `allow_direct_active_import: false` (role doesn't override the object-level flag); flagged in the 2026-07-14 codebase analysis as the highest-priority test gap and skipped ahead of both v0.7.1 and v0.7.3 before being closed here
 

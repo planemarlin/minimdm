@@ -101,7 +101,7 @@ Admins generate a one-time reset link from the User Management page (Reset link 
 Each JWT now carries a `jti` (UUID). On logout the JTI is written to `_system.token_blocklist` with the token's expiry timestamp. The auth middleware rejects any token whose JTI appears in the blocklist. Expired blocklist entries are pruned at startup.
 
 ### 12. Database-level foreign key and unique constraints — **Resolved**
-`FOREIGN KEY (ON DELETE SET NULL)` constraints are created for parent and reference columns; `UNIQUE` constraints for attributes marked `unique: true`. `_ensure_constraints()` adds missing constraints to existing tables on each startup using `pg_constraint` checks. `IntegrityError` in create/update is caught and returned as 422.
+`FOREIGN KEY (ON DELETE SET NULL)` constraints are created for parent and reference columns; `UNIQUE` constraints for attributes marked `unique: true`. `_ensure_constraints()` adds missing constraints to existing tables on each startup using `pg_constraint` checks. `IntegrityError` in create/update is caught and returned as 422. Until the fix for [#56](https://github.com/planemarlin/minimdm/issues/56), this only covered the *add* direction — changing an attribute back to `unique: false` left the old index in place; `_ensure_constraints()` now drops it too.
 
 ### 13. Export pagination — **Resolved**
 Export endpoints now accept `limit` and `offset` query parameters. Results are streamed using server-side cursors so large tables do not cause out-of-memory errors.
