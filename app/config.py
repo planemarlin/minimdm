@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://minimdm:minimdm@localhost:5432/minimdm"
     config_file: str = "config/minimdm.yaml"
     app_name: str = "miniMDM"
-    app_version: str = "0.7.3"
+    app_version: str = "0.7.4"
     debug: bool = False
 
     # Logging: "json" for structured output (production), "text" for human-readable (development)

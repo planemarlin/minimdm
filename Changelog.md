@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.7.4] – 2026-09-06
+
 ### Fixed
 - **Unique constraint not removed when `unique: false` is set in config**: `TableManager._ensure_constraints()` only ever added the `uq_<object>_<attribute>` partial unique index when an attribute had `unique: true` — there was no path that dropped the index when an attribute was later changed back to `unique: false`, so the old constraint stayed in the database indefinitely and kept rejecting inserts that should now be allowed. `_ensure_constraints()` now drops the partial index (and any pre-partial-index legacy constraint) when `unique` is no longer set. Regression tests in `tests/test_table_manager.py` cover both toggle directions, idempotency of an unchanged re-sync, and the interaction with the `_deleted_at` partial-index predicate from #44 ([#56](../../issues/56))
 
