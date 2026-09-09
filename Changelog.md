@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Security
+- **Removed unused `httpx2` dev dependency**: resolves four Dependabot alerts against `httpx2`/`httpcore2` — decompression amplification (GHSA-8xx6-hgc6-gc2m, **high**), multipart header injection (GHSA-h4x7-gw46-3wm6, medium), conflicting Content-Length/Transfer-Encoding headers enabling request smuggling (GHSA-pf96-p4fj-6566, medium), and SOCKS-proxied WebSocket traffic bypassing TLS (GHSA-7mj9-2mp8-4m2p, **high**); `httpx2` was swapped into the dev dependency group in #35 for "test client compat" but was never actually imported anywhere in `app/` or `tests/` — FastAPI's `TestClient` uses the real `httpx` dependency instead — so none of the four vulnerable code paths were ever reachable in miniMDM; removing it also drops the transitive `httpcore2` and `truststore` dependencies ([#59](../../issues/59))
+
 ## [0.7.4] – 2026-09-06
 
 ### Fixed
