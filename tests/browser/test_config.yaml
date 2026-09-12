@@ -17,6 +17,16 @@ schemas:
             type: string
             required: false
             unique: false
+      division:
+        name: Division
+        description: A child of company (parent relationship)
+        parent: company
+        attributes:
+          code:
+            name: Code
+            type: string
+            required: true
+            unique: false
       governed_item:
         name: Governed Item
         description: Starts as a draft — must be published to become active
@@ -28,6 +38,13 @@ schemas:
             type: string
             required: true
             unique: true
+          unit_price:
+            name: Unit Price
+            type: numeric
+            required: false
+            unique: false
+            min: 0
+            max: 100
       audited_item:
         name: Audited Item
         description: All changes require a reason for the audit log

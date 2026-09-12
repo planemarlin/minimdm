@@ -65,6 +65,7 @@ SAMPLE_CONFIG = {
                     "allow_direct_active_import": True,
                     "attributes": {
                         "code": {"name": "Code", "type": "string", "required": True, "unique": False, "reference": None},  # noqa: E501
+                        "unit_price": {"name": "Unit Price", "type": "numeric", "required": False, "unique": False, "reference": None, "min": 0, "max": 100000},  # noqa: E501
                     },
                 },
                 "reference_data": {
@@ -77,6 +78,65 @@ SAMPLE_CONFIG = {
                     "attributes": {
                         "code": {"name": "Code", "type": "string", "required": True, "unique": False, "reference": None},  # noqa: E501
                     },
+                },
+                # Config-based validation rules test object — see tests/test_validation_rules.py
+                "validation_demo": {
+                    "name": "Validation Demo",
+                    "description": "Spec object exercising every config-based validation rule",
+                    "parent": None,
+                    "attributes": {
+                        "country": {"name": "Country", "type": "string"},
+                        "state": {
+                            "name": "State",
+                            "type": "string",
+                            "required_if": {"field": "country", "equals": "US"},
+                        },
+                        "unit_price": {
+                            "name": "Unit Price",
+                            "type": "numeric",
+                            "min": 0,
+                            "max": 100000,
+                        },
+                        "code": {
+                            "name": "Code",
+                            "type": "string",
+                            "char_class": "alnum",
+                        },
+                        "display_name": {
+                            "name": "Display Name",
+                            "type": "string",
+                            "char_class": "alpha",
+                        },
+                        "start_date": {"name": "Start Date", "type": "date"},
+                        "end_date": {
+                            "name": "End Date",
+                            "type": "date",
+                            "compare": {"op": "gt", "field": "start_date"},
+                        },
+                        "contact_name": {"name": "Contact Name", "type": "string"},
+                        "contact_phone": {
+                            "name": "Contact Phone",
+                            "type": "string",
+                            "required_if": {"field": "contact_name"},
+                        },
+                        "primary_ref": {"name": "Primary Ref", "type": "string"},
+                        "secondary_ref": {
+                            "name": "Secondary Ref",
+                            "type": "string",
+                            "forbidden_if_absent": "primary_ref",
+                        },
+                    },
+                    "inbound_sources": [
+                        {
+                            "name": "test_erp",
+                            "field_map": {
+                                "erp_id": "_source_id",
+                                "item_code": "code",
+                                "price": "unit_price",
+                            },
+                            "match_key": None,
+                        }
+                    ],
                 },
             }
         }
@@ -141,6 +201,8 @@ def clean_records(client):
         conn.execute(text('DELETE FROM "test"."governed_item"'))
         conn.execute(text('DELETE FROM "test"."reference_data_history"'))
         conn.execute(text('DELETE FROM "test"."reference_data"'))
+        conn.execute(text('DELETE FROM "test"."validation_demo_history"'))
+        conn.execute(text('DELETE FROM "test"."validation_demo"'))
         conn.execute(text("DELETE FROM _system.audit_log WHERE schema_name = 'test'"))
         conn.commit()
     yield

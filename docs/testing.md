@@ -12,6 +12,7 @@
 | `tests/test_api_auth.py` | Integration – authentication, token handling | Yes |
 | `tests/test_api_permissions.py` | Integration – schema-based access control | Yes |
 | `tests/test_api_webhooks.py` | Integration – webhook delivery on publish/retire | Yes |
+| `tests/test_validation_rules.py` | Integration – config-based validation rules, `_validation_status` | Yes |
 | `tests/test_templates.py` | Template rendering – page structure | Yes |
 | `tests/browser/test_auth.py` | Browser – login/logout, auth redirects | Yes |
 | `tests/browser/test_records.py` | Browser – list and create records | Yes |
@@ -20,6 +21,7 @@
 | `tests/browser/test_history_revert.py` | Browser – history view and revert | Yes |
 | `tests/browser/test_import_export.py` | Browser – CSV/TSV import, CSV export download | Yes |
 | `tests/browser/test_admin.py` | Browser – users page and audit log | Yes |
+| `tests/browser/test_validation_rules.py` | Browser – validation-rule confirm/override banner | Yes |
 
 Unit tests run anywhere. Integration and template tests require a PostgreSQL test database and are automatically skipped when `TEST_DATABASE_URL` is not set. Browser tests additionally require the Playwright Chromium binary (see below).
 
@@ -125,6 +127,11 @@ All tests skip automatically when `TEST_DATABASE_URL` is not set, consistent wit
 - After creating a record, its INSERT entry appears in the audit log filtered by schema
 - The Auth Events tab shows login activity for the admin user
 
+**`test_validation_rules.py`**
+- A rule violation on submit shows a persistent banner (not the auto-dismissing generic error) listing the violated attribute and rule, with "Save anyway" and "Cancel" buttons
+- Cancel dismisses the banner without saving and without navigating away from the form
+- "Save anyway" resubmits with `confirm_validation_override=true`, saves the record, and the resulting detail page shows the "Invalid" badge
+
 ## Setting up the test database
 
 Create a dedicated database so tests never touch your production data:
@@ -229,6 +236,16 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Import with `initial_state=draft` creates records as drafts
 - 400 responses for invalid JSON and unknown upsert keys
 - 400 response (not an unhandled `UnicodeDecodeError`) for non-UTF-8 CSV and UTF-16 TSV files
+
+**`test_validation_rules.py`**
+- Full rule catalog: `min`/`max`, `char_class: alpha|alnum` (Unicode-aware), `required_if` (value- and presence-scoped), `forbidden_if_absent`, `compare`
+- A violation returns 422 with `confirmation_required` and `validation_rule_violations`; `?confirm_validation_override=true` saves with `_validation_status: "invalid"` and a `VALIDATION_OVERRIDE` audit event, on both create and every `update_record` branch
+- Cross-field rules are checked against the full merged record on update, not just the submitted fields (editing only one side of a `compare` or `required_if` pair)
+- Hard constraints (a genuine type-coercion failure) are never overridable, regardless of `confirm_validation_override`
+- A client cannot set `_validation_status` directly in the request body — it's always recomputed
+- Publish never blocks on an invalid record and recomputes `_validation_status` fresh (both the brand-new `requires_draft` draft and the draft-of-an-existing-active-record publish paths)
+- Bulk import (plain, `?upsert_key=` upsert, and inbound webhook push) never hard-fails a row/push over a rule violation, and flags it correctly
+- `validate_config()` rejects a `required_if.field`/`compare.field`/`forbidden_if_absent` pointing at a non-existent attribute, an invalid `compare.op`, and an invalid `char_class`
 
 **`test_api_query_params.py`**
 - `?role=master` returns only active (golden) records

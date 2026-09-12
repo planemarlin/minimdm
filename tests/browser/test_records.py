@@ -47,3 +47,27 @@ def test_created_record_appears_in_list(logged_in_page, api_client):
 
     logged_in_page.goto("/browser/company")
     logged_in_page.wait_for_selector("td:has-text('LIST-TEST')")
+
+
+def test_create_record_with_parent_saves_parent_reference(logged_in_page, api_client):
+    """The parent-relationship <select> on the New record form must submit under
+    the correct key (e.g. `_company_id`, not a mangled `_company_id_id`) so the
+    selected parent actually persists on the created record."""
+    r = api_client.post(
+        "/api/records/browser/company",
+        json={"code": "PARENT-01", "name": "Parent Co"},
+    )
+    r.raise_for_status()
+    company_id = r.json()["_id"]
+
+    logged_in_page.goto("/browser/division/new")
+    logged_in_page.wait_for_selector("#form-fields input[name='code']")
+    logged_in_page.fill("input[name='code']", "DIV-01")
+    logged_in_page.select_option("select[data-reference='company']", value=company_id)
+    logged_in_page.click("button[type='submit']")
+    logged_in_page.wait_for_url(re.compile(r"/browser/division/[0-9a-f-]{36}$"))
+
+    division_id = logged_in_page.url.rstrip("/").rsplit("/", 1)[-1]
+    r = api_client.get(f"/api/records/browser/division/{division_id}")
+    r.raise_for_status()
+    assert r.json()["_company_id"] == company_id

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import audit as audit_svc
+from app.core import validation as validation_svc
 from app.core.limiter import limiter
 from app.core.permissions import check_permission, require_schema_access
 from app.database import get_db
@@ -225,6 +226,7 @@ async def import_records(
     inserted = 0
     updated = 0
     errors = []
+    rows_detail = []
 
     for i, row in enumerate(rows):
         # In non-strict mode use a savepoint per row so a DB-level error on one row
@@ -232,20 +234,23 @@ async def import_records(
         sp = db.begin_nested() if not strict else None
         try:
             if upsert_key:
-                action = _upsert_row(
+                action, row_values = _upsert_row(
                     db, table, history_table, audit_table,
-                    row, upsert_key, reason, request, schema, obj, initial_state, source_system
+                    row, upsert_key, reason, request, schema, obj, import_obj_config,
+                    initial_state, source_system
                 )
                 if action == "updated":
                     updated += 1
                 else:
                     inserted += 1
             else:
-                _import_row(
+                row_values = _import_row(
                     db, table, history_table, audit_table,
-                    row, reason, request, schema, obj, initial_state, source_system
+                    row, reason, request, schema, obj, import_obj_config,
+                    initial_state, source_system
                 )
                 inserted += 1
+            rows_detail.append(_serialize_row(row_values))
             if sp:
                 sp.commit()
         except Exception as e:
@@ -273,12 +278,15 @@ async def import_records(
         "updated": updated,
         "errors": errors,
         "total": len(rows),
+        "imported": inserted + updated,
+        "rows": rows_detail,
     }
 
 
 def _inbound_upsert(
     db, table, history_table, audit_table, source_name: str, mapped_data: dict,
-    reason: str, request, schema: str, obj: str, match_key: Optional[str] = None,
+    reason: str, request, schema: str, obj: str, obj_config: Optional[dict] = None,
+    match_key: Optional[str] = None,
 ) -> tuple[str, uuid.UUID]:
     """Upsert an inbound webhook payload as a draft record.
 
@@ -296,6 +304,7 @@ def _inbound_upsert(
     Returns ("created" | "updated", record_uuid).
     """
     from app.api.objects import _client_ip, _get_username, _integrity_error_message
+    obj_config = obj_config or {}
     now = datetime.now(timezone.utc)
     values = _coerce_row(mapped_data, table)
     values["_source_system"] = source_name
@@ -380,6 +389,8 @@ def _inbound_upsert(
         record_id = uuid.uuid4()
         insert_values = {**values, "_id": record_id, "_created_at": now,
                          "_updated_at": now, "_state": "draft"}
+        violations = validation_svc.record_violations(obj_config, insert_values)
+        insert_values["_validation_status"] = "invalid" if violations else "valid"
         try:
             db.execute(table.insert().values(**insert_values))
         except IntegrityError as e:
@@ -411,6 +422,10 @@ def _inbound_upsert(
         if existing_draft:
             draft_id = existing_draft["_id"]
             draft_updates = {**values, "_updated_at": now}
+            new_draft_values = {**dict(existing_draft), **draft_updates}
+            violations = validation_svc.record_violations(obj_config, new_draft_values)
+            draft_updates["_validation_status"] = "invalid" if violations else "valid"
+            new_draft_values["_validation_status"] = draft_updates["_validation_status"]
             try:
                 db.execute(table.update().where(table.c._id == draft_id).values(**draft_updates))
             except IntegrityError as e:
@@ -430,7 +445,6 @@ def _inbound_upsert(
                     .where(history_table.c._history_id == current_version_row["_history_id"])
                     .values(_valid_to=now)
                 )
-            new_draft_values = {**dict(existing_draft), **draft_updates}
             audit_svc.write_history(
                 db, history_table, new_draft_values, version=current_version + 1,
                 action="UPDATE", valid_from=now, reason=reason, user_name=user_name,
@@ -457,6 +471,8 @@ def _inbound_upsert(
         draft_values["_deleted_at"] = None
         draft_values["_state"] = "draft"
         draft_values["_draft_of_id"] = rid
+        violations = validation_svc.record_violations(obj_config, draft_values)
+        draft_values["_validation_status"] = "invalid" if violations else "valid"
         try:
             db.execute(table.insert().values(**draft_values))
         except IntegrityError as e:
@@ -475,6 +491,10 @@ def _inbound_upsert(
 
     # Existing record is a draft — update it in place (only mapped fields)
     updates = {**values, "_updated_at": now}
+    new_values = {**old_values, **updates}
+    violations = validation_svc.record_violations(obj_config, new_values)
+    updates["_validation_status"] = "invalid" if violations else "valid"
+    new_values["_validation_status"] = updates["_validation_status"]
     current_version_row = db.execute(
         select(history_table)
         .where(history_table.c._id == rid)
@@ -494,7 +514,6 @@ def _inbound_upsert(
         db.rollback()
         from app.api.objects import _integrity_error_message
         raise HTTPException(422, _integrity_error_message(e)) from e
-    new_values = {**old_values, **updates}
     audit_svc.write_history(
         db, history_table, new_values, version=current_version + 1,
         action="UPDATE", valid_from=now, reason=reason, user_name=user_name,
@@ -552,7 +571,8 @@ def _coerce_row(row: dict, table) -> dict:
 
 
 def _import_row(db, table, history_table, audit_table, row: dict, reason, request, schema, obj,
-                initial_state: str = "active", source_system: Optional[str] = None):
+                obj_config: dict, initial_state: str = "active",
+                source_system: Optional[str] = None):
     from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
     row_keys = {k.strip() for k in row.keys()}
@@ -565,6 +585,11 @@ def _import_row(db, table, history_table, audit_table, row: dict, reason, reques
     if source_system and "_source_system" not in row_keys:
         values["_source_system"] = source_system
 
+    # Rule violations never fail an import row — only flag it. This is a pure
+    # computation, distinct from the exception-based hard-constraint path below.
+    violations = validation_svc.record_violations(obj_config, values)
+    values["_validation_status"] = "invalid" if violations else "valid"
+
     db.execute(table.insert().values(**values))
     audit_svc.write_history(
         db, history_table, values, version=1, action="INSERT", valid_from=now,
@@ -575,11 +600,12 @@ def _import_row(db, table, history_table, audit_table, row: dict, reason, reques
         old_values=None, new_values=audit_svc._serialize(values),
         reason=reason, ip_address=_client_ip(request), user_name=_get_username(request)
     )
+    return values
 
 
 def _upsert_row(
     db, table, history_table, audit_table, row: dict, upsert_key: str, reason, request, schema, obj,
-    initial_state: str = "active", source_system: Optional[str] = None,
+    obj_config: dict, initial_state: str = "active", source_system: Optional[str] = None,
 ):
     from app.api.objects import _client_ip, _get_username
     now = datetime.now(timezone.utc)
@@ -614,6 +640,11 @@ def _upsert_row(
             if existing_draft:
                 draft_id = existing_draft["_id"]
                 draft_updates = {**values, "_updated_at": now}
+                new_draft_values = {**dict(existing_draft), **draft_updates}
+                violations = validation_svc.record_violations(obj_config, new_draft_values)
+                draft_updates["_validation_status"] = "invalid" if violations else "valid"
+                new_draft_values["_validation_status"] = draft_updates["_validation_status"]
+
                 db.execute(table.update().where(table.c._id == draft_id).values(**draft_updates))
                 current_version_row = db.execute(
                     select(history_table)
@@ -628,7 +659,6 @@ def _upsert_row(
                         .where(history_table.c._history_id == current_version_row["_history_id"])
                         .values(_valid_to=now)
                     )
-                new_draft_values = {**dict(existing_draft), **draft_updates}
                 audit_svc.write_history(
                     db, history_table, new_draft_values, version=current_version + 1,
                     action="UPDATE", valid_from=now, reason=reason, user_name=_get_username(request)
@@ -639,6 +669,7 @@ def _upsert_row(
                     new_values=audit_svc._serialize(new_draft_values),
                     reason=reason, ip_address=_client_ip(request), user_name=_get_username(request)
                 )
+                row_values = new_draft_values
             else:
                 draft_id = uuid.uuid4()
                 draft_values = {
@@ -653,6 +684,10 @@ def _upsert_row(
                 draft_values["_deleted_at"] = None
                 draft_values["_state"] = "draft"
                 draft_values["_draft_of_id"] = rid
+
+                violations = validation_svc.record_violations(obj_config, draft_values)
+                draft_values["_validation_status"] = "invalid" if violations else "valid"
+
                 db.execute(table.insert().values(**draft_values))
                 audit_svc.write_history(
                     db, history_table, draft_values, version=1,
@@ -663,7 +698,8 @@ def _upsert_row(
                     old_values=None, new_values=audit_svc._serialize(draft_values),
                     reason=reason, ip_address=_client_ip(request), user_name=_get_username(request)
                 )
-            return "updated"
+                row_values = draft_values
+            return "updated", row_values
 
         current_version_row = db.execute(
             select(history_table)
@@ -681,9 +717,13 @@ def _upsert_row(
             )
 
         updates = {**values, "_updated_at": now}
+        new_values = {**old_values, **updates}
+        violations = validation_svc.record_violations(obj_config, new_values)
+        updates["_validation_status"] = "invalid" if violations else "valid"
+        new_values["_validation_status"] = updates["_validation_status"]
+
         db.execute(table.update().where(table.c._id == rid).values(**updates))
 
-        new_values = {**old_values, **updates}
         audit_svc.write_history(
             db, history_table, new_values, version=current_version + 1,
             action="UPDATE", valid_from=now, reason=reason, user_name=_get_username(request)
@@ -694,13 +734,17 @@ def _upsert_row(
             new_values=audit_svc._serialize(new_values),
             reason=reason, ip_address=_client_ip(request), user_name=_get_username(request)
         )
-        return "updated"
+        return "updated", new_values
     else:
         record_id = uuid.uuid4()
         values["_id"] = record_id
         values["_created_at"] = now
         values["_updated_at"] = now
         values["_state"] = initial_state
+
+        violations = validation_svc.record_violations(obj_config, values)
+        values["_validation_status"] = "invalid" if violations else "valid"
+
         db.execute(table.insert().values(**values))
         audit_svc.write_history(
             db, history_table, values, version=1, action="INSERT", valid_from=now,
@@ -711,4 +755,4 @@ def _upsert_row(
             old_values=None, new_values=audit_svc._serialize(values),
             reason=reason, ip_address=_client_ip(request), user_name=_get_username(request)
         )
-        return "inserted"
+        return "inserted", values

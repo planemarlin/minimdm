@@ -158,6 +158,7 @@ class TableManager:
             Column("_draft_of_id", PGUUID(as_uuid=True), nullable=True),
             Column("_source_system", Text, nullable=True),
             Column("_source_id", Text, nullable=True),
+            Column("_validation_status", Text, nullable=True, server_default="'valid'"),
         ]
 
         parent = obj_body.get("parent")
@@ -223,6 +224,7 @@ class TableManager:
             Column("_state", Text, nullable=True),
             Column("_source_system", Text, nullable=True),
             Column("_source_id", Text, nullable=True),
+            Column("_validation_status", Text, nullable=True),
         ]
 
         parent = obj_body.get("parent")

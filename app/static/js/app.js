@@ -216,6 +216,10 @@ class RecordList {
           ? `<span class="mdm-pill mdm-pill-slate" style="margin-left:6px">Retired</span>`
           : "";
 
+      const validationBadge = r._validation_status === "invalid"
+        ? `<span class="mdm-pill mdm-pill-red" style="margin-left:6px">Invalid</span>`
+        : "";
+
       const rowActions = isDeleted
         ? `<div class="mdm-rowact" style="opacity:1">
              <a href="/${schema}/${obj}/${r._id}/history" title="History">${_SVG.history}</a>
@@ -225,7 +229,7 @@ class RecordList {
              <a href="/${schema}/${obj}/${r._id}/edit" title="Edit">${_SVG.edit}</a>
              <a href="/${schema}/${obj}/${r._id}/history" title="History">${_SVG.history}</a>
              <button title="Delete" class="danger" onclick="event.stopPropagation();recordList.confirmDelete('${r._id}')">${_SVG.trash}</button>
-           </div>${statePill}`;
+           </div>${statePill}${validationBadge}`;
 
       const rowClick = isDeleted
         ? `onclick="window.location='/${schema}/${obj}/${r._id}/history'"`
@@ -491,9 +495,13 @@ async function loadRecordDetail(schema, obj, recordId, objConfig, opts = {}) {
         <span style="color:var(--mdm-ink-2)">${escHtml(record._source_system)}</span>
         ${record._source_id ? `<span style="color:var(--mdm-mute-2)">·</span><span class="mdm-mono" style="color:var(--mdm-ink-2)">${escHtml(record._source_id)}</span>` : ""}
       </div>` : "";
+  const validationHtml = record._validation_status === "invalid"
+    ? `<span class="mdm-pill mdm-pill-red" title="One or more validation rules are violated">Invalid</span>`
+    : "";
 
   const chipRow = `<div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--mdm-border);display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--mdm-mute)">
     <span class="mdm-pill ${pillCls}">${stateLabel}</span>
+    ${validationHtml}
     <div style="display:flex;gap:6px"><span>Created</span><span class="mdm-mono" style="color:var(--mdm-ink-2)">${fmtDate(record._created_at)}</span></div>
     <div style="display:flex;gap:6px"><span>Updated</span><span class="mdm-mono" style="color:var(--mdm-ink-2)">${fmtDate(record._updated_at)}</span></div>
     ${sourceHtml}
@@ -690,6 +698,37 @@ function _validateForm(form) {
   return valid;
 }
 
+// Shows a persistent (non-auto-dismissing) banner listing config-based validation
+// rule violations, with a "Save anyway" button that resubmits with
+// confirm_validation_override=true — see docs/reference.md#validation-rules.
+function _showValidationOverride(form, violations, attrLabels, onConfirm) {
+  const existing = form.querySelector(".validation-override-banner");
+  if (existing) existing.remove();
+
+  const list = violations.map(v => {
+    const label = attrLabels[v.attribute] || v.attribute;
+    return `<li><strong>${escHtml(label)}</strong>: ${escHtml(v.message)}</li>`;
+  }).join("");
+
+  const div = document.createElement("div");
+  div.className = "alert alert-error validation-override-banner";
+  div.style.display = "block";
+  div.innerHTML = `
+    <div style="margin-bottom:8px">One or more validation rules failed:</div>
+    <ul style="margin:0 0 12px 1.2em;padding:0">${list}</ul>
+    <div style="display:flex;gap:8px">
+      <button type="button" class="mdm-btn mdm-btn-primary" data-action="override-save">Save anyway</button>
+      <button type="button" class="mdm-btn mdm-btn-ghost" data-action="override-cancel">Cancel</button>
+    </div>`;
+  form.prepend(div);
+
+  div.querySelector("[data-action='override-cancel']").addEventListener("click", () => div.remove());
+  div.querySelector("[data-action='override-save']").addEventListener("click", () => {
+    div.remove();
+    onConfirm();
+  });
+}
+
 // ── Record form page ─────────────────────────────────────────────────────────
 
 async function loadRecordForm(schema, obj, recordId, objConfig) {
@@ -709,7 +748,10 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
   const fullWidthFields = [];
 
   if (objConfig.parent) {
-    fullWidthFields.push({ key: `_${objConfig.parent}_id`, v: { name: objConfig.parent, reference: objConfig.parent }, isParent: true });
+    fullWidthFields.push({
+      key: `_${objConfig.parent}_id`,
+      v: { name: objConfig.parent, reference: objConfig.parent, isParent: true },
+    });
   }
 
   for (const [k, v] of attrs) {
@@ -770,7 +812,7 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
     }
   }
   for (const { key, v } of fullWidthFields) {
-    attrBodyHtml += makeInput(key, v, v.isParent ? record[key] : record[key]);
+    attrBodyHtml += makeInput(key, v, record[key]);
   }
 
   const reasonRequired = !!objConfig.require_change_reason;
@@ -807,10 +849,7 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
     });
   }
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!_validateForm(form)) return;
-
+  async function doSave(overrideConfirmed) {
     const fd = new FormData(form);
     const body = {};
     for (const [k, v] of fd.entries()) {
@@ -821,9 +860,15 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
     }
 
     const method = recordId ? "PUT" : "POST";
-    const url = recordId
+    const params = new URLSearchParams();
+    if (overrideConfirmed) {
+      params.set("confirm_validation_override", "true");
+      if (body._reason) params.set("override_reason", body._reason);
+    }
+    const qs = params.toString() ? `?${params}` : "";
+    const url = (recordId
       ? `/api/records/${schema}/${obj}/${recordId}`
-      : `/api/records/${schema}/${obj}`;
+      : `/api/records/${schema}/${obj}`) + qs;
 
     const res = await fetch(url, {
       method,
@@ -834,14 +879,28 @@ async function loadRecordForm(schema, obj, recordId, objConfig) {
     if (res.ok) {
       const data = await res.json();
       window.location.href = `/${schema}/${obj}/${data.id || recordId}`;
-    } else {
-      const err = await res.json().catch(() => ({}));
-      let msg = "Failed to save record.";
-      if (err.detail) {
-        msg = Array.isArray(err.detail) ? err.detail.map(e => e.msg).join("; ") : String(err.detail);
-      }
-      showAlert(form, msg);
+      return;
     }
+
+    const err = await res.json().catch(() => ({}));
+    if (err.confirmation_required) {
+      const attrLabels = Object.fromEntries(
+        Object.entries(objConfig.attributes || {}).map(([k, v]) => [k, v.name || k])
+      );
+      _showValidationOverride(form, err.validation_rule_violations || [], attrLabels, () => doSave(true));
+      return;
+    }
+    let msg = "Failed to save record.";
+    if (err.detail) {
+      msg = Array.isArray(err.detail) ? err.detail.map(e => e.msg).join("; ") : String(err.detail);
+    }
+    showAlert(form, msg);
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!_validateForm(form)) return;
+    doSave(false);
   });
 }
 
