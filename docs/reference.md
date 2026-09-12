@@ -107,6 +107,115 @@ objects:
         type: string
 ```
 
+### Validation Rules
+
+Beyond the hard `required`/`type`/`unique` constraints (enforced by the database and always
+rejected outright with HTTP 422), an attribute can declare **soft** validation rules. A rule
+violation never blocks a write on its own — the API asks the caller to confirm before saving,
+and the record is saved either way with a `_validation_status` of `valid` or `invalid` (see
+[System Columns](#system-columns)). This lets stewards capture data they know is imperfect
+(e.g. bulk-importing legacy records) without losing visibility into what still needs fixing.
+
+Rules are declared as extra keys directly on an attribute, alongside `type`/`required`/`unique`:
+
+| Rule | Config key | Example |
+|---|---|---|
+| Value between min/max | `min`, `max` | `min: 0` / `max: 100000` |
+| Letters only (Unicode-aware) | `char_class: alpha` | Accepts `"Renée"`, rejects `"abc123"` |
+| Alphanumeric only (Unicode-aware) | `char_class: alnum` | Accepts `"AB12"`, rejects `"AB-12#"` |
+| Field required if another field equals a value | `required_if: {field: <attr>, equals: <value>}` | `state` required when `country` is `US` |
+| Field required if another field has any value | `required_if: {field: <attr>}` | `contact_phone` required whenever `contact_name` is set |
+| Field must be empty if another field is empty | `forbidden_if_absent: <attr>` | `secondary_ref` may only be set if `primary_ref` is also set |
+| One field's value compared to another | `compare: {op: gt\|gte\|lt\|lte\|eq\|ne, field: <attr>}` | `end_date` must be `gt` `start_date` |
+
+`char_class` uses Python's Unicode-aware `str.isalpha()`/`str.isalnum()` — accented letters,
+Cyrillic, CJK, and other non-ASCII scripts are all accepted, only digits/punctuation/symbols are
+rejected for `alpha`, and only punctuation/symbols for `alnum`.
+
+**Not yet supported** (see `docs/known_issues.md`'s Design Decisions section for the full
+rationale): a fixed allowed-value list for an attribute (needs a new schema-loader enum concept
+plus a UI dropdown — tracked as a separate feature), and rules that check the state of a
+*referenced* record (e.g. "preferred_supplier must be active" — requires a cross-object database
+lookup mid-validation, a different implementation shape from the rules above).
+`_validation_status` is binary (`valid`/`invalid`) for v1; a three-state `valid`/`invalid`/`warning`
+model with per-rule severity is potential future work, not implemented.
+
+Example:
+
+```yaml
+objects:
+  order_line:
+    name: Order Line
+    attributes:
+      country:
+        name: Country
+        type: string
+      state:
+        name: State
+        type: string
+        required_if: {field: country, equals: US}
+      unit_price:
+        name: Unit Price
+        type: numeric
+        min: 0
+        max: 100000
+      sku:
+        name: SKU
+        type: string
+        char_class: alnum
+      start_date:
+        name: Start Date
+        type: date
+      end_date:
+        name: End Date
+        type: date
+        compare: {op: gt, field: start_date}
+      primary_contact:
+        name: Primary Contact
+        type: string
+      backup_contact:
+        name: Backup Contact
+        type: string
+        forbidden_if_absent: primary_contact
+```
+
+**API contract for create/update** (`POST`/`PUT` on `/api/records/{schema}/{obj}[/{id}]`):
+
+- A request that violates one or more rules and does **not** pass `confirm_validation_override`
+  gets back HTTP 422:
+  ```json
+  {
+    "detail": "One or more validation rules failed. Confirm to override and save anyway.",
+    "confirmation_required": true,
+    "validation_rule_violations": [
+      {"attribute": "unit_price", "rule": "min", "message": "must be >= 0"}
+    ]
+  }
+  ```
+- Resubmitting the same request with `?confirm_validation_override=true` (and, optionally,
+  `?override_reason=<text>` for an audit note) saves the record with `_validation_status:
+  "invalid"` and records a `VALIDATION_OVERRIDE` audit event.
+- A request with no rule violations saves normally with `_validation_status: "valid"` — no
+  extra query params needed.
+- Hard constraint violations (missing `required` field, wrong `type`, duplicate `unique` value)
+  are **never** affected by `confirm_validation_override` — they always return a plain
+  `{"detail": "..."}` 422 with no `confirmation_required` key, regardless of the flag.
+- Cross-field rules (`compare`, `forbidden_if_absent`, `required_if`) are evaluated against the
+  **full record** — for an update, the existing record's values merged with the incoming
+  change — so editing only one side of a compared pair (e.g. just `end_date`) is still checked
+  against the other (e.g. the record's existing `start_date`).
+
+**Import behavior**: bulk import (`POST /api/records/{schema}/{obj}/import`) never hard-fails a
+row over a rule violation — every row is written, and rows that fail a rule are saved with
+`_validation_status: "invalid"`. The response gains `imported` (total rows inserted or updated)
+and `rows` (per-row detail including `_validation_status`) alongside the existing
+`inserted`/`updated`/`errors`/`total` fields, so an operator can see which rows need review.
+
+**Publish behavior**: `_validation_status` is never copied from the draft — publishing a draft
+recomputes it fresh against the data being promoted to `active`. Publishing never blocks on an
+invalid record; the status is informational, visible on the record everywhere it's displayed
+(list view, detail view, Pending Drafts) so a publisher or steward can catch and fix it.
+
 ### Governance Metadata
 
 Two optional free-text fields can be set at the object level to document data ownership:
@@ -243,6 +352,7 @@ Every object table includes these system-managed columns (not in the config):
 | `_draft_of_id` | UUID | For draft records only: UUID of the master active record this draft was copied from |
 | `_source_system` | TEXT | Name of the external system that originated this record (e.g. `"erp"`, `"crm"`) |
 | `_source_id` | TEXT | Identifier of the record in the source system |
+| `_validation_status` | TEXT | `valid` or `invalid` — whether the record currently satisfies every config-based [validation rule](#validation-rules) declared on its object. Defaults to `valid`; recomputed on every create, update, and publish. |
 
 ## Lifecycle States
 
@@ -274,6 +384,7 @@ For every object `{schema}.{obj}`, a history table `{schema}.{obj}_history` is c
 | `_changed_by` | User who made the change |
 | `_change_reason` | Optional reason string |
 | `_state` | Lifecycle state at the time of this history entry |
+| `_validation_status` | `valid`/`invalid` snapshot at the time of this history entry |
 | `_action` | `INSERT` / `UPDATE` / `DELETE` / `REVERT` / `PUBLISH` / `RETIRE` |
 
 ## Audit Log
@@ -288,7 +399,7 @@ All changes are recorded in `_system.audit_log`:
 | `schema_name` | Schema of the changed object |
 | `object_name` | Object key |
 | `record_id` | UUID of the changed record |
-| `action` | `INSERT` / `UPDATE` / `DELETE` / `REVERT` / `PUBLISH` / `RETIRE` |
+| `action` | `INSERT` / `UPDATE` / `DELETE` / `REVERT` / `PUBLISH` / `RETIRE` / `VALIDATION_OVERRIDE` |
 | `old_values` | JSON snapshot before change |
 | `new_values` | JSON snapshot after change |
 | `reason` | Optional reason provided by the user |
@@ -390,18 +501,24 @@ When setting a permission, the body may include any combination of these flags. 
 | Method | Path | Role required | Description |
 |---|---|---|---|
 | `GET` | `/api/records/{schema}/{obj}` | Viewer | List master (golden) records (paginated, searchable); default `state=active`; supports `?role=master\|draft` as MDM-native alias |
-| `POST` | `/api/records/{schema}/{obj}` | Editor | Create record (always `active`) |
+| `POST` | `/api/records/{schema}/{obj}` | Editor | Create record (always `active`); accepts `?confirm_validation_override=` and `?override_reason=` — see [Validation Rules](#validation-rules) |
 | `GET` | `/api/records/{schema}/{obj}/{id}` | Viewer | Get single record |
-| `PUT` | `/api/records/{schema}/{obj}/{id}` | Editor | Update record — creates a `draft` copy if the record is `active`; updates in-place if already a `draft` |
+| `PUT` | `/api/records/{schema}/{obj}/{id}` | Editor | Update record — creates a `draft` copy if the record is `active`; updates in-place if already a `draft`; accepts `?confirm_validation_override=` and `?override_reason=` |
 | `DELETE` | `/api/records/{schema}/{obj}/{id}` | Editor | Soft-delete record |
 | `GET` | `/api/records/{schema}/{obj}/{id}/history` | Viewer | Get version history |
 | `POST` | `/api/records/{schema}/{obj}/{id}/revert/{version}` | Editor | Revert to version |
 | `POST` | `/api/records/{schema}/{obj}/{draft_id}/publish` | Publisher | Promote a `draft` to `active`; accepts `?reason=` |
 | `POST` | `/api/records/{schema}/{obj}/{id}/retire` | Publisher | Transition an `active` record to `retired`; accepts `?reason=` |
 
+**Create/update response** — the full saved record, always including `_validation_status`
+(`valid` or `invalid`), plus a top-level `id` for backward compatibility:
+```json
+{ "id": "<uuid>", "_id": "<uuid>", "code": "ABC", "_validation_status": "valid", "..." : "..." }
+```
+
 **PUT response when a draft is created:**
 ```json
-{ "id": "<draft-uuid>", "draft": true }
+{ "id": "<draft-uuid>", "draft": true, "_id": "<draft-uuid>", "_validation_status": "valid", "..." : "..." }
 ```
 The returned `id` is the new draft's UUID. The original active record UUID is unchanged.
 
@@ -420,7 +537,7 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 | Method | Path | Role required | Description |
 |---|---|---|---|
 | `GET` | `/api/records/{schema}/{obj}/export` | Viewer | Export (`?format=csv\|tsv\|json`; `?state=active\|draft\|retired\|all`) |
-| `POST` | `/api/records/{schema}/{obj}/import` | Editor / Publisher | Import (`?format=csv\|tsv\|json`; optional `?upsert_key=<attr>`; `?initial_state=active\|draft`) |
+| `POST` | `/api/records/{schema}/{obj}/import` | Editor / Publisher | Import (`?format=csv\|tsv\|json`; optional `?upsert_key=<attr>`; `?initial_state=active\|draft`). Never hard-fails a row over a rule violation — see [Validation Rules](#validation-rules) |
 
 ### Schemas
 
@@ -481,7 +598,7 @@ Content-Type: application/json
 |---|---|---|
 | `schema` | — | Filter by schema name (use `_system` for auth events) |
 | `obj` | — | Filter by object key within the schema |
-| `action` | — | Filter by action: `INSERT`, `UPDATE`, `DELETE`, `REVERT`, `PUBLISH`, `RETIRE`, `LOGIN`, `LOGIN_FAILED`, `LOGOUT` |
+| `action` | — | Filter by action: `INSERT`, `UPDATE`, `DELETE`, `REVERT`, `PUBLISH`, `RETIRE`, `VALIDATION_OVERRIDE`, `LOGIN`, `LOGIN_FAILED`, `LOGOUT` |
 | `from_time` | — | ISO 8601 datetime — include entries at or after this time |
 | `to_time` | — | ISO 8601 datetime — include entries at or before this time |
 | `exclude_system` | `false` | When `true`, omit entries from system schemas (schema name starts with `_`) |
@@ -522,6 +639,21 @@ Content-Type: application/json
 | `initial_state` | `active` | Lifecycle state to assign to imported records: `active` or `draft`. Importing as `active` requires Publisher or Admin role; Editors can import as `draft` and publish the records later. |
 | `source_system` | — | Source system name applied to all imported records (sets `_source_system`). Per-row values in the file take precedence if the file includes a `_source_system` column. |
 | `reason` | — | Audit note attached to every inserted or updated record |
+
+**Import response** — in addition to the existing `inserted`/`updated`/`errors`/`total` fields,
+the response includes `imported` (= `inserted + updated`) and `rows` (per-row detail, each
+including `_validation_status`), so an operator can see which imported rows violate a
+validation rule without a follow-up query:
+```json
+{
+  "inserted": 2, "updated": 0, "errors": [], "total": 2,
+  "imported": 2,
+  "rows": [
+    { "code": "AB12", "unit_price": 100, "_validation_status": "valid", "...": "..." },
+    { "code": "CD34", "unit_price": -5, "_validation_status": "invalid", "...": "..." }
+  ]
+}
+```
 
 > **Note:** CSV/TSV/JSON import files must be UTF-8 encoded. Files in another encoding (e.g. Excel's Windows-1252 "CSV" or UTF-16 "Unicode Text" export) are rejected with HTTP 400 — re-save as "CSV UTF-8" or convert with `iconv` first. See `docs/troubleshooting.md`.
 

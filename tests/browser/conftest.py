@@ -108,6 +108,8 @@ def clean_browser_records(_db_engine):
             '"browser"."governed_item"',
             '"browser"."audited_item_history"',
             '"browser"."audited_item"',
+            '"browser"."division_history"',
+            '"browser"."division"',
             '"browser"."company_history"',
             '"browser"."company"',
         ):

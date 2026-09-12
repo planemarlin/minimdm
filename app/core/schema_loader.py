@@ -123,6 +123,12 @@ def _normalize(raw: dict) -> dict:
                     "required": bool(attr_body.get("required", False)),
                     "unique": bool(attr_body.get("unique", False)),
                     "reference": attr_body.get("reference"),
+                    "min": attr_body.get("min"),
+                    "max": attr_body.get("max"),
+                    "char_class": attr_body.get("char_class"),
+                    "required_if": attr_body.get("required_if"),
+                    "forbidden_if_absent": attr_body.get("forbidden_if_absent"),
+                    "compare": attr_body.get("compare"),
                 }
 
             objects[obj_key] = {
@@ -180,12 +186,48 @@ def validate_config(config: dict) -> list[str]:
                     f"[{schema_name}.{obj_key}] parent '{parent}' not found in schema"
                 )
 
-            for attr_key, attr_body in obj_body.get("attributes", {}).items():
+            attrs = obj_body.get("attributes", {})
+            for attr_key, attr_body in attrs.items():
                 ref = attr_body.get("reference")
                 if ref and ref not in objects:
                     errors.append(
                         f"[{schema_name}.{obj_key}.{attr_key}]"
                         f" reference '{ref}' not found in schema"
+                    )
+
+                required_if = attr_body.get("required_if")
+                if required_if and required_if.get("field") not in attrs:
+                    errors.append(
+                        f"[{schema_name}.{obj_key}.{attr_key}]"
+                        f" required_if.field '{required_if.get('field')}' not found in attributes"
+                    )
+
+                forbidden_if_absent = attr_body.get("forbidden_if_absent")
+                if forbidden_if_absent and forbidden_if_absent not in attrs:
+                    errors.append(
+                        f"[{schema_name}.{obj_key}.{attr_key}]"
+                        f" forbidden_if_absent '{forbidden_if_absent}' not found in attributes"
+                    )
+
+                compare = attr_body.get("compare")
+                if compare:
+                    if compare.get("field") not in attrs:
+                        errors.append(
+                            f"[{schema_name}.{obj_key}.{attr_key}]"
+                            f" compare.field '{compare.get('field')}' not found in attributes"
+                        )
+                    if compare.get("op") not in ("gt", "gte", "lt", "lte", "eq", "ne"):
+                        errors.append(
+                            f"[{schema_name}.{obj_key}.{attr_key}]"
+                            f" compare.op '{compare.get('op')}' is invalid"
+                            " (must be gt, gte, lt, lte, eq, or ne)"
+                        )
+
+                char_class = attr_body.get("char_class")
+                if char_class is not None and char_class not in ("alpha", "alnum"):
+                    errors.append(
+                        f"[{schema_name}.{obj_key}.{attr_key}]"
+                        f" char_class '{char_class}' is invalid (must be alpha or alnum)"
                     )
 
             valid_targets = set(obj_body.get("attributes", {}).keys()) | {"_source_id"}

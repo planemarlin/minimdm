@@ -8,6 +8,7 @@ A minimal, lightweight, open-source **Master Data Management** application with 
 - Create, read, update, and delete records through the web UI or API
 - **Lifecycle states**: records progress through `draft` → `active` → `retired`; editing an active record creates a draft copy, keeping the live record stable until a Publisher approves the change
 - **Lifecycle policy flags**: per-object config flags (`requires_draft`, `allow_retire`, `allow_direct_active_import`) enforce governance rules without code changes
+- **Config-based validation rules**: attributes can declare data-quality rules (`min`/`max`, `char_class`, `required_if`, `forbidden_if_absent`, cross-field `compare`) alongside the existing required/type/unique constraints; a violation never blocks a save — it flags the record's `_validation_status` and asks for confirmation to override, so imperfect data stays visible and correctable instead of being silently rejected
 - Full record versioning with the ability to view and revert to any historical version
 - Complete audit log: what changed, who changed it, when, and why
 - **Data ownership & stewardship**: optional `owner` and `steward` fields on each object type for governance metadata; displayed in the UI alongside the object name

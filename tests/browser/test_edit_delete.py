@@ -46,6 +46,40 @@ def test_edit_form_prepopulates_existing_values(logged_in_page, api_client):
     assert logged_in_page.locator("input[name='name']").input_value() == "Prefilled Name"
 
 
+def test_edit_form_preselects_parent_reference(logged_in_page, api_client):
+    """The parent-relationship <select> on the Edit form must pre-select the
+    record's existing parent, and resubmitting the form must not drop it."""
+    r = api_client.post(
+        "/api/records/browser/company",
+        json={"code": "PARENT-EDIT", "name": "Parent Edit Co"},
+    )
+    r.raise_for_status()
+    company_id = r.json()["_id"]
+
+    r = api_client.post(
+        "/api/records/browser/division",
+        json={"code": "DIV-EDIT", "_company_id": company_id},
+    )
+    r.raise_for_status()
+    division_id = r.json()["_id"]
+
+    logged_in_page.goto(f"/browser/division/{division_id}/edit")
+    logged_in_page.wait_for_selector("select[data-reference='company']")
+    logged_in_page.wait_for_timeout(300)  # populateRefSelects fetches options async
+    assert logged_in_page.locator("select[data-reference='company']").input_value() == company_id
+
+    logged_in_page.fill("input[name='code']", "DIV-EDIT-2")
+    logged_in_page.click("button[type='submit']")
+    # Editing an active record creates a draft alongside — the URL after submit
+    # is the new draft's id, not the original active division_id.
+    logged_in_page.wait_for_url(re.compile(r"/browser/division/[0-9a-f-]{36}$"))
+    draft_id = logged_in_page.url.rstrip("/").rsplit("/", 1)[-1]
+
+    r = api_client.get(f"/api/records/browser/division/{draft_id}")
+    r.raise_for_status()
+    assert r.json()["_company_id"] == company_id
+
+
 def test_delete_record_redirects_to_list(logged_in_page, api_client):
     """Confirming deletion in the modal redirects to the object list."""
     r = api_client.post(

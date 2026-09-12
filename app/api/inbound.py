@@ -177,6 +177,7 @@ async def receive_inbound(
 
     source_name = source_config["name"]
     reason = f"Inbound webhook from {source_name}"
+    obj_config = tm.get_object_config(schema, obj) or {}
 
     status, record_id = _inbound_upsert(
         db=db,
@@ -189,6 +190,7 @@ async def receive_inbound(
         request=request,
         schema=schema,
         obj=obj,
+        obj_config=obj_config,
         match_key=source_config.get("match_key"),
     )
     db.commit()

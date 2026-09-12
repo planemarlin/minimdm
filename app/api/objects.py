@@ -4,11 +4,13 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import audit as audit_svc
+from app.core import validation as validation_svc
 from app.core.permissions import require_publish_access, require_schema_access
 from app.core.webhooks import fire_webhooks
 from app.database import get_db
@@ -229,6 +231,8 @@ def create_record(
     request: Request,
     body: dict,
     background_tasks: BackgroundTasks,
+    confirm_validation_override: bool = Query(False),
+    override_reason: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema, write=True)
@@ -245,13 +249,25 @@ def create_record(
 
     now = datetime.now(timezone.utc)
     record_id = uuid.uuid4()
-    values = _filter_columns(body, table)
+    try:
+        values = _filter_columns(body, table)
+    except _TypeCoercionError as e:
+        raise HTTPException(422, str(e)) from e
     values["_id"] = record_id
     values["_created_at"] = now
     values["_updated_at"] = now
     values["_created_by"] = _get_username(request)
     initial_state = "draft" if obj_config.get("requires_draft") else "active"
     values["_state"] = initial_state
+
+    violations = validation_svc.record_violations(obj_config, values)
+    if violations and not confirm_validation_override:
+        return JSONResponse(status_code=422, content={
+            "detail": "One or more validation rules failed. Confirm to override and save anyway.",
+            "confirmation_required": True,
+            "validation_rule_violations": violations,
+        })
+    values["_validation_status"] = "invalid" if violations else "valid"
 
     try:
         db.execute(table.insert().values(**values))
@@ -270,6 +286,13 @@ def create_record(
         reason=body.get("_reason"), ip_address=_client_ip(request),
         user_name=_get_username(request)
     )
+    if violations:
+        audit_svc.log_change(
+            db, audit_table, schema, obj, record_id, "VALIDATION_OVERRIDE",
+            old_values=None, new_values={"validation_rule_violations": violations},
+            reason=override_reason, ip_address=_client_ip(request),
+            user_name=_get_username(request)
+        )
     db.commit()
 
     if initial_state == "active":
@@ -278,7 +301,7 @@ def create_record(
             schema, obj, str(record_id), _get_username(request)
         )
 
-    return {"id": str(record_id)}
+    return {"id": str(record_id), **_serialize_row(values)}
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +315,8 @@ def update_record(
     record_id: str,
     request: Request,
     body: dict,
+    confirm_validation_override: bool = Query(False),
+    override_reason: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     require_schema_access(request, schema, write=True)
@@ -315,10 +340,18 @@ def update_record(
     if not existing:
         raise HTTPException(404, "Record not found")
 
-    _check_reason(body.get("_reason"), tm.get_object_config(schema, obj))
+    obj_config = tm.get_object_config(schema, obj) or {}
+    _check_reason(body.get("_reason"), obj_config)
 
     now = datetime.now(timezone.utc)
     record_state = existing["_state"] if "_state" in existing.keys() else "active"
+
+    def _violation_response(violations):
+        return JSONResponse(status_code=422, content={
+            "detail": "One or more validation rules failed. Confirm to override and save anyway.",
+            "confirmation_required": True,
+            "validation_rule_violations": violations,
+        })
 
     if record_state == "active":
         # Draft-copy-on-edit: leave the active record unchanged; create/update a draft alongside.
@@ -329,12 +362,23 @@ def update_record(
             .where(table.c._deleted_at.is_(None))
         ).mappings().first()
 
-        user_updates = _filter_columns(body, table)
+        try:
+            user_updates = _filter_columns(body, table)
+        except _TypeCoercionError as e:
+            raise HTTPException(422, str(e)) from e
 
         if existing_draft:
             # Update the already-existing draft in place
             draft_id = existing_draft["_id"]
             draft_updates = {**user_updates, "_updated_at": now}
+            new_draft_values = {**dict(existing_draft), **draft_updates}
+
+            violations = validation_svc.record_violations(obj_config, new_draft_values)
+            if violations and not confirm_validation_override:
+                return _violation_response(violations)
+            draft_updates["_validation_status"] = "invalid" if violations else "valid"
+            new_draft_values["_validation_status"] = draft_updates["_validation_status"]
+
             try:
                 db.execute(table.update().where(table.c._id == draft_id).values(**draft_updates))
             except IntegrityError as e:
@@ -354,7 +398,6 @@ def update_record(
                     .where(history_table.c._history_id == current_version_row["_history_id"])
                     .values(_valid_to=now)
                 )
-            new_draft_values = {**dict(existing_draft), **draft_updates}
             audit_svc.write_history(
                 db, history_table, new_draft_values, version=current_version + 1,
                 action="UPDATE", valid_from=now,
@@ -367,6 +410,13 @@ def update_record(
                 reason=body.get("_reason"), ip_address=_client_ip(request),
                 user_name=_get_username(request)
             )
+            if violations:
+                audit_svc.log_change(
+                    db, audit_table, schema, obj, draft_id, "VALIDATION_OVERRIDE",
+                    old_values=None, new_values={"validation_rule_violations": violations},
+                    reason=override_reason, ip_address=_client_ip(request),
+                    user_name=_get_username(request)
+                )
         else:
             # Create a new draft record alongside the active one
             draft_id = uuid.uuid4()
@@ -382,6 +432,11 @@ def update_record(
             draft_values["_deleted_at"] = None
             draft_values["_state"] = "draft"
             draft_values["_draft_of_id"] = rid
+
+            violations = validation_svc.record_violations(obj_config, draft_values)
+            if violations and not confirm_validation_override:
+                return _violation_response(violations)
+            draft_values["_validation_status"] = "invalid" if violations else "valid"
 
             try:
                 db.execute(table.insert().values(**draft_values))
@@ -400,12 +455,36 @@ def update_record(
                 reason=body.get("_reason"), ip_address=_client_ip(request),
                 user_name=_get_username(request)
             )
+            if violations:
+                audit_svc.log_change(
+                    db, audit_table, schema, obj, draft_id, "VALIDATION_OVERRIDE",
+                    old_values=None, new_values={"validation_rule_violations": violations},
+                    reason=override_reason, ip_address=_client_ip(request),
+                    user_name=_get_username(request)
+                )
 
         db.commit()
-        return {"id": str(draft_id), "draft": True}
+        return {
+            "id": str(draft_id),
+            "draft": True,
+            **_serialize_row(new_draft_values if existing_draft else draft_values),
+        }
 
     # Draft or retired — update in place
     old_values = dict(existing)
+
+    try:
+        updates = _filter_columns(body, table)
+    except _TypeCoercionError as e:
+        raise HTTPException(422, str(e)) from e
+    updates["_updated_at"] = now
+    new_values = {**old_values, **updates}
+
+    violations = validation_svc.record_violations(obj_config, new_values)
+    if violations and not confirm_validation_override:
+        return _violation_response(violations)
+    updates["_validation_status"] = "invalid" if violations else "valid"
+    new_values["_validation_status"] = updates["_validation_status"]
 
     current_version_row = db.execute(
         select(history_table)
@@ -422,16 +501,12 @@ def update_record(
             .values(_valid_to=now)
         )
 
-    updates = _filter_columns(body, table)
-    updates["_updated_at"] = now
-
     try:
         db.execute(table.update().where(table.c._id == rid).values(**updates))
     except IntegrityError as e:
         db.rollback()
         raise HTTPException(422, _integrity_error_message(e)) from e
 
-    new_values = {**old_values, **updates}
     audit_svc.write_history(
         db, history_table, new_values, version=current_version + 1,
         action="UPDATE", valid_from=now,
@@ -444,9 +519,16 @@ def update_record(
         reason=body.get("_reason"), ip_address=_client_ip(request),
         user_name=_get_username(request)
     )
+    if violations:
+        audit_svc.log_change(
+            db, audit_table, schema, obj, rid, "VALIDATION_OVERRIDE",
+            old_values=None, new_values={"validation_rule_violations": violations},
+            reason=override_reason, ip_address=_client_ip(request),
+            user_name=_get_username(request)
+        )
     db.commit()
 
-    return {"id": record_id}
+    return {"id": record_id, **_serialize_row(new_values)}
 
 
 # ---------------------------------------------------------------------------
@@ -741,17 +823,24 @@ def publish_record(
                 .where(history_table.c._history_id == current_version_row["_history_id"])
                 .values(_valid_to=now)
             )
+        obj_config = tm.get_object_config(schema, obj) or {}
+        violations = validation_svc.record_violations(obj_config, dict(draft))
+        validation_status = "invalid" if violations else "valid"
+
         try:
             db.execute(
                 table.update()
                 .where(table.c._id == draft_id)
-                .values(_state="active", _updated_at=now)
+                .values(_state="active", _updated_at=now, _validation_status=validation_status)
             )
         except IntegrityError as e:
             db.rollback()
             raise HTTPException(422, _integrity_error_message(e)) from e
 
-        new_values = {**dict(draft), "_state": "active", "_updated_at": now}
+        new_values = {
+            **dict(draft), "_state": "active", "_updated_at": now,
+            "_validation_status": validation_status,
+        }
         audit_svc.write_history(
             db, history_table, new_values, version=current_version + 1,
             action="PUBLISH", valid_from=now,
@@ -798,6 +887,13 @@ def publish_record(
         if col_name in draft.keys():
             update_vals[col_name] = draft[col_name]
     update_vals["_updated_at"] = now
+
+    # Recompute (never copy) _validation_status against the record as it will exist
+    # once promoted — publish is informational, not blocking, so this never 422s.
+    obj_config = tm.get_object_config(schema, obj) or {}
+    prospective_active = {**dict(active), **update_vals}
+    violations = validation_svc.record_violations(obj_config, prospective_active)
+    update_vals["_validation_status"] = "invalid" if violations else "valid"
 
     # Increment active record's history
     current_version_row = db.execute(
@@ -952,9 +1048,18 @@ def retire_record(
 # ---------------------------------------------------------------------------
 
 _SYSTEM_COLS = {"_id", "_created_at", "_updated_at", "_deleted_at", "_version",
-               "_state", "_draft_of_id"}
+               "_state", "_draft_of_id", "_validation_status"}
 
 _ROLE_MAP = {"master": "active", "draft": "draft"}
+
+
+class _TypeCoercionError(ValueError):
+    """A submitted value could not be coerced to its column's type — a hard,
+    non-overridable constraint violation, distinct from a soft validation rule."""
+
+    def __init__(self, field: str, message: str):
+        self.field = field
+        super().__init__(message)
 
 
 def _filter_columns(body: dict, table) -> dict:
@@ -962,6 +1067,10 @@ def _filter_columns(body: dict, table) -> dict:
 
     System columns are excluded; parent FK columns (e.g. _division_id) are
     included because they start with _ but are legitimate user-settable fields.
+
+    Raises _TypeCoercionError (never silently keeps the raw wrong-type value)
+    so a genuine type violation surfaces as a clean 422, not an uncaught
+    DataError from the database.
     """
     col_types = {c.name: c.type for c in table.c}
     col_names = {c.name for c in table.c if c.name not in _SYSTEM_COLS}
@@ -979,18 +1088,20 @@ def _filter_columns(body: dict, table) -> dict:
             try:
                 result[k] = int(v)
             except (ValueError, TypeError):
-                result[k] = v
+                raise _TypeCoercionError(k, f"'{v}' is not a valid integer for '{k}'") from None
         elif isinstance(col_type, Numeric):
             try:
                 result[k] = Decimal(str(v))
             except InvalidOperation:
-                result[k] = v
+                raise _TypeCoercionError(k, f"'{v}' is not a valid number for '{k}'") from None
         elif isinstance(col_type, DateTime):
             if isinstance(v, str):
                 try:
                     result[k] = datetime.fromisoformat(v)
                 except ValueError:
-                    result[k] = v
+                    raise _TypeCoercionError(
+                        k, f"'{v}' is not a valid date/time for '{k}'"
+                    ) from None
             else:
                 result[k] = v
         else:

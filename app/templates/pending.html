@@ -32,6 +32,7 @@
             {% for key in group.attr_keys %}
             <th>{{ group.attr_labels[key] | upper }}</th>
             {% endfor %}
+            <th>VALIDATION</th>
             <th>SOURCE</th>
             <th>UPDATED</th>
             <th></th>
@@ -44,6 +45,11 @@
             {% for key in group.attr_keys %}
             <td>{{ row.get(key, '') or '' }}</td>
             {% endfor %}
+            <td>
+              {% if row.get('_validation_status') == 'invalid' %}
+              <span class="mdm-pill mdm-pill-red">Invalid</span>
+              {% endif %}
+            </td>
             <td>
               {% if row.get('_source_system') %}
               <span style="font-family:monospace;font-size:.78rem;color:var(--mdm-mute)">{{ row['_source_system'] }}</span>

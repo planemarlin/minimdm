@@ -122,6 +122,13 @@ Alembic manages all `_system` schema tables. Migration `0001` creates the five s
 ### Sorting on parent and reference columns is not supported
 **Decision:** Parent and reference column headers are intentionally non-sortable. These values are resolved from other tables client-side; a correct global sort would require a SQL JOIN per relationship at query time, adding significant complexity for limited benefit. Sort on the underlying data attributes instead. This is documented in [reference.md](reference.md).
 
+### Validation rules: allowed-value lists and reference-state checks are deferred
+**Decision:** The v0.8.0 config-based [validation rules](reference.md#validation-rules) feature deliberately does not cover two rule shapes from the original catalog:
+- **A fixed allowed-value list per attribute** (e.g. `industry: [Manufacturing, Retail, Logistics]`). Cerberus supports this natively (`allowed: [...]`), but miniMDM's config has no enum concept today — an attribute only supports `name`/`type`/`required`/`unique`/`reference`. `reference` already renders as a dropdown in `app/static/js/app.js`, but that links to *another object's records*, not a fixed list of literal values. Building this properly needs a new schema-loader config key plus a matching UI change to render it as a dropdown — a schema-loader + frontend feature, not just a validator addition, so it's scoped as separate future work rather than bundled in.
+- **Referenced-record state checks** (e.g. a product's `preferred_supplier` must be `active`). Architecturally distinct from every other validation rule: it requires fetching a *different* record from the database mid-validation, which neither Cerberus nor JSON Schema do natively (both validate a single document in isolation). A different implementation shape from same-record rules entirely — likely a later phase, not decided when.
+
+Neither is scheduled to a version yet.
+
 ---
 
 ## Open Issues
@@ -155,6 +162,14 @@ Identified during a full architecture/best-practices review (branch `chore/codeb
 ### Publish versioned container images
 
 Raised via [#49](https://github.com/planemarlin/minimdm/issues/49). Docker deployments currently build from source (`docker compose build`) — there's no CI job that publishes tagged images to a registry (e.g. `ghcr.io/planemarlin/minimdm:vX.Y.Z`), so upgrading a Docker deployment still means a `git checkout` + rebuild, documented in [upgrading.md](upgrading.md). Adding one would need a new publish-on-tag GitHub Actions workflow; not started.
+
+### `starlette.testclient` deprecation warning after removing `httpx2` (#59) — **Resolved**
+
+Every test run using `TestClient` (nearly the whole suite) printed:
+```
+StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+```
+The installed Starlette (1.3.1)'s `testclient.py` tries `import httpx2 as httpx` first and only falls back to plain `httpx` — with this warning — when `httpx2` isn't installed; a future Starlette release could drop the fallback entirely and require `httpx2` outright, which would raise `RuntimeError` instead of a warning and break every test using `TestClient`. `httpx2` is exactly the package removed in [#59](../../issues/59) for four Dependabot-flagged vulnerabilities (decompression amplification `GHSA-8xx6-hgc6-gc2m`, multipart header injection `GHSA-h4x7-gw46-3wm6`, request smuggling `GHSA-pf96-p4fj-6566`, and — in transitive dependency `httpcore2` — a SOCKS-proxied TLS bypass `GHSA-7mj9-2mp8-4m2p`), and at the time only one release existed (`2.3.0`, the vulnerable one). Initially assumed to still be the case; checking PyPI's per-release vulnerability data directly (`https://pypi.org/pypi/httpx2/<version>/json`, which lists OSV-sourced advisories per version including `fixed_in`) showed this was stale — `httpx2` has since released up to `2.12.0`, and all four advisories are fixed: the two `httpx2`-side ones (`GHSA-h4x7-gw46-3wm6`, `GHSA-pf96-p4fj-6566`) in `2.11.0`, the decompression one (`GHSA-8xx6-hgc6-gc2m`) in `2.12.0`, and `2.12.0` pins `httpcore2==2.12.0` exactly, well past that package's own fix for `GHSA-7mj9-2mp8-4m2p` in `2.10.0`. **Resolution**: `httpx2>=2.12.0` re-added to the `dev` dependency group; verified empirically (not just by semver assumption) — the full 306-test backend suite plus the 38 browser tests pass identically with it installed, and the deprecation warning no longer appears at all.
 
 ### `Settings.host`/`Settings.port` aren't wired to the actual server bind — **Resolved**
 
