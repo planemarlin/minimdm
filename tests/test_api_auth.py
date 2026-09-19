@@ -35,7 +35,7 @@ def _no_auth_headers():
 def _non_admin_headers():
     """Return headers with a valid but non-admin token.
 
-    Creates 'plain_user' in the database on first call so is_user_active() passes.
+    Creates 'plain_user' in the database on first call so the auth middleware finds an active user.
     """
     from app.core.auth import create_token, create_user, get_user_by_username
     engine = _get_engine()
@@ -677,3 +677,118 @@ def test_config_get_includes_schemas(client):
     res = client.get("/api/config")
     assert res.status_code == 200
     assert "schemas" in res.json()
+
+
+# ---------------------------------------------------------------------------
+# Live auth state & /static prefix (pre-v0.8.0 security review)
+# ---------------------------------------------------------------------------
+
+def test_static_prefixed_path_is_not_treated_as_public(client):
+    """`/staticfoo/...` (e.g. a schema named 'staticdata') must not skip the auth
+    middleware just because it starts with the string '/static'."""
+    from fastapi.testclient import TestClient
+
+    anon = TestClient(client.app, follow_redirects=False)
+    assert anon.get("/staticfoo/bar").status_code == 303
+    assert anon.get("/static/js/app.js").status_code == 200  # the real static mount stays public
+
+
+def test_demoted_admin_loses_admin_access_immediately(client):
+    """is_admin must come from the database on every request, not the JWT claim, so a
+    demotion takes effect at once instead of when the token expires."""
+    from app.core.auth import create_token, create_user, update_user
+
+    engine = _get_engine()
+    _delete_user(engine, "demote_test_admin")
+    user = create_user(engine, "demote_test_admin", "long-enough-password", is_admin=True)
+    try:
+        token = create_token(user["id"], "demote_test_admin", True)
+        headers = {"Authorization": f"Bearer {token}"}
+        assert client.get("/api/admin/users", headers=headers).status_code == 200
+
+        update_user(engine, user["id"], is_admin=False)
+        assert client.get("/api/admin/users", headers=headers).status_code == 403
+        assert client.get("/api/auth/me", headers=headers).json()["is_admin"] is False
+    finally:
+        _delete_user(engine, "demote_test_admin")
+
+
+def test_login_token_carries_password_fingerprint(client):
+    from fastapi.testclient import TestClient
+
+    from app.core.auth import create_user, decode_token, get_user_by_username, password_fingerprint
+
+    engine = _get_engine()
+    _delete_user(engine, "pwv_login_user")
+    create_user(engine, "pwv_login_user", "long-enough-password")
+    try:
+        # A fresh client so the session-scoped client's cookie jar isn't polluted.
+        res = TestClient(client.app).post(
+            "/api/auth/login",
+            json={"username": "pwv_login_user", "password": "long-enough-password"},
+        )
+        assert res.status_code == 200
+        payload = decode_token(res.cookies["access_token"])
+        stored = get_user_by_username(engine, "pwv_login_user")["password_hash"]
+        assert payload["pwv"] == password_fingerprint(stored)
+    finally:
+        _delete_user(engine, "pwv_login_user")
+
+
+def test_password_change_invalidates_existing_sessions(client):
+    from app.core.auth import (
+        create_token,
+        create_user,
+        get_user_by_username,
+        password_fingerprint,
+        update_user,
+    )
+
+    engine = _get_engine()
+    _delete_user(engine, "pwv_change_user")
+    user = create_user(engine, "pwv_change_user", "long-enough-password")
+    try:
+        fp = password_fingerprint(get_user_by_username(engine, "pwv_change_user")["password_hash"])
+        token = create_token(user["id"], "pwv_change_user", False, fp)
+        headers = {"Authorization": f"Bearer {token}"}
+        assert client.get("/api/auth/me", headers=headers).status_code == 200
+
+        update_user(engine, user["id"], password="a-different-password")
+        assert client.get("/api/auth/me", headers=headers).status_code == 401
+    finally:
+        _delete_user(engine, "pwv_change_user")
+
+
+def test_password_reset_invalidates_existing_sessions(client):
+    from app.core.auth import (
+        create_reset_token,
+        create_token,
+        create_user,
+        get_user_by_username,
+        password_fingerprint,
+    )
+
+    engine = _get_engine()
+    _delete_user(engine, "pwv_reset_user")
+    user = create_user(engine, "pwv_reset_user", "long-enough-password")
+    try:
+        fp = password_fingerprint(get_user_by_username(engine, "pwv_reset_user")["password_hash"])
+        token = create_token(user["id"], "pwv_reset_user", False, fp)
+        headers = {"Authorization": f"Bearer {token}"}
+        assert client.get("/api/auth/me", headers=headers).status_code == 200
+
+        reset_token, _ = create_reset_token(engine, user["id"])
+        res = client.post(
+            "/api/auth/reset-password",
+            json={"token": reset_token, "password": "brand-new-password"},
+        )
+        assert res.status_code == 200
+        assert client.get("/api/auth/me", headers=headers).status_code == 401
+    finally:
+        _delete_user(engine, "pwv_reset_user")
+
+
+def test_token_without_password_fingerprint_stays_valid_until_expiry(client):
+    """Tokens issued before the `pwv` claim existed must not be rejected on upgrade."""
+    headers = _non_admin_headers()  # create_token(...) with no pw_fingerprint
+    assert client.get("/api/auth/me", headers=headers).status_code == 200

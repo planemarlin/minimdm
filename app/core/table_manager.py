@@ -32,6 +32,21 @@ TYPE_MAP = {
     "date": DateTime,
 }
 
+_SAFE_SERVER_DEFAULT_RE = re.compile(r"^(?:'[a-z_]+'|true|false)$")
+
+
+def _safe_server_default(arg: str) -> str:
+    """Return `arg` unchanged if it is a plain literal safe to interpolate into DDL.
+
+    All server_default values in this codebase are hardcoded constants, but they are
+    interpolated into raw ALTER/UPDATE statements, so this guards against a future
+    accidental injection. An explicit raise (not `assert`) so the guard survives
+    `python -O`.
+    """
+    if not _SAFE_SERVER_DEFAULT_RE.match(arg):
+        raise ValueError(f"Unexpected server_default value: {arg!r}")
+    return arg
+
 
 class TableManager:
     def __init__(self, engine: Engine) -> None:
@@ -310,13 +325,7 @@ class TableManager:
                         default_clause = ""
                         sd = col.server_default
                         if sd is not None and hasattr(sd, "arg") and isinstance(sd.arg, str):
-                            # Guard: only interpolate quoted string literals (e.g. "'active'").
-                            # All server_default values in this codebase are hardcoded constants,
-                            # but this assertion prevents a future accidental injection.
-                            assert re.match(r"^(?:'[a-z_]+'|true|false)$", sd.arg), (
-                                f"Unexpected server_default value: {sd.arg!r}"
-                            )
-                            default_clause = f" DEFAULT {sd.arg}"
+                            default_clause = f" DEFAULT {_safe_server_default(sd.arg)}"
                         conn.execute(text(
                             f'ALTER TABLE "{schema}"."{tbl_name}" '
                             f'ADD COLUMN IF NOT EXISTS "{col.name}" {col_type}{default_clause}'
@@ -326,12 +335,10 @@ class TableManager:
                         # without a DEFAULT (e.g. _state added by an earlier migration).
                         sd = col.server_default
                         if sd is not None and hasattr(sd, "arg") and isinstance(sd.arg, str):
-                            assert re.match(r"^(?:'[a-z_]+'|true|false)$", sd.arg), (
-                                f"Unexpected server_default value: {sd.arg!r}"
-                            )
                             conn.execute(text(
-                                f'UPDATE "{schema}"."{tbl_name}" '
-                                f'SET "{col.name}" = {sd.arg} WHERE "{col.name}" IS NULL'
+                                f'UPDATE "{schema}"."{tbl_name}" '  # nosec B608 — identifiers are config-validated; default is checked by _safe_server_default
+                                f'SET "{col.name}" = {_safe_server_default(sd.arg)}'
+                                f' WHERE "{col.name}" IS NULL'
                             ))
             conn.commit()
 

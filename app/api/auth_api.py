@@ -14,6 +14,7 @@ from app.core.auth import (
     create_token,
     get_user_by_id,
     get_user_by_username,
+    password_fingerprint,
     revoke_token,
     update_user,
     verify_password,
@@ -81,7 +82,10 @@ async def login(request: Request, body: LoginRequest):
                   reason=f"Login attempt for inactive account '{username}'")
         raise HTTPException(401, "Account is disabled. Contact an administrator.")
 
-    token = create_token(str(user["id"]), user["username"], user["is_admin"])
+    token = create_token(
+        str(user["id"]), user["username"], user["is_admin"],
+        pw_fingerprint=password_fingerprint(user["password_hash"]),
+    )
     _log_auth(request, "LOGIN", user["id"], user["username"])
 
     response = JSONResponse({"username": user["username"], "is_admin": user["is_admin"]})

@@ -21,11 +21,23 @@ def _is_private_ip(host: str) -> bool:
     except ValueError:
         return False  # hostname, not an IP literal — checked at config load time only
 
-_IDENTIFIER_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+_IDENTIFIER_RE = re.compile(r'[a-zA-Z_][a-zA-Z0-9_]*')
+
+# Attribute types that can be meaningfully compared with each other (`compare`)
+# or that hold text (`char_class`).
+_TYPE_GROUPS = {
+    "integer": "number",
+    "numeric": "number",
+    "date": "date",
+    "string": "text",
+    "text": "text",
+    "email": "text",
+    "boolean": "boolean",
+}
 
 
 def _validate_identifier(value: str, context: str) -> None:
-    if not _IDENTIFIER_RE.match(value):
+    if not _IDENTIFIER_RE.fullmatch(value):
         raise ValueError(
             f"Invalid identifier '{value}' in {context}. "
             "Use only letters, digits, and underscores, starting with a letter or underscore."
@@ -222,12 +234,30 @@ def validate_config(config: dict) -> list[str]:
                             f" compare.op '{compare.get('op')}' is invalid"
                             " (must be gt, gte, lt, lte, eq, or ne)"
                         )
+                    other = attrs.get(compare.get("field"))
+                    if other is not None:
+                        own_group = _TYPE_GROUPS.get(attr_body.get("type", "string"))
+                        other_group = _TYPE_GROUPS.get(other.get("type", "string"))
+                        if own_group != other_group:
+                            errors.append(
+                                f"[{schema_name}.{obj_key}.{attr_key}]"
+                                f" compare.field '{compare.get('field')}' has an incompatible"
+                                f" type ('{other.get('type', 'string')}' vs"
+                                f" '{attr_body.get('type', 'string')}')"
+                            )
 
                 char_class = attr_body.get("char_class")
                 if char_class is not None and char_class not in ("alpha", "alnum"):
                     errors.append(
                         f"[{schema_name}.{obj_key}.{attr_key}]"
                         f" char_class '{char_class}' is invalid (must be alpha or alnum)"
+                    )
+                if char_class is not None and _TYPE_GROUPS.get(
+                    attr_body.get("type", "string")
+                ) != "text":
+                    errors.append(
+                        f"[{schema_name}.{obj_key}.{attr_key}]"
+                        f" char_class only applies to string, text, or email attributes"
                     )
 
             valid_targets = set(obj_body.get("attributes", {}).keys()) | {"_source_id"}

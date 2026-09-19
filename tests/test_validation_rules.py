@@ -392,3 +392,132 @@ def test_publish_new_record_draft_recomputes_validation_status(client, clean_rec
     active = client.get(f"/api/records/test/governed_item/{draft_id}").json()
     assert active["_state"] == "active"
     assert active["_validation_status"] == "invalid"
+
+
+# ---------------------------------------------------------------------------
+# Robustness: rules must flag, never crash (pre-v0.8.0 security review)
+# ---------------------------------------------------------------------------
+
+def test_compare_handles_naive_vs_timezone_aware_dates(client, clean_records):
+    """`date` columns are naive but an API client may send a `Z`/offset timestamp for one
+    side. Comparing naive with aware datetimes raises TypeError — it must be handled as
+    a normal comparison (or flagged), never an uncaught 500."""
+    resp = _create(client, start_date="2026-01-01", end_date="2026-06-01T00:00:00Z")
+    assert resp.status_code == 201
+    assert resp.json()["_validation_status"] == "valid"
+
+    resp = _create(client, start_date="2026-06-01", end_date="2026-01-01T00:00:00Z")
+    assert resp.status_code == 422
+    assert resp.json()["confirmation_required"] is True
+
+
+def test_compare_naive_vs_aware_on_update_of_only_one_side(client, clean_records):
+    created = _create(client, start_date="2026-01-01", end_date="2026-06-01").json()
+    resp = client.put(
+        f"/api/records/test/validation_demo/{created['id']}",
+        json={"end_date": "2025-01-01T00:00:00+02:00"},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["confirmation_required"] is True
+
+
+def test_char_class_accepts_native_json_number_for_string_attribute(client, clean_records):
+    """Only Integer/Numeric/DateTime/Boolean columns are coerced, so a JSON number
+    can reach a string attribute's `char_class` check — it must be evaluated as text."""
+    resp = _create(client, code=12345)  # alnum → valid
+    assert resp.status_code == 201
+    assert resp.json()["_validation_status"] == "valid"
+
+    resp = _create(client, display_name=12345)  # alpha → violation, not a 500
+    assert resp.status_code == 422
+    assert resp.json()["confirmation_required"] is True
+
+
+def test_record_violations_never_raises_on_incomparable_types():
+    """Direct contract test: a pair that can't be ordered is a violation, not an exception."""
+    from app.core.validation import record_violations
+
+    cfg = {"attributes": {"a": {"compare": {"field": "b", "op": "gt"}}, "b": {}}}
+    violations = record_violations(cfg, {"a": "x", "b": 5})
+    assert len(violations) == 1
+    assert violations[0]["attribute"] == "a"
+    assert violations[0]["rule"] == "compare"
+
+
+def test_validate_config_rejects_compare_across_incompatible_types():
+    bad_config = {
+        "schemas": {"test": {"objects": {"widget": {"attributes": {
+            "a": {"name": "A", "type": "date", "compare": {"op": "gt", "field": "b"}},
+            "b": {"name": "B", "type": "integer"},
+        }}}}}
+    }
+    errors = validate_config(bad_config)
+    assert any("compare.field" in e and "incompatible type" in e for e in errors)
+
+
+def test_validate_config_allows_compare_between_integer_and_numeric():
+    ok_config = {
+        "schemas": {"test": {"objects": {"widget": {"attributes": {
+            "a": {"name": "A", "type": "numeric", "compare": {"op": "gte", "field": "b"}},
+            "b": {"name": "B", "type": "integer"},
+        }}}}}
+    }
+    assert validate_config(ok_config) == []
+
+
+def test_validate_config_rejects_char_class_on_non_text_attribute():
+    bad_config = {
+        "schemas": {"test": {"objects": {"widget": {"attributes": {
+            "a": {"name": "A", "type": "integer", "char_class": "alnum"},
+        }}}}}
+    }
+    errors = validate_config(bad_config)
+    assert any("char_class only applies to" in e for e in errors)
+
+
+def test_revert_recomputes_validation_status(client, clean_records):
+    """Revert is one more write path: it must recompute _validation_status against the
+    restored values instead of leaving whatever the record had before."""
+    rec = client.post(
+        "/api/records/test/validation_demo",
+        json={"unit_price": -5},
+        params={"confirm_validation_override": "true"},
+    ).json()
+    assert rec["_validation_status"] == "invalid"  # version 1
+
+    base = f"/api/records/test/validation_demo/{rec['id']}"
+    draft = client.put(base, json={"unit_price": 50}).json()
+    published = client.post(f"/api/records/test/validation_demo/{draft['id']}/publish")
+    assert published.status_code == 200
+    now = client.get(f"/api/records/test/validation_demo/{rec['id']}").json()
+    assert (float(now["unit_price"]), now["_validation_status"]) == (50.0, "valid")  # version 2
+
+    assert client.post(f"/api/records/test/validation_demo/{rec['id']}/revert/1").status_code == 200
+    back = client.get(f"/api/records/test/validation_demo/{rec['id']}").json()
+    assert float(back["unit_price"]) == -5.0
+    assert back["_validation_status"] == "invalid"
+
+    assert client.post(f"/api/records/test/validation_demo/{rec['id']}/revert/2").status_code == 200
+    fwd = client.get(f"/api/records/test/validation_demo/{rec['id']}").json()
+    assert fwd["_validation_status"] == "valid"
+
+
+def test_inbound_push_accepts_native_json_boolean(client, clean_records, inbound_key):
+    res = client.post(
+        "/api/inbound/test/validation_demo",
+        json={"erp_id": "ERP-B1", "item_code": "AB12", "approved_flag": True},
+        headers={"X-Api-Key": inbound_key},
+    )
+    assert res.status_code == 201
+    record = client.get(f"/api/records/test/validation_demo/{res.json()['id']}").json()
+    assert record["approved"] is True
+
+
+def test_inbound_push_with_uncoercible_value_returns_422(client, clean_records, inbound_key):
+    res = client.post(
+        "/api/inbound/test/validation_demo",
+        json={"erp_id": "ERP-B2", "item_code": "AB12", "price": "not-a-number"},
+        headers={"X-Api-Key": inbound_key},
+    )
+    assert res.status_code == 422
+    assert "not a valid number" in res.json()["detail"]

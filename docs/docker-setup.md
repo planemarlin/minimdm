@@ -30,8 +30,8 @@ This script will:
    ```
 
    Edit `.env` to update security settings, especially:
-   - `SECRET_KEY` - Change from the default
-   - `ADMIN_USERNAME` and `ADMIN_PASSWORD` - Must be set explicitly; no default credentials exist
+   - `SECRET_KEY` - Change from the default placeholder. While it is unchanged miniMDM logs an error at startup, and anyone who knows the placeholder can forge login tokens
+   - `ADMIN_USERNAME` and `ADMIN_PASSWORD` - The template ships `ADMIN_PASSWORD=admin` as a placeholder. Replace it with a strong password (12+ characters) **before the first `docker compose up`**: the admin account is created from these values on first start only, and the placeholder password is a well-known credential
 
 2. **Build and start services:**
    ```bash
@@ -48,7 +48,7 @@ This script will:
 ### PostgreSQL
 - **Container**: minimdm-postgres
 - **Host**: postgres (within Docker network)
-- **Port**: 5432 (exposed on localhost)
+- **Port**: 5432 (published on all host interfaces by default, not just localhost — see [Production Considerations](#production-considerations))
 - **Database**: minimdm
 - **User**: minimdm
 - **Password**: minimdm
@@ -108,7 +108,7 @@ All environment variables can be set in `.env`. Key variables:
 - `CONFIG_FILE`: Path to miniMDM config file (default: `config/minimdm.yaml`)
 - `SECRET_KEY`: JWT secret key (⚠️ Change in production!)
 - `ADMIN_USERNAME`: Initial admin user (created on first run)
-- `ADMIN_PASSWORD`: Initial admin password — must be set explicitly; no default exists
+- `ADMIN_PASSWORD`: Initial admin password, used to create the admin account on first start only. `.env.docker` ships the placeholder `admin` — change it before the first start (if left empty, no admin is created and a warning is logged)
 - `DEBUG`: Enable debug logging (default: `false`)
 - `PORT`: Port the app listens on **inside** the container (default: `8000`)
 - `APP_PORT`: Host port mapped to the app container (default: `8000`) — set this in `.env` to change the port you access miniMDM on, rather than editing `docker-compose.yml`
@@ -170,7 +170,7 @@ Before deploying to production:
 3. Set `DEBUG=false`
 4. Use proper PostgreSQL credentials (not `minimdm:minimdm`)
 5. Use a proper secret management system for sensitive values
-6. Configure proper networking (don't expose all ports)
+6. Configure proper networking. By default `docker-compose.yml` publishes PostgreSQL (`POSTGRES_PORT`, 5432) on **all host interfaces**, not just localhost, with the default `minimdm:minimdm` credentials. On any host that is reachable from other machines, bind it to loopback with a `docker-compose.override.yml` (`ports: !override ["127.0.0.1:5432:5432"]`, Docker Compose 2.24+), or restrict it with a firewall
 7. Enable HTTPS
 8. Set up proper backups for the `postgres_data` volume
 9. Review and configure resource limits in `docker-compose.yml`

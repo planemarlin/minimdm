@@ -26,6 +26,8 @@ Two Cerberus quirks shaped this module's shape:
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from cerberus import Validator
 
 _COMPARE_OPS = {
@@ -38,6 +40,20 @@ _COMPARE_OPS = {
 }
 
 
+def _comparable(a, b):
+    """Make two values safely comparable.
+
+    A naive and a timezone-aware datetime raise TypeError when compared — e.g. an
+    update sending `"...Z"` for one side while the other side comes from a naive
+    `date` column. Treat naive values as UTC when the other side is aware.
+    """
+    if isinstance(a, datetime) and isinstance(b, datetime):
+        if (a.tzinfo is None) != (b.tzinfo is None):
+            a = a if a.tzinfo else a.replace(tzinfo=timezone.utc)
+            b = b if b.tzinfo else b.replace(tzinfo=timezone.utc)
+    return a, b
+
+
 class _RuleValidator(Validator):
     def _validate_char_class(self, char_class, field, value):
         """{'type': 'string'}"""
@@ -46,6 +62,10 @@ class _RuleValidator(Validator):
         if value in (None, ""):
             return
         char_class = self.schema[field].get("char_class")
+        # A string attribute can receive a native JSON number/bool from the API
+        # (only Integer/Numeric/DateTime/Boolean columns are coerced), so don't
+        # assume `value` is already a str.
+        value = str(value)
         ok = value.isalpha() if char_class == "alpha" else value.isalnum()
         if not ok:
             self._error(field, f"char_class:must contain only {char_class} characters")
@@ -73,7 +93,18 @@ class _RuleValidator(Validator):
         if other_val in (None, ""):
             return
         fn = _COMPARE_OPS[spec["op"]]
-        if not fn(value, other_val):
+        try:
+            ok = fn(*_comparable(value, other_val))
+        except TypeError:
+            # record_violations() never raises (see module docstring): a pair that
+            # can't be ordered is itself a violation, not a 500.
+            self._error(
+                field,
+                f"compare:cannot compare with '{spec['field']}' ({other_val!r}):"
+                " incompatible types",
+            )
+            return
+        if not ok:
             self._error(field, f"compare:must be {spec['op']} '{spec['field']}' ({other_val!r})")
 
 

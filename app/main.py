@@ -18,13 +18,13 @@ from app.core.auth import (
     count_users,
     create_user,
     decode_token,
+    get_user_auth_state,
     is_token_revoked,
-    is_user_active,
 )
 from app.core.limiter import limiter
 from app.core.logging import RequestIdFilter, configure_logging, new_request_id
 from app.core.migrations import run_migrations
-from app.core.permissions import get_accessible_schemas
+from app.core.permissions import check_permission, get_accessible_schemas
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
 from app.database import engine
@@ -143,7 +143,14 @@ _PUBLIC_PATHS = {
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path in _PUBLIC_PATHS or path.startswith("/static") or path.startswith("/api/inbound/"):
+        # Trailing slash matters: a bare startswith("/static") would also match a
+        # schema named e.g. "staticdata" and skip auth for its HTML pages.
+        if (
+            path in _PUBLIC_PATHS
+            or path == "/static"
+            or path.startswith("/static/")
+            or path.startswith("/api/inbound/")
+        ):
             request.state.current_user = None
             return await call_next(request)
 
@@ -160,12 +167,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 user_id = payload.get("user_id")
                 jti = payload.get("jti")
                 engine = request.app.state.table_manager.engine
-                if user_id and is_user_active(engine, user_id):
-                    if not jti or not is_token_revoked(engine, jti):
+                # Auth state comes from the database on every request, not from the
+                # token: a deactivated user, a demoted admin, or a password change
+                # all take effect immediately rather than when the JWT expires.
+                state = get_user_auth_state(engine, user_id) if user_id else None
+                if state and (not jti or not is_token_revoked(engine, jti)):
+                    # Tokens issued before `pwv` existed carry no fingerprint;
+                    # they stay valid until they expire (max TOKEN_EXPIRE_HOURS).
+                    pwv = payload.get("pwv")
+                    if pwv is None or pwv == state["pw_fingerprint"]:
                         user = {
                             "user_id": user_id,
                             "username": payload.get("sub"),
-                            "is_admin": payload.get("is_admin", False),
+                            "is_admin": state["is_admin"],
                             "jti": jti,
                             "exp": payload.get("exp"),
                         }
@@ -424,8 +438,36 @@ async def pending_drafts(request: Request):
     )
 
 
+def _access_denied_page(request: Request, schema: str, write: bool = False):
+    """Return a 403 error page if the user lacks (read or write) access to the schema.
+
+    The HTML object pages render the object's config server-side, so they must
+    enforce the same schema permission as the JSON API — otherwise any logged-in
+    user could read the structure of schemas they were never granted. Checked
+    before the object lookup so a 404 can't be used to probe which objects exist.
+    """
+    user = getattr(request.state, "current_user", None)
+    if user and user.get("is_admin"):
+        return None
+    tm = request.app.state.table_manager
+    if user and check_permission(tm.engine, user["user_id"], schema, write=write):
+        return None
+    action = "write to" if write else "read"
+    return templates.TemplateResponse(
+        request, "error.html",
+        {
+            "message": f"Access denied: you do not have permission to {action} schema '{schema}'",
+            "app_name": settings.app_name,
+        },
+        status_code=403,
+    )
+
+
 @app.get("/{schema}/{obj}", response_class=HTMLResponse, include_in_schema=False)
 async def object_list(request: Request, schema: str, obj: str):
+    denied = _access_denied_page(request, schema)
+    if denied:
+        return denied
     tm = request.app.state.table_manager
     obj_config = tm.get_object_config(schema, obj)
     if not obj_config:
@@ -435,8 +477,6 @@ async def object_list(request: Request, schema: str, obj: str):
             {"message": f"Object '{schema}.{obj}' not found", "app_name": settings.app_name},
             status_code=404,
         )
-    from app.core.permissions import check_permission
-
     user = getattr(request.state, "current_user", None)
     if user and user.get("is_admin"):
         can_write = True
@@ -460,6 +500,9 @@ async def object_list(request: Request, schema: str, obj: str):
 
 @app.get("/{schema}/{obj}/new", response_class=HTMLResponse, include_in_schema=False)
 async def object_new(request: Request, schema: str, obj: str):
+    denied = _access_denied_page(request, schema, write=True)
+    if denied:
+        return denied
     tm = request.app.state.table_manager
     obj_config = tm.get_object_config(schema, obj)
     if not obj_config:
@@ -486,8 +529,9 @@ async def object_new(request: Request, schema: str, obj: str):
 
 @app.get("/{schema}/{obj}/{record_id}", response_class=HTMLResponse, include_in_schema=False)
 async def object_detail(request: Request, schema: str, obj: str, record_id: str):
-    from app.core.permissions import check_permission
-
+    denied = _access_denied_page(request, schema)
+    if denied:
+        return denied
     tm = request.app.state.table_manager
     obj_config = tm.get_object_config(schema, obj)
     if not obj_config:
@@ -525,6 +569,9 @@ async def object_detail(request: Request, schema: str, obj: str, record_id: str)
 
 @app.get("/{schema}/{obj}/{record_id}/edit", response_class=HTMLResponse, include_in_schema=False)
 async def object_edit(request: Request, schema: str, obj: str, record_id: str):
+    denied = _access_denied_page(request, schema, write=True)
+    if denied:
+        return denied
     tm = request.app.state.table_manager
     obj_config = tm.get_object_config(schema, obj)
     if not obj_config:
@@ -553,8 +600,9 @@ async def object_edit(request: Request, schema: str, obj: str, record_id: str):
     "/{schema}/{obj}/{record_id}/history", response_class=HTMLResponse, include_in_schema=False
 )
 async def object_history(request: Request, schema: str, obj: str, record_id: str):
-    from app.core.permissions import check_permission
-
+    denied = _access_denied_page(request, schema)
+    if denied:
+        return denied
     tm = request.app.state.table_manager
     obj_config = tm.get_object_config(schema, obj)
     if not obj_config:

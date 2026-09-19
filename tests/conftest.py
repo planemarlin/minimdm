@@ -119,6 +119,7 @@ SAMPLE_CONFIG = {
                             "type": "string",
                             "required_if": {"field": "contact_name"},
                         },
+                        "approved": {"name": "Approved", "type": "boolean"},
                         "primary_ref": {"name": "Primary Ref", "type": "string"},
                         "secondary_ref": {
                             "name": "Secondary Ref",
@@ -133,6 +134,7 @@ SAMPLE_CONFIG = {
                                 "erp_id": "_source_id",
                                 "item_code": "code",
                                 "price": "unit_price",
+                                "approved_flag": "approved",
                             },
                             "match_key": None,
                         }
@@ -165,7 +167,7 @@ def client():
         tm.sync_schema(SAMPLE_CONFIG)
         fastapi_app.state.app_config = SAMPLE_CONFIG
 
-        # Create a real test_admin user so is_user_active() passes in the auth middleware.
+        # Create a real test_admin user so the auth middleware finds an active user.
         from app.core.auth import create_user, get_user_by_username
         existing = get_user_by_username(tm.engine, "test_admin")
         if existing:

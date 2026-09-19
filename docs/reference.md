@@ -65,7 +65,7 @@ minimdm:
 | `integer` | `INTEGER` | Whole numbers |
 | `boolean` | `BOOLEAN` | true/false |
 | `email` | `TEXT` | Stored as text; type hint for UI |
-| `date` | `TIMESTAMP WITH TIME ZONE` | ISO 8601 format |
+| `date` | `TIMESTAMP` (without time zone) | ISO 8601 format; stored without a timezone |
 
 ### Parent Relationships
 
@@ -130,7 +130,14 @@ Rules are declared as extra keys directly on an attribute, alongside `type`/`req
 
 `char_class` uses Python's Unicode-aware `str.isalpha()`/`str.isalnum()` — accented letters,
 Cyrillic, CJK, and other non-ASCII scripts are all accepted, only digits/punctuation/symbols are
-rejected for `alpha`, and only punctuation/symbols for `alnum`.
+rejected for `alpha`, and only punctuation/symbols for `alnum`. It only applies to `string`,
+`text`, and `email` attributes — putting it on any other type is rejected when the config loads.
+
+`compare` needs both attributes to be the same kind of value: numbers (`integer` and `numeric`
+compare with each other), dates, or text. A `compare` between different kinds (e.g. a `date` and
+an `integer`) is rejected when the config loads, since it could never be evaluated. Dates are
+stored without a timezone; if a client sends a timezone-aware timestamp (`2026-06-01T00:00:00Z`)
+for one side, the naive side is treated as UTC for the comparison.
 
 **Not yet supported** (see `docs/known_issues.md`'s Design Decisions section for the full
 rationale): a fixed allowed-value list for an attribute (needs a new schema-loader enum concept
@@ -422,7 +429,9 @@ miniMDM stores the following data in the browser:
 
 No analytics, tracking, or advertising cookies or storage keys are used.
 
-Tokens are JWTs signed with `SECRET_KEY` and expire after `TOKEN_EXPIRE_HOURS` (default: 24 hours).
+Tokens are JWTs signed with `SECRET_KEY` and expire after `TOKEN_EXPIRE_HOURS` (default: 8 hours).
+
+A user's account state is checked against the database on **every** request, not read from the token, so changes take effect immediately rather than when the token expires: deactivating a user, removing their admin flag, or changing their password (an admin setting a new one, or a password reset link being used) all invalidate the sessions they already have open. They simply have to log in again.
 
 On first startup, if no users exist, an admin account is created automatically from `ADMIN_USERNAME` / `ADMIN_PASSWORD` environment variables. Both must be set — if either is empty, no admin user is created and the application logs a warning. There are no built-in default credentials.
 
@@ -484,8 +493,8 @@ Four roles are supported, each building on the previous:
 | Role | Permissions granted | Effect |
 |---|---|---|
 | **Viewer** | `can_read: true` | List records, get individual records, view history, export, and call `GET /api/schemas/{schema}` |
-| **Editor** | `can_write: true` (implies read) | Additionally: create, update (creates a draft), delete, revert, and import as `draft` |
-| **Publisher** | `can_publish: true` (implies write + read) | Additionally: publish drafts → active, retire active records, and import directly as `active` |
+| **Editor** | `can_write: true` (implies read) | Additionally: create, update (creates a draft), delete, revert a **draft**, and import as `draft`. Editors cannot revert an active (golden) or retired record, or edit a retired record — those change the record in place, outside draft → publish, and need Publisher |
+| **Publisher** | `can_publish: true` (implies write + read) | Additionally: publish drafts → active, retire active records, revert active or retired records, edit retired records, and import directly as `active` |
 | **Admin** | Full access (bypasses all checks) | Everything, across all schemas |
 
 Permission grants are managed in the User Management UI (`/admin/users`) via the inline permissions panel, or directly through the API.
@@ -506,7 +515,7 @@ When setting a permission, the body may include any combination of these flags. 
 | `PUT` | `/api/records/{schema}/{obj}/{id}` | Editor | Update record — creates a `draft` copy if the record is `active`; updates in-place if already a `draft`; accepts `?confirm_validation_override=` and `?override_reason=` |
 | `DELETE` | `/api/records/{schema}/{obj}/{id}` | Editor | Soft-delete record |
 | `GET` | `/api/records/{schema}/{obj}/{id}/history` | Viewer | Get version history |
-| `POST` | `/api/records/{schema}/{obj}/{id}/revert/{version}` | Editor | Revert to version |
+| `POST` | `/api/records/{schema}/{obj}/{id}/revert/{version}` | Editor (drafts) / Publisher (active or retired records) | Revert to version; recomputes `_validation_status` |
 | `POST` | `/api/records/{schema}/{obj}/{draft_id}/publish` | Publisher | Promote a `draft` to `active`; accepts `?reason=` |
 | `POST` | `/api/records/{schema}/{obj}/{id}/retire` | Publisher | Transition an `active` record to `retired`; accepts `?reason=` |
 
@@ -546,7 +555,7 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 | `GET` | `/api/schemas` | List all schemas |
 | `GET` | `/api/schemas/{schema}` | Get schema details |
 | `GET` | `/api/schemas/{schema}/objects/{obj}` | Get object definition |
-| `GET` | `/api/config` | Get current loaded config (schema definitions only; webhook URLs are excluded) |
+| `GET` | `/api/config` | Get current loaded config (schema definitions only; webhook URLs are excluded). Non-admins only see the schemas they hold a read permission for, same as `GET /api/schemas` |
 | `POST` | `/api/config/reload` | Reload config from disk and sync database schema — **Admin only** |
 | `GET` | `/api/pending-count` | Return total count of pending draft records across all schemas accessible to the current user — used by the publisher badge in the navigation bar |
 
@@ -629,6 +638,8 @@ Content-Type: application/json
 |---|---|---|
 | `format` | `csv` | File format: `csv`, `tsv`, or `json` |
 | `state` | `active` | Lifecycle state filter: `active`, `draft`, `retired`, or `all` |
+
+> **Spreadsheet safety:** in CSV and TSV exports, a text value that starts with `=`, `+`, `-`, `@`, a tab, or a carriage return is written with a leading apostrophe (`'=SUM(A1)`), so Excel or Sheets shows it as text instead of executing it as a formula. Anyone able to write a record — or an inbound source system — could otherwise plant a formula that runs on whoever opens the export. The apostrophe is removed again when a CSV/TSV file is imported, so export → edit → re-import round-trips losslessly. JSON exports are never modified, and numbers (including negative ones) are unaffected.
 
 ### Query Parameters (Import)
 
