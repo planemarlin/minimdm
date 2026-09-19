@@ -470,3 +470,31 @@ def test_inbound_call_failed_audit_event(client):
     audit = client.get("/api/audit?schema=_system&action=INBOUND_CALL_FAILED").json()
     assert audit["total"] >= 1
     assert audit["records"][0]["action"] == "INBOUND_CALL_FAILED"
+
+
+def test_match_key_claim_is_recorded_in_history_and_audit(client, clean_records, inbound_key):
+    """Claiming an active record via match_key rewrites its provenance, so it must leave
+    a history version and an audit entry rather than a bare untracked UPDATE."""
+    active_id = client.post(
+        "/api/records/test/company", json={"name": "Delta", "code": "DEL"}
+    ).json()["id"]
+
+    res = _post(client, inbound_key, {"erp_id": "E-DEL", "company_name": "Delta ERP",
+                                      "company_code": "DEL"})
+    assert res.status_code == 200
+
+    history = client.get(f"/api/records/test/company/{active_id}/history").json()
+    assert [h["_version"] for h in history] == [2, 1]
+    assert history[0]["_action"] == "UPDATE"
+    assert history[0]["_source_system"] == "test_erp"
+    assert history[0]["_source_id"] == "E-DEL"
+    assert "claimed" in history[0]["_change_reason"]
+    assert history[0]["_changed_by"] == "inbound:test_erp"
+
+    audit = client.get(
+        "/api/audit", params={"schema": "test", "obj": "company", "action": "UPDATE"}
+    ).json()["records"]
+    claims = [a for a in audit if a["record_id"] == active_id]
+    assert len(claims) == 1
+    assert "claimed" in claims[0]["reason"]
+    assert claims[0]["user_name"] == "inbound:test_erp"

@@ -112,7 +112,17 @@ def reload_config(request: Request):
 @router.get("/config")
 def get_config(request: Request):
     cfg = request.app.state.app_config
-    return {k: v for k, v in cfg.items() if k != "webhooks"}
+    result = {k: v for k, v in cfg.items() if k != "webhooks"}
+    user = getattr(request.state, "current_user", None)
+    if not (user and user.get("is_admin")):
+        # Same visibility rule as GET /api/schemas: non-admins only see schemas
+        # they hold a read permission for.
+        tm = request.app.state.table_manager
+        accessible = get_accessible_schemas(tm.engine, user["user_id"]) if user else set()
+        result["schemas"] = {
+            name: body for name, body in cfg.get("schemas", {}).items() if name in accessible
+        }
+    return result
 
 
 @router.get("/pending-count")

@@ -179,20 +179,26 @@ async def receive_inbound(
     reason = f"Inbound webhook from {source_name}"
     obj_config = tm.get_object_config(schema, obj) or {}
 
-    status, record_id = _inbound_upsert(
-        db=db,
-        table=table,
-        history_table=history_table,
-        audit_table=audit_table,
-        source_name=source_name,
-        mapped_data=mapped,
-        reason=reason,
-        request=request,
-        schema=schema,
-        obj=obj,
-        obj_config=obj_config,
-        match_key=source_config.get("match_key"),
-    )
+    try:
+        status, record_id = _inbound_upsert(
+            db=db,
+            table=table,
+            history_table=history_table,
+            audit_table=audit_table,
+            source_name=source_name,
+            mapped_data=mapped,
+            reason=reason,
+            request=request,
+            schema=schema,
+            obj=obj,
+            obj_config=obj_config,
+            match_key=source_config.get("match_key"),
+        )
+    except ValueError as e:
+        # A value that can't be coerced to its column type (e.g. "abc" for an integer)
+        # is a bad request from the source system, not a server error.
+        db.rollback()
+        raise HTTPException(422, str(e)) from e
     db.commit()
     _log_inbound_call(request, source_name, schema, obj, status)
 

@@ -13,7 +13,7 @@ from app.core.auth import create_reset_token, create_user, get_user_by_id, list_
 from app.core.keys import hash_api_key
 from app.core.permissions import delete_permission, get_user_permissions, set_permission
 
-_IDENTIFIER_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+_IDENTIFIER_RE = re.compile(r'[a-zA-Z_][a-zA-Z0-9_]*')
 
 router = APIRouter()
 
@@ -248,7 +248,7 @@ async def create_inbound_key(request: Request):
 
     if not schema_name or not source_name:
         raise HTTPException(400, "schema_name and source_name are required")
-    if not _IDENTIFIER_RE.match(source_name):
+    if not _IDENTIFIER_RE.fullmatch(source_name):
         raise HTTPException(
             400,
             "source_name must be a valid identifier "

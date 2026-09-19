@@ -391,3 +391,109 @@ def test_import_upsert_source_system_query_param(client):
     assert res.json()["inserted"] == 1
     records = client.get("/api/records/test/company").json()
     assert records["records"][0]["_source_system"] == "wms"
+
+
+# ---------------------------------------------------------------------------
+# CSV/TSV formula injection (CWE-1236) — pre-v0.8.0 security review
+# ---------------------------------------------------------------------------
+
+_FORMULA = '=HYPERLINK("http://evil.example","click")'
+
+
+def test_csv_export_neutralises_formula_cells(client):
+    client.post("/api/records/test/company", json={"code": "F001", "name": _FORMULA})
+
+    res = client.get("/api/records/test/company/export?format=csv")
+    assert res.status_code == 200
+    # The cell is prefixed with an apostrophe so a spreadsheet shows it as text.
+    assert "'=HYPERLINK" in res.text
+    assert ',"=HYPERLINK' not in res.text and ",=HYPERLINK" not in res.text
+
+
+def test_tsv_export_neutralises_all_formula_triggers(client):
+    for i, value in enumerate(["=1+1", "+1+1", "-1+1", "@SUM(A1)"]):
+        client.post("/api/records/test/company", json={"code": f"T{i}", "name": value})
+
+    res = client.get("/api/records/test/company/export?format=tsv")
+    lines = res.text.splitlines()
+    for value in ["=1+1", "+1+1", "-1+1", "@SUM(A1)"]:
+        assert f"\t'{value}" in "\n".join(lines)
+
+
+def test_json_export_is_not_neutralised(client):
+    client.post("/api/records/test/company", json={"code": "J001", "name": _FORMULA})
+
+    data = client.get("/api/records/test/company/export?format=json").json()
+    assert data[0]["name"] == _FORMULA
+
+
+def test_csv_export_then_reimport_round_trips_formula_text(client):
+    client.post("/api/records/test/company", json={"code": "RT01", "name": _FORMULA})
+    exported = client.get("/api/records/test/company/export?format=csv").text
+
+    # Re-import the export as an upsert: the stored value must be unchanged, not
+    # left with the export-only apostrophe.
+    res = client.post(
+        "/api/records/test/company/import?format=csv&upsert_key=code",
+        files={"file": ("export.csv", exported.encode(), "text/csv")},
+    )
+    assert res.status_code == 200
+    records = client.get("/api/records/test/company").json()["records"]
+    assert [r["name"] for r in records if r["code"] == "RT01"] == [_FORMULA]
+
+
+def test_csv_export_leaves_ordinary_and_numeric_values_alone(client):
+    client.post("/api/records/test/company", json={"code": "N001", "name": "Normal Name"})
+
+    res = client.get("/api/records/test/company/export?format=csv")
+    assert "Normal Name" in res.text
+    assert "'Normal Name" not in res.text
+
+
+# ---------------------------------------------------------------------------
+# Import row errors and native JSON values — pre-v0.8.0 security review
+# ---------------------------------------------------------------------------
+
+def test_import_row_error_does_not_leak_sql_or_parameters(client):
+    client.post("/api/records/test/company", json={"code": "DUP", "name": "first"})
+    res = client.post(
+        "/api/records/test/company/import?format=csv&strict=false",
+        files={"file": ("d.csv", b"code,name\nDUP,second\n", "text/csv")},
+    )
+    assert res.status_code == 200
+    error = res.json()["errors"][0]["error"]
+    assert "already exists" in error
+    for leaked in ("INSERT INTO", "[SQL", "parameters", "%(", "_created_at"):
+        assert leaked not in error
+
+
+def test_coerce_value_accepts_native_json_types():
+    from datetime import datetime
+
+    from sqlalchemy import Boolean, DateTime, Integer, Numeric
+
+    from app.api.import_export import _coerce_value
+
+    assert _coerce_value(True, Boolean()) is True
+    assert _coerce_value(False, Boolean()) is False
+    assert _coerce_value("Yes", Boolean()) is True
+    assert _coerce_value(5, Integer()) == 5
+    assert str(_coerce_value(5.5, Numeric())) == "5.5"
+    moment = datetime(2026, 1, 1)
+    assert _coerce_value(moment, DateTime()) is moment
+    with pytest.raises(ValueError):
+        _coerce_value(20260101, DateTime())  # not a string or datetime
+    with pytest.raises(ValueError):
+        _coerce_value([1], Integer())
+
+
+def test_json_import_accepts_native_boolean(client):
+    payload = [{"code": "JB01", "approved": True}, {"code": "JB02", "approved": False}]
+    files = {"file": ("d.json", json.dumps(payload).encode(), "application/json")}
+    res = client.post("/api/records/test/validation_demo/import?format=json", files=files)
+    assert res.status_code == 200
+    assert res.json()["errors"] == []
+    listing = client.get("/api/records/test/validation_demo").json()["records"]
+    by_code = {r["code"]: r for r in listing}
+    assert by_code["JB01"]["approved"] is True
+    assert by_code["JB02"]["approved"] is False

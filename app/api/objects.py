@@ -471,6 +471,10 @@ def update_record(
         }
 
     # Draft or retired — update in place
+    if record_state == "retired":
+        # A retired record sits outside the draft/publish workflow, so changing one in
+        # place is a lifecycle-level action (reverting one already needs Publisher).
+        require_publish_access(request, schema)
     old_values = dict(existing)
 
     try:
@@ -678,7 +682,10 @@ def revert_record(
     if not existing:
         raise HTTPException(404, "Record not found")
 
-    if existing.get("_state") == "retired":
+    # A revert rewrites the record in place, so for an active (golden) or retired
+    # record it needs Publisher rights — otherwise an Editor could change a golden
+    # record without going through draft -> publish. Drafts stay revertible by Editors.
+    if existing.get("_state") in ("active", "retired"):
         require_publish_access(request, schema)
 
     _check_reason(reason, tm.get_object_config(schema, obj))
@@ -728,6 +735,11 @@ def revert_record(
 
     revert_values["_updated_at"] = now
     revert_values["_deleted_at"] = None
+
+    # Recompute (never copy) _validation_status against the record as it will exist
+    # after the revert — informational and never blocking, same as publish.
+    violations = validation_svc.record_violations(obj_config, {**old_values, **revert_values})
+    revert_values["_validation_status"] = "invalid" if violations else "valid"
 
     db.execute(table.update().where(table.c._id == rid).values(**revert_values))
 

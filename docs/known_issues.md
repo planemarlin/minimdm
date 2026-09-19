@@ -129,9 +129,30 @@ Alembic manages all `_system` schema tables. Migration `0001` creates the five s
 
 Neither is scheduled to a version yet.
 
+### In-place changes to golden records outside draft → publish
+**Decision (v0.8.0):** Reverting an *active* (golden) or *retired* record, and editing a *retired* record, rewrite the record directly rather than going through a draft. Rather than let any Editor do that, these now require Publisher (the same rule reverting a retired record already had). Found by the pre-v0.8.0 security review.
+
+**Future feature (not scheduled):** route these through draft-copy like an ordinary edit — a revert on an active record would create (or update) a draft carrying the historical values, and a Publisher promotes it — so Editors keep revert and the Publisher still approves the result. Related in-place paths to consider at the same time: soft-delete of an active record by an Editor (documented Editor capability today), and an upsert import as `active` (already Publisher-only).
+
+### Default secrets are logged and documented, not enforced
+**Decision:** With the placeholder `SECRET_KEY` still in place, miniMDM logs an `ERROR` at startup ("JWTs can be trivially forged") and keeps running, rather than refusing to start. Failing fast would break the zero-configuration local and Docker quickstarts for the sake of a situation that is already loudly reported in the server log and listed in the pre-launch checklist in [deployment.md](deployment.md#security-checklist-before-going-live). Changing `SECRET_KEY` and `ADMIN_PASSWORD` before exposing an instance is the operator's responsibility. Recorded by the pre-v0.8.0 security review.
+
 ---
 
 ## Open Issues
+
+### Security review findings deferred from the pre-v0.8.0 review
+
+Low-severity items found by the pre-v0.8.0 full-project security review and deliberately not fixed in that release. None is exploitable on its own; they are hardening opportunities.
+
+- **`POST /api/auth/reset-password` returns 500 on a non-object JSON body** (e.g. a JSON array), and has no rate limit of its own (login is limited to 10/minute). Reset tokens are 256-bit random values, so guessing is not feasible; the 500 is a robustness issue only. Same unvalidated `await request.json()` pattern exists in the admin user endpoints.
+- **Password reset tokens are stored in plaintext** in `_system.password_reset_tokens`. Someone with database read access could use an unused token, but database access already exposes everything else. Hashing them (as inbound API keys are) would be cheap defence in depth.
+- **`GET /api/audit` relies solely on the auth middleware.** If `current_user` were ever `None` the handler applies no schema filter instead of denying. The middleware guarantees this cannot happen today.
+- **Webhook SSRF guard is incomplete.** `_is_private_ip` in `app/core/schema_loader.py` only inspects IP *literals*, at config-load time: hostnames (including `localhost`), `0.0.0.0`, `::ffff:`-mapped IPv4 and `100.64.0.0/10` are not rejected, and it is not covered by any test. Webhook URLs come from the operator-controlled config file, so this is a misconfiguration guard, not a boundary against untrusted input.
+- **`/docs`, `/redoc` and `/openapi.json` are public** (no authentication) so the full API surface can be read anonymously. Set-up is documented; consider gating them in production.
+- **Inbound endpoint answers 404 for an unknown object before checking the API key**, so an unauthenticated caller can probe which `schema/object` names exist.
+- **`override_reason` / `_reason` have no length limit.** Bounded in practice by the URL/body size limits, but they are written verbatim to the audit log.
+- **CSP still allows `'unsafe-inline'` for scripts and styles** (tracked separately in the roadmap as the inline-script extraction backlog item).
 
 ### Improvements from 2026 codebase analysis
 

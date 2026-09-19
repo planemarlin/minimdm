@@ -388,3 +388,166 @@ def test_non_admin_publisher_blocked_by_allow_direct_active_import_false(client,
     assert res.status_code == 422
     assert "allow_direct_active_import" in res.json()["detail"]
     _clear_permissions(engine)
+
+
+# ---------------------------------------------------------------------------
+# Schema-metadata exposure (pre-v0.8.0 security review)
+# ---------------------------------------------------------------------------
+
+_SOME_RECORD_ID = "00000000-0000-0000-0000-0000000000aa"
+
+
+def test_api_config_hides_schemas_user_cannot_read(client):
+    """GET /api/config must apply the same visibility rule as GET /api/schemas."""
+    res = client.get("/api/config", headers=_non_admin_headers())
+    assert res.status_code == 200
+    assert res.json()["schemas"] == {}
+    assert client.get("/api/schemas", headers=_non_admin_headers()).json() == []
+
+
+def test_api_config_shows_schemas_user_can_read(client):
+    engine = _get_engine()
+    client.put(
+        f"/api/admin/users/{_NON_ADMIN_USER_ID}/permissions/test", json={"can_read": True}
+    )
+    res = client.get("/api/config", headers=_non_admin_headers())
+    assert "test" in res.json()["schemas"]
+    _clear_permissions(engine)
+
+
+def test_html_object_pages_denied_without_schema_permission(client):
+    """The HTML pages render the object config server-side, so they must enforce the
+    same schema permission as the JSON API."""
+    for path in [
+        "/test/company",
+        "/test/company/new",
+        f"/test/company/{_SOME_RECORD_ID}",
+        f"/test/company/{_SOME_RECORD_ID}/edit",
+        f"/test/company/{_SOME_RECORD_ID}/history",
+    ]:
+        res = client.get(path, headers=_non_admin_headers())
+        assert res.status_code == 403, path
+
+
+def test_html_object_pages_do_not_reveal_whether_an_object_exists(client):
+    """403, not 404, for a schema the user can't read — no probing for object names."""
+    res = client.get("/test/no_such_object", headers=_non_admin_headers())
+    assert res.status_code == 403
+
+
+def test_html_read_pages_allowed_with_read_permission_but_forms_need_write(client):
+    engine = _get_engine()
+    client.put(
+        f"/api/admin/users/{_NON_ADMIN_USER_ID}/permissions/test", json={"can_read": True}
+    )
+    headers = _non_admin_headers()
+    created = client.post("/api/records/test/company", json={"code": "HTML1", "name": "H"})
+    record_id = created.json()["id"]
+
+    assert client.get("/test/company", headers=headers).status_code == 200
+    assert client.get(f"/test/company/{record_id}", headers=headers).status_code == 200
+    assert client.get(f"/test/company/{record_id}/history", headers=headers).status_code == 200
+    # create/edit forms need write
+    assert client.get("/test/company/new", headers=headers).status_code == 403
+    assert client.get(f"/test/company/{record_id}/edit", headers=headers).status_code == 403
+
+    client.put(
+        f"/api/admin/users/{_NON_ADMIN_USER_ID}/permissions/test",
+        json={"can_read": True, "can_write": True},
+    )
+    assert client.get("/test/company/new", headers=headers).status_code == 200
+    assert client.get(f"/test/company/{record_id}/edit", headers=headers).status_code == 200
+    _clear_permissions(engine)
+    client.delete(f"/api/records/test/company/{record_id}")
+
+
+# ---------------------------------------------------------------------------
+# In-place changes to golden/retired records need Publisher (pre-v0.8.0 review)
+# ---------------------------------------------------------------------------
+
+def _grant(client, **flags):
+    client.put(f"/api/admin/users/{_NON_ADMIN_USER_ID}/permissions/test", json=flags)
+
+
+def _active_record_with_two_versions(client, code):
+    """An active record whose history has v1 (name=Alpha) and v2 (PUBLISH, name=Beta)."""
+    rec = client.post("/api/records/test/company", json={"code": code, "name": "Alpha"}).json()
+    draft = client.put(f"/api/records/test/company/{rec['id']}", json={"name": "Beta"}).json()
+    assert client.post(f"/api/records/test/company/{draft['id']}/publish").status_code == 200
+    return rec["id"]
+
+
+def test_editor_cannot_revert_active_record_in_place(client, clean_records):
+    """Revert rewrites the record directly, bypassing draft -> publish, so on a golden
+    (active) record it needs Publisher, not just Editor."""
+    engine = _get_engine()
+    rid = _active_record_with_two_versions(client, "REV-ACT")
+    _grant(client, can_read=True, can_write=True)
+
+    res = client.post(f"/api/records/test/company/{rid}/revert/1", headers=_non_admin_headers())
+    assert res.status_code == 403
+    assert client.get(f"/api/records/test/company/{rid}").json()["name"] == "Beta"
+
+    _grant(client, can_read=True, can_write=True, can_publish=True)
+    res = client.post(f"/api/records/test/company/{rid}/revert/1", headers=_non_admin_headers())
+    assert res.status_code == 200
+    assert client.get(f"/api/records/test/company/{rid}").json()["name"] == "Alpha"
+    _clear_permissions(engine)
+
+
+def test_editor_can_still_revert_a_draft(client, clean_records):
+    engine = _get_engine()
+    rec = client.post("/api/records/test/company", json={"code": "REV-DFT", "name": "Alpha"}).json()
+    draft = client.put(f"/api/records/test/company/{rec['id']}", json={"name": "Beta"}).json()
+    client.put(f"/api/records/test/company/{draft['id']}", json={"name": "Gamma"})
+    _grant(client, can_read=True, can_write=True)
+
+    res = client.post(
+        f"/api/records/test/company/{draft['id']}/revert/1", headers=_non_admin_headers()
+    )
+    assert res.status_code == 200
+    # Version 1 of the *draft* is the draft as first created ("Beta"), not the golden "Alpha".
+    assert client.get(f"/api/records/test/company/{draft['id']}").json()["name"] == "Beta"
+    _clear_permissions(engine)
+
+
+def test_editor_cannot_edit_retired_record_in_place(client, clean_records):
+    engine = _get_engine()
+    rec = client.post("/api/records/test/company", json={"code": "RET-EDT", "name": "Old"}).json()
+    assert client.post(f"/api/records/test/company/{rec['id']}/retire").status_code == 200
+    _grant(client, can_read=True, can_write=True)
+
+    res = client.put(
+        f"/api/records/test/company/{rec['id']}", json={"name": "Edited"},
+        headers=_non_admin_headers(),
+    )
+    assert res.status_code == 403
+    assert client.get(f"/api/records/test/company/{rec['id']}").json()["name"] == "Old"
+
+    _grant(client, can_read=True, can_write=True, can_publish=True)
+    res = client.put(
+        f"/api/records/test/company/{rec['id']}", json={"name": "Edited"},
+        headers=_non_admin_headers(),
+    )
+    assert res.status_code == 200
+    _clear_permissions(engine)
+
+
+def test_editor_upsert_import_cannot_change_retired_record(client, clean_records):
+    """The upsert path also falls through to an in-place update for a retired match."""
+    engine = _get_engine()
+    rec = client.post("/api/records/test/company", json={"code": "RET-IMP", "name": "Old"}).json()
+    client.post(f"/api/records/test/company/{rec['id']}/retire")
+    _grant(client, can_read=True, can_write=True)
+
+    res = client.post(
+        "/api/records/test/company/import?format=csv&upsert_key=code&initial_state=draft&strict=false",
+        files={"file": ("u.csv", b"code,name\nRET-IMP,Edited\n", "text/csv")},
+        headers=_non_admin_headers(),
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["updated"] == 0 and len(body["errors"]) == 1
+    assert "Publisher" in body["errors"][0]["error"]
+    assert client.get(f"/api/records/test/company/{rec['id']}").json()["name"] == "Old"
+    _clear_permissions(engine)

@@ -215,6 +215,8 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Login with valid and invalid credentials
 - Token revocation (logout)
 - Permission grant and revoke events are logged in the audit log
+- A `/static`-prefixed path (e.g. a schema named `staticdata`) is not treated as public — only `/static/…` is
+- Auth state is read from the database on every request: a demoted admin loses admin access immediately; a password change (admin-set or via reset link) invalidates existing sessions; the login token carries a password fingerprint (`pwv`); tokens issued before `pwv` existed stay valid until they expire
 
 **`test_api_permissions.py`**
 - Setting a permission creates or updates the row (all three flags: read/write/publish)
@@ -225,6 +227,9 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - A `can_publish=true` (Publisher) user succeeds at both `/publish` and `/retire`
 - Granting `can_publish` alone also sets `can_write` (publish implies write)
 - A real Publisher-role user is still blocked by `allow_direct_active_import: false` (role doesn't override the object-level flag)
+- `GET /api/config` only lists schemas the user can read (same rule as `GET /api/schemas`)
+- Reverting an **active** record and editing a **retired** record (`PUT`, and an upsert import as draft that matches a retired record) need Publisher — an Editor gets 403 and the record is unchanged; a Publisher succeeds; an Editor can still revert a **draft**
+- The HTML object pages (list, detail, history: read; new, edit: write) return 403 without the schema permission — and 403, not 404, for an unknown object, so names can't be probed
 
 **`test_api_import_export.py`**
 - Export CSV, TSV, and JSON (empty table and with data)
@@ -236,6 +241,9 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Import with `initial_state=draft` creates records as drafts
 - 400 responses for invalid JSON and unknown upsert keys
 - 400 response (not an unhandled `UnicodeDecodeError`) for non-UTF-8 CSV and UTF-16 TSV files
+- Per-row import errors return the database's one-line message, never the SQL statement or its bound parameters
+- `_coerce_value` accepts native JSON booleans, numbers and datetimes (JSON import, inbound push) and raises `ValueError` for values it can't convert
+- CSV/TSV export neutralises cells starting with `=`, `+`, `-`, `@` (CWE-1236 formula injection); JSON export and ordinary values are untouched; a CSV export re-imported as an upsert round-trips the original value
 
 **`test_validation_rules.py`**
 - Full rule catalog: `min`/`max`, `char_class: alpha|alnum` (Unicode-aware), `required_if` (value- and presence-scoped), `forbidden_if_absent`, `compare`
@@ -246,6 +254,10 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Publish never blocks on an invalid record and recomputes `_validation_status` fresh (both the brand-new `requires_draft` draft and the draft-of-an-existing-active-record publish paths)
 - Bulk import (plain, `?upsert_key=` upsert, and inbound webhook push) never hard-fails a row/push over a rule violation, and flags it correctly
 - `validate_config()` rejects a `required_if.field`/`compare.field`/`forbidden_if_absent` pointing at a non-existent attribute, an invalid `compare.op`, and an invalid `char_class`
+- `validate_config()` also rejects a `compare` between incompatible attribute types (integer/numeric are compatible) and a `char_class` on a non-text attribute
+- Revert recomputes `_validation_status` (to `invalid` when restoring rule-violating values and back to `valid`)
+- Inbound push accepts a native JSON boolean and answers 422 (not 500) for a value that can't be coerced to its column type
+- Rules flag but never crash: `compare` across a naive and a timezone-aware date (create and update), `char_class` on a native JSON number for a string attribute, and `record_violations()` on incomparable types all return a violation instead of an uncaught 500
 
 **`test_api_query_params.py`**
 - `?role=master` returns only active (golden) records

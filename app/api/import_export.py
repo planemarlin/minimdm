@@ -10,14 +10,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import Boolean, DateTime, Integer, Numeric, func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import audit as audit_svc
 from app.core import validation as validation_svc
 from app.core.limiter import limiter
-from app.core.permissions import check_permission, require_schema_access
+from app.core.permissions import check_permission, require_publish_access, require_schema_access
 from app.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,23 @@ router = APIRouter()
 
 def _get_tm(request: Request):
     return request.app.state.table_manager
+
+
+def _row_error_message(exc: Exception) -> str:
+    """A client-safe message for a failed import row.
+
+    A raw SQLAlchemy error embeds the full SQL statement and every bound parameter
+    (`[SQL: INSERT INTO ...] [parameters: {...}]`); only the database's own one-line
+    message is returned to the caller.
+    """
+    from app.api.objects import _integrity_error_message
+
+    if isinstance(exc, IntegrityError):
+        return _integrity_error_message(exc)
+    if isinstance(exc, SQLAlchemyError):
+        orig = getattr(exc, "orig", None)
+        return str(orig if orig is not None else exc).splitlines()[0]
+    return str(exc)
 
 
 def _serialize_row(row: dict) -> dict:
@@ -40,6 +57,34 @@ def _serialize_row(row: dict) -> dict:
         else:
             result[k] = v
     return result
+
+
+# Characters a spreadsheet treats as the start of a formula (CWE-1236, "CSV injection").
+_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _neutralise_formula(value):
+    """Prefix a text cell that Excel/Sheets would evaluate as a formula with `'`.
+
+    Applied to CSV/TSV exports only. A record value like `=HYPERLINK(...)` can be
+    planted by any writer or inbound source, and would otherwise execute on
+    whoever opens the export. Numbers are real numbers in the serialized row, so
+    negative values are unaffected.
+    """
+    if isinstance(value, str) and value.startswith(_FORMULA_TRIGGERS):
+        return "'" + value
+    return value
+
+
+def _restore_formula(value):
+    """Inverse of `_neutralise_formula`, applied to CSV/TSV imports.
+
+    Keeps export -> edit -> re-import lossless. A genuine value that itself starts
+    with `'` followed by a formula character loses that one apostrophe.
+    """
+    if isinstance(value, str) and value.startswith("'") and value[1:].startswith(_FORMULA_TRIGGERS):
+        return value[1:]
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +156,9 @@ def export_records(
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=serialized[0].keys(), delimiter=delimiter)
     writer.writeheader()
-    writer.writerows(serialized)
+    writer.writerows(
+        {k: _neutralise_formula(v) for k, v in row.items()} for row in serialized
+    )
 
     return StreamingResponse(
         iter([output.getvalue()]),
@@ -221,7 +268,7 @@ async def import_records(
     else:
         delimiter = "\t" if format == "tsv" else ","
         reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
-        rows = list(reader)
+        rows = [{k: _restore_formula(v) for k, v in row.items()} for row in reader]
 
     inserted = 0
     updated = 0
@@ -254,7 +301,7 @@ async def import_records(
             if sp:
                 sp.commit()
         except Exception as e:
-            errors.append({"row": i + 1, "error": str(e)})
+            errors.append({"row": i + 1, "error": _row_error_message(e)})
             if sp:
                 sp.rollback()
 
@@ -281,6 +328,49 @@ async def import_records(
         "imported": inserted + updated,
         "rows": rows_detail,
     }
+
+
+def _claim_record(
+    db, table, history_table, audit_table, record, claim_vals: dict,
+    match_key: str, request, schema: str, obj: str, now: datetime,
+) -> None:
+    """Stamp `_source_system`/`_source_id` onto a record matched via `match_key`.
+
+    This changes a record's provenance (on an active/golden record too), so it gets
+    a history version and an audit entry like any other change, instead of a bare
+    UPDATE with no trail.
+    """
+    from app.api.objects import _client_ip, _get_username
+
+    record_id = record["_id"]
+    user_name = _get_username(request)
+    reason = f"Inbound source claimed record via match_key '{match_key}'"
+
+    db.execute(table.update().where(table.c._id == record_id).values(**claim_vals))
+
+    current = db.execute(
+        select(history_table)
+        .where(history_table.c._id == record_id)
+        .where(history_table.c._valid_to.is_(None))
+        .with_for_update()
+    ).mappings().first()
+    version = current["_version"] if current else 0
+    if current:
+        db.execute(
+            history_table.update()
+            .where(history_table.c._history_id == current["_history_id"])
+            .values(_valid_to=now)
+        )
+    audit_svc.write_history(
+        db, history_table, {**dict(record), **claim_vals}, version=version + 1,
+        action="UPDATE", valid_from=now, reason=reason, user_name=user_name,
+    )
+    audit_svc.log_change(
+        db, audit_table, schema, obj, record_id, "UPDATE",
+        old_values=audit_svc._serialize({k: record.get(k) for k in claim_vals}),
+        new_values=audit_svc._serialize(claim_vals),
+        reason=reason, ip_address=_client_ip(request), user_name=user_name,
+    )
 
 
 def _inbound_upsert(
@@ -353,10 +443,9 @@ def _inbound_upsert(
                     claim_vals: dict = {"_source_system": source_name}
                     if source_id_val is not None:
                         claim_vals["_source_id"] = source_id_val
-                    db.execute(
-                        table.update()
-                        .where(table.c._id == active_cand["_id"])
-                        .values(**claim_vals)
+                    _claim_record(
+                        db, table, history_table, audit_table, active_cand, claim_vals,
+                        match_key, request, schema, obj, now,
                     )
                 else:
                     logger.warning(
@@ -367,14 +456,12 @@ def _inbound_upsert(
             elif len(active_cands) == 0 and len(draft_cands) == 1:
                 # Only a standalone draft (no active record yet)
                 existing = draft_cands[0]
-                claim_target_id = existing["_id"]
                 claim_vals = {"_source_system": source_name}
                 if source_id_val is not None:
                     claim_vals["_source_id"] = source_id_val
-                db.execute(
-                    table.update()
-                    .where(table.c._id == claim_target_id)
-                    .values(**claim_vals)
+                _claim_record(
+                    db, table, history_table, audit_table, existing, claim_vals,
+                    match_key, request, schema, obj, now,
                 )
             elif len(candidates) > 0:
                 logger.warning(
@@ -527,26 +614,31 @@ def _inbound_upsert(
     return "updated", rid
 
 
-def _coerce_value(val: str, col_type):
-    """Convert a CSV string to the appropriate Python type for a SQLAlchemy column."""
+def _coerce_value(val, col_type):
+    """Convert a CSV string — or a native JSON value (JSON import, inbound push) — to the
+    appropriate Python type for a SQLAlchemy column."""
     if val == "" or val is None:
         return None
     if isinstance(col_type, Boolean):
-        return val.strip().lower() in ("true", "1", "yes", "t")
+        if isinstance(val, bool):
+            return val
+        return str(val).strip().lower() in ("true", "1", "yes", "t")
     if isinstance(col_type, Integer):
         try:
             return int(val)
-        except ValueError:
+        except (ValueError, TypeError):
             raise ValueError(f"'{val}' is not a valid integer")
     if isinstance(col_type, Numeric):
         try:
-            return Decimal(val)
+            return Decimal(str(val))
         except InvalidOperation:
             raise ValueError(f"'{val}' is not a valid number")
     if isinstance(col_type, DateTime):
+        if isinstance(val, datetime):
+            return val
         try:
             return datetime.fromisoformat(val)
-        except ValueError:
+        except (ValueError, TypeError):
             raise ValueError(f"'{val}' is not a valid date (expected ISO 8601, e.g. 2024-03-01)")
     return val
 
@@ -627,6 +719,11 @@ def _upsert_row(
         rid = existing["_id"]
         existing_state = existing["_state"] if "_state" in existing.keys() else "active"
         old_values = dict(existing)
+
+        if existing_state == "retired":
+            # Falls through to the in-place update below, which would let an Editor
+            # change a retired record outside the draft/publish workflow.
+            require_publish_access(request, schema)
 
         if initial_state == "draft" and existing_state == "active":
             # Draft-copy-on-edit: leave the active record unchanged; create/update a draft.

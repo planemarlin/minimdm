@@ -1,4 +1,5 @@
 """Authentication utilities: password hashing, JWT, user table management."""
+import hashlib
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -36,7 +37,18 @@ DUMMY_HASH = bcrypt.hashpw(b"dummy-constant-time-guard", bcrypt.gensalt()).decod
 # JWT helpers
 # ---------------------------------------------------------------------------
 
-def create_token(user_id: str, username: str, is_admin: bool) -> str:
+def password_fingerprint(password_hash: str) -> str:
+    """Short, non-reversible marker of a user's current password.
+
+    Embedded in the JWT (`pwv`) so any password change — reset link or admin
+    change — invalidates every session issued before it, with no token-tracking
+    table. Compared against the live hash by the auth middleware.
+    """
+    return hashlib.sha256(password_hash.encode()).hexdigest()[:16]
+
+
+def create_token(user_id: str, username: str, is_admin: bool,
+                 pw_fingerprint: Optional[str] = None) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=settings.token_expire_hours)
     payload = {
         "sub": username,
@@ -45,6 +57,8 @@ def create_token(user_id: str, username: str, is_admin: bool) -> str:
         "exp": expire,
         "jti": str(uuid.uuid4()),
     }
+    if pw_fingerprint is not None:
+        payload["pwv"] = pw_fingerprint
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 
 
@@ -179,14 +193,26 @@ def list_users(engine) -> list[dict]:
         ]
 
 
-def is_user_active(engine, user_id: str) -> bool:
-    """Return True if the user exists and is_active. Used by auth middleware."""
+def get_user_auth_state(engine, user_id: str) -> Optional[dict]:
+    """Return the user's *current* auth state, or None if missing or deactivated.
+
+    Used by the auth middleware on every request so that privilege changes take
+    effect immediately instead of when the JWT expires: `is_admin` comes from the
+    database, not from the (stale-able) token claim, and `pw_fingerprint` lets the
+    middleware reject tokens issued before the latest password change.
+    """
     tbl = _users_table(engine)
+    try:
+        uid = uuid.UUID(user_id)
+    except (ValueError, AttributeError, TypeError):
+        return None
     with Session(engine) as s:
         row = s.execute(
-            select(tbl.c.is_active).where(tbl.c.id == uuid.UUID(user_id))
+            select(tbl.c.is_active, tbl.c.is_admin, tbl.c.password_hash).where(tbl.c.id == uid)
         ).first()
-        return bool(row and row[0])
+    if not row or not row[0]:
+        return None
+    return {"is_admin": bool(row[1]), "pw_fingerprint": password_fingerprint(row[2])}
 
 
 def get_user_by_id(engine, user_id: str) -> Optional[dict]:

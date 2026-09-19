@@ -224,3 +224,21 @@ class TestEnsureConstraintsUniqueToggle:
         # "A" physically — the deleted one is excluded by the partial predicate.
         tm.sync_schema(_widget_config(self.SCHEMA, unique=True))
         assert self._index_oid(engine) is not None
+
+
+class TestSafeServerDefault:
+    """The DDL guard must survive `python -O` (an `assert` would not)."""
+
+    def test_accepts_plain_literals(self):
+        from app.core.table_manager import _safe_server_default
+
+        assert _safe_server_default("'active'") == "'active'"
+        assert _safe_server_default("true") == "true"
+        assert _safe_server_default("false") == "false"
+
+    def test_rejects_anything_else_with_an_explicit_error(self):
+        from app.core.table_manager import _safe_server_default
+
+        for bad in ("'x'; DROP TABLE users; --", "now()", "'Mixed'", "1", ""):
+            with pytest.raises(ValueError):
+                _safe_server_default(bad)
