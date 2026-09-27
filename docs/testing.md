@@ -8,7 +8,7 @@
 | `tests/test_table_manager.py` | Unit – table manager helpers | No |
 | `tests/test_api_records.py` | Integration – CRUD, history, revert | Yes |
 | `tests/test_api_lifecycle.py` | Integration – lifecycle states, draft/publish/retire | Yes |
-| `tests/test_api_import_export.py` | Integration – import/export, upsert, initial_state | Yes |
+| `tests/test_api_import_export.py` | Integration – import/export, upsert, initial_state, import-template download | Yes |
 | `tests/test_api_auth.py` | Integration – authentication, token handling | Yes |
 | `tests/test_api_permissions.py` | Integration – schema-based access control | Yes |
 | `tests/test_api_webhooks.py` | Integration – webhook delivery on publish/retire | Yes |
@@ -19,7 +19,7 @@
 | `tests/browser/test_edit_delete.py` | Browser – edit, delete, reason enforcement | Yes |
 | `tests/browser/test_lifecycle.py` | Browser – draft/publish/retire state machine | Yes |
 | `tests/browser/test_history_revert.py` | Browser – history view and revert | Yes |
-| `tests/browser/test_import_export.py` | Browser – CSV/TSV import, CSV export download | Yes |
+| `tests/browser/test_import_export.py` | Browser – CSV/TSV import, CSV export download, import-template panel/download | Yes |
 | `tests/browser/test_admin.py` | Browser – users page and audit log | Yes |
 | `tests/browser/test_validation_rules.py` | Browser – validation-rule confirm/override banner | Yes |
 
@@ -118,6 +118,8 @@ All tests skip automatically when `TEST_DATABASE_URL` is not set, consistent wit
 - Uploading a TSV file via the import modal adds records to the list
 - A non-JSON error response from the import endpoint shows an error message instead of hanging on "Importing…" forever
 - Uploading a non-UTF-8 CSV file shows a clear error message instead of hanging
+- The "Need a template?" panel stays collapsed until toggled, then shows the field legend
+- Clicking a template download button (CSV/TSV/JSON) in the revealed panel triggers a real file download
 
 **`test_admin.py`**
 - User Management page renders with the correct heading
@@ -244,6 +246,9 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Per-row import errors return the database's one-line message, never the SQL statement or its bound parameters
 - `_coerce_value` accepts native JSON booleans, numbers and datetimes (JSON import, inbound push) and raises `ValueError` for values it can't convert
 - CSV/TSV export neutralises cells starting with `=`, `+`, `-`, `@` (CWE-1236 formula injection); JSON export and ordinary values are untouched; a CSV export re-imported as an upsert round-trips the original value
+- Import template: CSV/TSV return headers only by default and one example row with `?examples=true`; a `reference` attribute's column is `{attr}_id`, not the bare attribute key, and its example value is left blank (no fabricated UUID)
+- Import template (JSON): the single placeholder row is always present (unlike CSV/TSV, a JSON array has no header row) — `""` for text-like attributes and `null` for boolean/numeric/date/reference when `examples` is omitted; with `examples=true`, boolean and numeric values are native JSON types (`true`, `1`), not quoted strings, while date stays a quoted ISO string
+- The generated CSV example row, taken as-is, imports successfully (round-trip); unknown object and invalid `format` return 404/422
 
 **`test_validation_rules.py`**
 - Full rule catalog: `min`/`max`, `char_class: alpha|alnum` (Unicode-aware), `required_if` (value- and presence-scoped), `forbidden_if_absent`, `compare`

@@ -339,6 +339,24 @@ function closeImportModal() {
   if (m) m.style.display = 'none';
   const s = document.getElementById('import-status');
   if (s) s.innerHTML = '';
+  const panel = document.getElementById('import-template-panel');
+  if (panel) panel.style.display = 'none';
+  const toggle = document.getElementById('import-template-toggle');
+  if (toggle) toggle.textContent = 'Need a template? ▾';
+}
+
+function toggleImportTemplatePanel() {
+  const panel = document.getElementById('import-template-panel');
+  const toggle = document.getElementById('import-template-toggle');
+  if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  if (toggle) toggle.textContent = isOpen ? 'Need a template? ▾' : 'Need a template? ▴';
+}
+
+function downloadImportTemplate(schema, obj, format) {
+  const examples = document.getElementById('import-template-examples')?.checked || false;
+  window.location.href = `/api/records/${schema}/${obj}/import-template?format=${format}&examples=${examples}`;
 }
 
 // ── Record detail page ───────────────────────────────────────────────────────

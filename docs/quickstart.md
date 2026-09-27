@@ -65,6 +65,8 @@ curl -X POST http://localhost:8000/api/records/mycompany/supplier \
 
 ## 4. Bulk Import
 
+Not sure what columns to use? Click **Need a template?** in the Import dialog to download a blank CSV, TSV, or JSON template with the correct column names for the object — optionally with one example row filled in.
+
 Prepare a CSV file `suppliers.csv`:
 
 ```csv
