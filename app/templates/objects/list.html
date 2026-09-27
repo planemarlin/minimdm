@@ -129,6 +129,55 @@
       <label for="import-reason">Reason <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
       <input type="text" id="import-reason" placeholder="Stored in the audit log for all imported records" />
     </div>
+    <div class="form-group">
+      <button type="button" id="import-template-toggle"
+        style="background:none;border:none;padding:0;color:var(--text-muted);text-decoration:underline;cursor:pointer;font-size:.8rem"
+        onclick="toggleImportTemplatePanel()">Need a template? ▾</button>
+    </div>
+    <div id="import-template-panel" style="display:none;margin-bottom:14px">
+      <div style="overflow-x:auto;border:1px solid var(--mdm-border);border-radius:var(--mdm-r-3);margin-bottom:8px">
+        <table style="width:100%;border-collapse:collapse;font-size:.78rem">
+          <thead>
+            <tr style="background:var(--mdm-surface-2,#f8fafc)">
+              <th style="text-align:left;padding:6px 10px">Column</th>
+              <th style="text-align:left;padding:6px 10px">Type</th>
+              <th style="text-align:left;padding:6px 10px">Constraints</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for attr_key, attr in obj_config.attributes.items() %}
+            <tr style="border-top:1px solid var(--mdm-border)">
+              <td style="padding:6px 10px"><code>{{ attr.reference and (attr_key ~ "_id") or attr_key }}</code></td>
+              <td style="padding:6px 10px">{{ attr.reference and ("reference → " ~ attr.reference) or attr.type }}</td>
+              <td style="padding:6px 10px;color:var(--text-muted)">
+                {%- set parts = [] -%}
+                {%- if attr.required %}{% set _ = parts.append("required") %}{% endif -%}
+                {%- if attr.unique %}{% set _ = parts.append("unique") %}{% endif -%}
+                {%- if attr.min is not none %}{% set _ = parts.append("min " ~ attr.min) %}{% endif -%}
+                {%- if attr.max is not none %}{% set _ = parts.append("max " ~ attr.max) %}{% endif -%}
+                {%- if attr.char_class %}{% set _ = parts.append(attr.char_class ~ " characters only") %}{% endif -%}
+                {{ parts | join(", ") }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;font-weight:400;color:var(--text-muted);margin:0">
+          <input type="checkbox" id="import-template-examples" style="margin:0" />
+          Include an example row
+        </label>
+        <div style="display:flex;gap:10px">
+          <button type="button" class="btn btn-secondary" style="font-size:.8rem;height:28px"
+            onclick="downloadImportTemplate('{{ schema }}','{{ obj }}','csv')" title="Downloads a .csv template file">Download CSV</button>
+          <button type="button" class="btn btn-secondary" style="font-size:.8rem;height:28px"
+            onclick="downloadImportTemplate('{{ schema }}','{{ obj }}','tsv')" title="Downloads a .tsv template file">Download TSV</button>
+          <button type="button" class="btn btn-secondary" style="font-size:.8rem;height:28px"
+            onclick="downloadImportTemplate('{{ schema }}','{{ obj }}','json')" title="Downloads a .json template file">Download JSON</button>
+        </div>
+      </div>
+    </div>
     <div class="form-actions">
       <button class="btn btn-secondary" onclick="closeImportModal()">Cancel</button>
       <label class="btn btn-primary" style="cursor:pointer">

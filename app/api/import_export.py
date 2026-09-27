@@ -168,6 +168,151 @@ def export_records(
 
 
 # ---------------------------------------------------------------------------
+# Import template
+# ---------------------------------------------------------------------------
+
+def _template_column_name(attr_key: str, attr: dict) -> str:
+    """The column name the importer actually matches on for this attribute.
+
+    A `reference` attribute is stored as a `{attr_key}_id` FK column (see
+    `table_manager._make_column`), not `attr_key` itself.
+    """
+    return f"{attr_key}_id" if attr.get("reference") else attr_key
+
+
+def _template_blank_value(attr: dict):
+    """The placeholder shown for this attribute in the JSON template when no
+    example values were requested.
+
+    Unlike CSV/TSV, a JSON array has no separate header row, so a single
+    placeholder row is always emitted to make the column names visible (see
+    `import_template`). An empty string reads as an obvious "fill this in" for
+    a text-like attribute, but `""` is not a real boolean, number, date, or
+    reference value — those show `null` instead so the placeholder doesn't
+    imply a type the real value can't have.
+    """
+    if attr.get("reference"):
+        return None
+    if attr.get("type", "string") in ("string", "text", "email"):
+        return ""
+    return None
+
+
+def _template_example_value(attr_key: str, attr: dict):
+    """A synthetic, obviously-fake example value honoring the attribute's type/constraints.
+
+    Reference attributes are left blank: a fabricated UUID would only fail with a
+    foreign-key error, and there is no example we could generate that points at a
+    real record in the referenced object.
+
+    Returns a native Python bool/int/float for `boolean`/`integer`/`numeric` attributes
+    (so the JSON template shows a real `true`/`1`, not the string `"true"`/`"1"`) —
+    callers writing to CSV/TSV get the same value stringified by `csv.DictWriter`
+    (with `_stringify_for_delimited` fixing up the boolean's capitalization), since
+    a string form is accepted on import just as well as a native JSON type.
+    """
+    if attr.get("reference"):
+        return None
+
+    attr_type = attr.get("type", "string")
+    if attr_type == "boolean":
+        return True
+    if attr_type == "integer":
+        if attr.get("min") is not None:
+            return int(attr["min"])
+        if attr.get("max") is not None:
+            return int(attr["max"])
+        return 1
+    if attr_type == "numeric":
+        if attr.get("min") is not None:
+            return attr["min"]
+        if attr.get("max") is not None:
+            return attr["max"]
+        return 1
+    if attr_type == "date":
+        return datetime.now(timezone.utc).date().isoformat()
+    if attr_type == "email":
+        return "example@example.com"
+
+    # string / text
+    char_class = attr.get("char_class")
+    if char_class == "alpha":
+        return "ExampleValue"
+    if char_class == "alnum":
+        return "Example1"
+    return f"EXAMPLE-{attr_key}"
+
+
+def _stringify_for_delimited(value):
+    """CSV/TSV have no native boolean — write `true`/`false` text, not Python's
+    capitalized `str(True)`. `None` already renders as an empty cell."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return value
+
+
+@router.get(
+    "/records/{schema}/{obj}/import-template",
+    summary="Download an import template",
+    description=(
+        "Downloads a blank CSV, TSV, or JSON template with the correct column "
+        "names for importing this object. Pass `examples=true` to include one "
+        "synthetic, clearly-fake example row."
+    ),
+)
+def import_template(
+    schema: str,
+    obj: str,
+    request: Request,
+    format: str = Query("csv", pattern="^(csv|tsv|json)$"),
+    examples: bool = Query(False),
+):
+    require_schema_access(request, schema)
+    tm = _get_tm(request)
+    try:
+        tm.get_table(schema, obj)
+    except KeyError:
+        raise HTTPException(404, f"Object '{schema}.{obj}' not found")
+
+    attributes = (tm.get_object_config(schema, obj) or {}).get("attributes", {})
+    columns = [_template_column_name(k, a) for k, a in attributes.items()]
+
+    example_row = {
+        _template_column_name(k, a): _template_example_value(k, a)
+        for k, a in attributes.items()
+    } if examples else None
+
+    filename = f"{schema}_{obj}_template.{format}"
+
+    if format == "json":
+        # A JSON array has no separate "header" the way a CSV/TSV file does, so unlike
+        # those formats, a single placeholder row is emitted even without `examples`
+        # — otherwise the column names would be invisible in an empty `[]`.
+        row = example_row if example_row is not None else {
+            _template_column_name(k, a): _template_blank_value(a) for k, a in attributes.items()
+        }
+        content = json.dumps([row], indent=2, ensure_ascii=False)
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    delimiter = "\t" if format == "tsv" else ","
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=columns, delimiter=delimiter)
+    writer.writeheader()
+    if example_row is not None:
+        writer.writerow({k: _stringify_for_delimited(v) for k, v in example_row.items()})
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
 # Import
 # ---------------------------------------------------------------------------
 

@@ -3,6 +3,7 @@
 Requires TEST_DATABASE_URL to be set; the entire module is skipped otherwise.
 """
 import json
+from datetime import date
 
 import pytest
 
@@ -95,6 +96,182 @@ def test_export_offset_skips_rows(client):
     res = client.get("/api/records/test/company/export?format=json&offset=2")
     assert res.status_code == 200
     assert len(res.json()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Import template
+# ---------------------------------------------------------------------------
+
+def test_import_template_csv_headers_only_by_default(client):
+    res = client.get("/api/records/test/company/import-template?format=csv")
+    assert res.status_code == 200
+    lines = res.text.strip("\r\n").splitlines()
+    assert lines == ["code,name"]
+
+
+def test_import_template_tsv_headers(client):
+    res = client.get("/api/records/test/company/import-template?format=tsv")
+    assert res.status_code == 200
+    assert res.text.strip("\r\n").splitlines() == ["code\tname"]
+
+
+def test_import_template_json_shows_column_names_by_default(client):
+    """Unlike CSV/TSV, a JSON array has no header row — without a placeholder
+    row the column names would be invisible in an empty `[]`."""
+    res = client.get("/api/records/test/company/import-template?format=json")
+    assert res.status_code == 200
+    data = res.json()
+    assert data == [{"code": "", "name": ""}]
+
+
+def test_import_template_csv_with_examples(client):
+    res = client.get("/api/records/test/company/import-template?format=csv&examples=true")
+    assert res.status_code == 200
+    lines = res.text.strip("\r\n").splitlines()
+    assert lines[0] == "code,name"
+    assert len(lines) == 2
+    assert "EXAMPLE-" in lines[1]
+
+
+def test_import_template_tsv_with_examples(client):
+    res = client.get("/api/records/test/company/import-template?format=tsv&examples=true")
+    assert res.status_code == 200
+    lines = res.text.strip("\r\n").splitlines()
+    assert lines[0] == "code\tname"
+    assert len(lines) == 2
+    assert "EXAMPLE-" in lines[1]
+
+
+def test_import_template_json_with_examples(client):
+    res = client.get("/api/records/test/company/import-template?format=json&examples=true")
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data) == 1
+    assert set(data[0].keys()) == {"code", "name"}
+    assert data[0]["code"] != ""
+
+
+def test_import_template_json_example_boolean_is_native(client):
+    """The importer accepts both a native JSON boolean and a string like "true"/"1"/"yes"
+    (see `_coerce_value`), but the JSON template should emit a real `true`, not the
+    string `"true"` — it reads as more obviously a boolean in a JSON file."""
+    res = client.get(
+        "/api/records/test/validation_demo/import-template?format=json&examples=true"
+    )
+    assert res.status_code == 200
+    assert res.json()[0]["approved"] is True
+
+
+def test_import_template_csv_example_boolean_is_lowercase_text(client):
+    """CSV has no native boolean — Python's default str(True) is "True", but the
+    importer's string check lowercases before comparing, so the template should
+    write the conventional lowercase "true" a spreadsheet user would recognize."""
+    res = client.get(
+        "/api/records/test/validation_demo/import-template?format=csv&examples=true"
+    )
+    assert res.status_code == 200
+    header, row = res.text.strip("\r\n").splitlines()
+    approved_value = dict(zip(header.split(","), row.split(",")))["approved"]
+    assert approved_value == "true"
+
+
+def test_import_template_json_example_date_is_quoted_string(client):
+    """Unlike boolean/integer/numeric, JSON has no native date type, so — unlike
+    those — the date example value is correctly left as a string and should stay
+    quoted in the JSON output, e.g. "2026-09-27", not a bare 2026-09-27."""
+    res = client.get(
+        "/api/records/test/validation_demo/import-template?format=json&examples=true"
+    )
+    assert res.status_code == 200
+    value = res.json()[0]["start_date"]
+    assert isinstance(value, str)
+    date.fromisoformat(value)  # raises if it isn't a valid ISO date string
+
+
+def test_import_template_json_blank_row_uses_null_for_non_text_types(client):
+    """Without `examples`, the JSON placeholder row still needs to show every column
+    name, but "" only reads sensibly as "fill this in" for a text-like attribute —
+    a boolean, number, date, or reference shows null instead."""
+    res = client.get("/api/records/test/validation_demo/import-template?format=json")
+    assert res.status_code == 200
+    row = res.json()[0]
+    assert row["country"] == ""  # text-like -> blank string
+    assert row["approved"] is None  # boolean
+    assert row["unit_price"] is None  # numeric
+    assert row["start_date"] is None  # date
+
+
+def test_import_template_reference_attribute_uses_id_column(client):
+    """A `reference` attribute is stored as `{attr}_id`, so the template must
+    ask for that column, not the bare attribute key — and leave the example
+    value blank rather than fabricate a UUID that would fail on import."""
+    res = client.get("/api/records/test/contact/import-template?format=json&examples=true")
+    assert res.status_code == 200
+    data = res.json()
+    assert "company_id" in data[0]
+    assert data[0]["company_id"] is None
+
+
+def test_import_template_reference_attribute_blank_uses_null(client):
+    """Same as above, but for the no-`examples` placeholder row: "" would be a
+    misleading placeholder for a foreign-key column, so it must be null too."""
+    res = client.get("/api/records/test/contact/import-template?format=json")
+    assert res.status_code == 200
+    assert res.json()[0]["company_id"] is None
+
+
+def test_import_template_respects_numeric_min(client):
+    res = client.get(
+        "/api/records/test/governed_item/import-template?format=json&examples=true"
+    )
+    assert res.status_code == 200
+    assert res.json()[0]["unit_price"] == 0
+
+
+def test_import_template_json_example_numeric_is_native_number(client):
+    """Same reasoning as the boolean case: "0" would be a JSON string, not a number —
+    the template should emit an unquoted 0, matching the column's real type."""
+    res = client.get(
+        "/api/records/test/governed_item/import-template?format=json&examples=true"
+    )
+    assert res.status_code == 200
+    data = res.json()[0]
+    assert isinstance(data["unit_price"], (int, float))
+    assert not isinstance(data["unit_price"], bool)
+
+
+def test_import_template_csv_example_numeric_is_plain_text(client):
+    """CSV has no native number type either way, so this should look unchanged:
+    a plain, unquoted-in-the-JSON-sense "0" cell."""
+    res = client.get(
+        "/api/records/test/governed_item/import-template?format=csv&examples=true"
+    )
+    assert res.status_code == 200
+    header, row = res.text.strip("\r\n").splitlines()
+    assert dict(zip(header.split(","), row.split(",")))["unit_price"] == "0"
+
+
+def test_import_template_example_round_trips_through_import(client):
+    """The generated example row, taken as-is, must actually import cleanly."""
+    template = client.get(
+        "/api/records/test/company/import-template?format=csv&examples=true"
+    ).text
+    res = client.post(
+        "/api/records/test/company/import?format=csv",
+        files={"file": ("template.csv", template, "text/csv")},
+    )
+    assert res.status_code == 200
+    assert res.json()["inserted"] == 1
+
+
+def test_import_template_unknown_object_returns_404(client):
+    res = client.get("/api/records/test/nonexistent/import-template?format=csv")
+    assert res.status_code == 404
+
+
+def test_import_template_invalid_format_returns_422(client):
+    res = client.get("/api/records/test/company/import-template?format=xml")
+    assert res.status_code == 422
 
 
 # ---------------------------------------------------------------------------

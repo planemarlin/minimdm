@@ -29,6 +29,33 @@ def test_export_csv_triggers_download(logged_in_page, api_client):
     assert download.suggested_filename.endswith(".csv")
 
 
+def test_import_template_panel_hidden_until_toggled(logged_in_page):
+    """The template legend/download panel stays collapsed until the user asks for it."""
+    logged_in_page.goto("/browser/company")
+    logged_in_page.click("#tools-btn")
+    logged_in_page.click("button:has-text('Import…')")
+    logged_in_page.wait_for_selector("#import-modal:visible")
+
+    expect(logged_in_page.locator("#import-template-panel")).to_be_hidden()
+    logged_in_page.click("#import-template-toggle")
+    expect(logged_in_page.locator("#import-template-panel")).to_be_visible()
+    expect(logged_in_page.locator("#import-template-panel")).to_contain_text("code")
+
+
+def test_import_template_download(logged_in_page):
+    """Downloading the CSV template from the (revealed) template panel works."""
+    logged_in_page.goto("/browser/company")
+    logged_in_page.click("#tools-btn")
+    logged_in_page.click("button:has-text('Import…')")
+    logged_in_page.wait_for_selector("#import-modal:visible")
+    logged_in_page.click("#import-template-toggle")
+
+    with logged_in_page.expect_download() as dl_info:
+        logged_in_page.click("#import-template-panel button:has-text('CSV')")
+    download = dl_info.value
+    assert download.suggested_filename.endswith(".csv")
+
+
 def test_import_csv_adds_records(logged_in_page):
     """Importing a CSV file via the import modal adds records visible in the list."""
     logged_in_page.goto("/browser/company")
