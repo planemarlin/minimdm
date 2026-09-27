@@ -546,6 +546,7 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 | Method | Path | Role required | Description |
 |---|---|---|---|
 | `GET` | `/api/records/{schema}/{obj}/export` | Viewer | Export (`?format=csv\|tsv\|json`; `?state=active\|draft\|retired\|all`) |
+| `GET` | `/api/records/{schema}/{obj}/import-template` | Viewer | Download a blank import template (`?format=csv\|tsv\|json`; `?examples=true` to include one example row) |
 | `POST` | `/api/records/{schema}/{obj}/import` | Editor / Publisher | Import (`?format=csv\|tsv\|json`; optional `?upsert_key=<attr>`; `?initial_state=active\|draft`). Never hard-fails a row over a rule violation — see [Validation Rules](#validation-rules) |
 
 ### Schemas
@@ -640,6 +641,15 @@ Content-Type: application/json
 | `state` | `active` | Lifecycle state filter: `active`, `draft`, `retired`, or `all` |
 
 > **Spreadsheet safety:** in CSV and TSV exports, a text value that starts with `=`, `+`, `-`, `@`, a tab, or a carriage return is written with a leading apostrophe (`'=SUM(A1)`), so Excel or Sheets shows it as text instead of executing it as a formula. Anyone able to write a record — or an inbound source system — could otherwise plant a formula that runs on whoever opens the export. The apostrophe is removed again when a CSV/TSV file is imported, so export → edit → re-import round-trips losslessly. JSON exports are never modified, and numbers (including negative ones) are unaffected.
+
+### Query Parameters (Import Template)
+
+| Parameter | Default | Description |
+|---|---|---|
+| `format` | `csv` | File format: `csv`, `tsv`, or `json` |
+| `examples` | `false` | Include one synthetic, clearly-fake example row (e.g. `EXAMPLE-code`) honoring each attribute's type and `min`/`max`/`char_class` constraints |
+
+Column headers are the same attribute keys the importer matches on — a `reference` attribute is templated as `{attr}_id` (its actual FK column), left blank rather than filled with a fabricated UUID. Without `examples`, CSV/TSV return a headers-only file; JSON — which has no separate header row — returns one placeholder row instead, using `""` for text-like attributes and `null` for boolean/numeric/date/reference ones (an empty string isn't a real value for those types). With `examples`, boolean and numeric values are native JSON types (`true`, `1`), not quoted strings.
 
 ### Query Parameters (Import)
 
