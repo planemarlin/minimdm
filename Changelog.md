@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.8.1] – 2026-10-03
+
 ### Added
 - **Import template download**: `GET /api/records/{schema}/{obj}/import-template` (`?format=csv|tsv|json`, `?examples=true`) downloads a template with the correct column names for an object, so users no longer have to guess column names and format from trial and error. A collapsed-by-default "Need a template?" panel in the import modal shows a field legend (column, type, constraints) alongside CSV/TSV/JSON download buttons and an "include an example row" checkbox. A `reference` attribute is templated as its actual `{attr}_id` FK column, left blank rather than filled with a fabricated UUID that would only fail on import. The optional example row is type-aware and clearly synthetic (`EXAMPLE-<column>` for free text), using native JSON types for boolean/numeric values (`true`, `1`) rather than quoted strings, while dates stay quoted ISO strings, since JSON has no native date type. Without `examples`, CSV/TSV return a headers-only file; JSON — which has no separate header row — returns one placeholder row instead (`""` for text-like attributes, `null` for boolean/numeric/date/reference, since an empty string isn't a real value for those types). See `docs/reference.md`'s new "Query Parameters (Import Template)" section; 20 new tests across `tests/test_api_import_export.py` and `tests/browser/test_import_export.py` ([#55](../../issues/55))
 
