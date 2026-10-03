@@ -6,6 +6,7 @@
 |---|---|---|
 | `tests/test_schema_loader.py` | Unit – config parsing | No |
 | `tests/test_table_manager.py` | Unit – table manager helpers | No |
+| `tests/test_auth_tokens.py` | Unit – JWT decoding hardening (`decode_token`) | No |
 | `tests/test_api_records.py` | Integration – CRUD, history, revert | Yes |
 | `tests/test_api_lifecycle.py` | Integration – lifecycle states, draft/publish/retire | Yes |
 | `tests/test_api_import_export.py` | Integration – import/export, upsert, initial_state, import-template download | Yes |
@@ -167,7 +168,7 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 **Unit tests only** (no database needed):
 
 ```bash
-uv run pytest tests/test_schema_loader.py tests/test_table_manager.py -v
+uv run pytest tests/test_schema_loader.py tests/test_table_manager.py tests/test_auth_tokens.py -v
 ```
 
 **Integration and template tests only:**
@@ -187,6 +188,10 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 ```
 
 ## What the integration tests cover
+
+**`test_auth_tokens.py`** (unit, no database)
+- `decode_token` round trip, tampered signature, and a signature segment with non-Base64URL junk appended all behave correctly (`None` for invalid tokens)
+- A token whose header is a ~100,000-level nested JSON array returns `None` instead of raising an uncaught `RecursionError` (regression for PyJWT GHSA-8wjv-2p76-3863; fails on PyJWT 2.13.0)
 
 **`test_api_records.py`**
 - Create, list (with pagination), get, update, soft-delete
