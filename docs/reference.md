@@ -581,6 +581,21 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 - Schemas the caller cannot read are omitted. Editing an active record creates a draft copy, so such an object counts once under `active` and once under `pending`.
 - The UI formats the numbers with the browser's locale (so `1,240` or `1 240`, depending on the user) and abbreviates numbers above 99,999 (`250K`).
 
+### State counts
+
+`GET /api/records/{schema}/{object}/state-counts` returns the numbers shown on the state tabs and next to **Show deleted** on the object list page. Anyone with read access to the schema can call it (Viewer, Editor, Publisher, Admin alike); a user without access gets `403`, an unknown object `404`.
+
+```json
+{
+  "states":  { "active": 12, "draft": 3, "retired": 1 },
+  "deleted": { "active": 2,  "draft": 0, "retired": 1 }
+}
+```
+
+- `states` — live (not deleted) records per lifecycle state. These are the numbers `GET /api/records/{schema}/{object}?state=<state>` returns as `total`; the **All states** tab is their sum.
+- `deleted` — soft-deleted records per state (the state they had when deleted), i.e. what `include_deleted=true` adds to each state. Edit drafts that the publish workflow soft-deleted are not counted, matching what **Show deleted** reveals.
+- The counts cover the whole object and ignore `search` and `source_system`. In the UI, **Show deleted (N)** shows the `deleted` number for the selected tab (the sum for **All states**).
+
 ### Inbound Webhooks
 
 These endpoints accept pushes from external source systems. They use `X-Api-Key` authentication, not JWT. See [Inbound Sources](#inbound-sources) for configuration.

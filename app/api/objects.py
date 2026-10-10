@@ -175,6 +175,53 @@ def list_records(
 
 
 # ---------------------------------------------------------------------------
+# State counts (list page tabs)
+# ---------------------------------------------------------------------------
+
+_LIST_STATES = ("active", "draft", "retired")
+
+
+# Declared before the ``/{record_id}`` route below so "state-counts" is not read as an ID.
+@router.get(
+    "/records/{schema}/{obj}/state-counts",
+    summary="Record counts per lifecycle state",
+    description=(
+        "Returns how many records an object holds in each lifecycle state, plus how many "
+        "soft-deleted records each state has. Available to anyone with read access to the "
+        "schema. The counts mirror what the list endpoint returns for the same state, "
+        "with and without `include_deleted`."
+    ),
+)
+def state_counts(schema: str, obj: str, request: Request, db: Session = Depends(get_db)):
+    """Counts behind the state tabs and the "Show deleted" checkbox of the list page.
+
+    Shape: ``{"states": {state: n}, "deleted": {state: n}}``. ``states`` counts live
+    records; ``deleted`` counts user-deleted ones, excluding the edit drafts the publish
+    workflow soft-deletes (``_draft_of_id`` set) — the same rows ``include_deleted`` shows.
+    """
+    require_schema_access(request, schema)
+    tm = _get_tm(request)
+    try:
+        table = tm.get_table(schema, obj)
+    except KeyError:
+        raise HTTPException(404, f"Object '{schema}.{obj}' not found")
+
+    live = table.c._deleted_at.is_(None)
+    deleted = table.c._deleted_at.is_not(None) & table.c._draft_of_id.is_(None)
+    row = db.execute(
+        select(
+            *[func.count().filter(live & (table.c._state == s)) for s in _LIST_STATES],
+            *[func.count().filter(deleted & (table.c._state == s)) for s in _LIST_STATES],
+        )
+    ).one()
+    n = len(_LIST_STATES)
+    return {
+        "states": dict(zip(_LIST_STATES, row[:n])),
+        "deleted": dict(zip(_LIST_STATES, row[n:])),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Get single record
 # ---------------------------------------------------------------------------
 

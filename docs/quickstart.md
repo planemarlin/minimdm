@@ -99,7 +99,7 @@ curl -X POST "http://localhost:8000/api/records/mycompany/supplier/import?format
 
 Use the search bar on the object list page to filter records. Results update as you type.
 
-To view soft-deleted records, check the **Show deleted** checkbox in the toolbar. Deleted rows appear with a strikethrough style and link directly to their history page, where they can be reverted.
+The state tabs above the list (Active, Draft, Retired, All states) each show how many records they hold, so you can see at a glance whether anything is waiting as a draft. To view soft-deleted records, check the **Show deleted** checkbox in the toolbar; the number in brackets is how many deleted records it will add to the current tab. Deleted rows appear with a strikethrough style and link directly to their history page, where they can be reverted.
 
 ## 6. View History and Revert
 

@@ -354,6 +354,14 @@
   color: var(--mdm-ink);
 }
 
+/* muted counts inside the state tabs and next to "Show deleted" */
+.mdm-seg-count {
+  margin-left: 6px;
+  font-variant-numeric: tabular-nums;
+  color: var(--mdm-mute);
+}
+.mdm-seg-count:empty { display: none; }
+
 /* checkbox row */
 .mdm-check {
   display: inline-flex; align-items: center; gap: 8px;
