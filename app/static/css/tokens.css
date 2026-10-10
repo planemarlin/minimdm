@@ -107,6 +107,31 @@
   gap: 8px;
 }
 .mdm-side-item:hover { background: rgba(255,255,255,0.04); }
+.mdm-side-item-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Underline only the name on hover, not the counts beside it */
+.mdm-side-item:hover { text-decoration: none; }
+.mdm-side-item:hover .mdm-side-item-name { text-decoration: underline; }
+
+/* ---------- Record counts (sidebar + home cards) ---------- */
+.mdm-counts { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: auto; }
+.mdm-count-active {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--mdm-on-dark-mute);
+}
+.mdm-count-pending {
+  background: var(--mdm-blue);
+  color: #fff;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 16px;
+  height: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 5px;
+  line-height: 1;
+}
 .mdm-side-item.is-active {
   background: var(--mdm-nav-2);
   border-left-color: var(--mdm-blue);

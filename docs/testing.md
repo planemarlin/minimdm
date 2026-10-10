@@ -14,6 +14,7 @@
 | `tests/test_api_permissions.py` | Integration – schema-based access control | Yes |
 | `tests/test_api_webhooks.py` | Integration – webhook delivery on publish/retire | Yes |
 | `tests/test_validation_rules.py` | Integration – config-based validation rules, `_validation_status` | Yes |
+| `tests/test_api_object_counts.py` | Integration – `GET /api/object-counts` (sidebar/home record counts), per-role visibility | Yes |
 | `tests/test_templates.py` | Template rendering – page structure | Yes |
 | `tests/browser/test_auth.py` | Browser – login/logout, auth redirects | Yes |
 | `tests/browser/test_records.py` | Browser – list and create records | Yes |
@@ -23,6 +24,7 @@
 | `tests/browser/test_import_export.py` | Browser – CSV/TSV import, CSV export download, import-template panel/download | Yes |
 | `tests/browser/test_admin.py` | Browser – users page and audit log | Yes |
 | `tests/browser/test_validation_rules.py` | Browser – validation-rule confirm/override banner | Yes |
+| `tests/browser/test_record_counts.py` | Browser – record counts in the sidebar and home page cards, locale formatting | Yes |
 
 Unit tests run anywhere. Integration and template tests require a PostgreSQL test database and are automatically skipped when `TEST_DATABASE_URL` is not set. Browser tests additionally require the Playwright Chromium binary (see below).
 
@@ -134,6 +136,13 @@ All tests skip automatically when `TEST_DATABASE_URL` is not set, consistent wit
 - A rule violation on submit shows a persistent banner (not the auto-dismissing generic error) listing the violated attribute and rule, with "Save anyway" and "Cancel" buttons
 - Cancel dismisses the banner without saving and without navigating away from the form
 - "Save anyway" resubmits with `confirm_validation_override=true`, saves the record, and the resulting detail page shows the "Invalid" badge
+
+**`test_record_counts.py`**
+- Each sidebar entry shows the active record count for its object (zero included)
+- An admin sees a pending-drafts pill next to the count of an object with drafts, and no pill where there are none
+- The home page cards show the same counts
+- Counts are formatted with the browser locale (`1,234` in en-US, `1.234` in de-DE) and numbers above 99,999 are abbreviated
+- Hovering a sidebar entry underlines the object name only, not the counts beside it
 
 ## Setting up the test database
 
@@ -268,6 +277,12 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Revert recomputes `_validation_status` (to `invalid` when restoring rule-violating values and back to `valid`)
 - Inbound push accepts a native JSON boolean and answers 422 (not 500) for a value that can't be coerced to its column type
 - Rules flag but never crash: `compare` across a naive and a timezone-aware date (create and update), `char_class` on a native JSON number for a string attribute, and `record_violations()` on incomparable types all return a violation instead of an uncaught 500
+
+**`test_api_object_counts.py`**
+- Admin sees `active` and `pending` counts for every configured object, including zero-count objects
+- Soft-deleted records are never counted; editing an active record counts once as active and once as pending
+- Viewers and Editors get `active` only; Publishers get `pending` too
+- A user without access to a schema gets no entry for it; an unauthenticated request is rejected
 
 **`test_api_query_params.py`**
 - `?role=master` returns only active (golden) records

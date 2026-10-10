@@ -559,6 +559,27 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 | `GET` | `/api/config` | Get current loaded config (schema definitions only; webhook URLs are excluded). Non-admins only see the schemas they hold a read permission for, same as `GET /api/schemas` |
 | `POST` | `/api/config/reload` | Reload config from disk and sync database schema — **Admin only** |
 | `GET` | `/api/pending-count` | Return total count of pending draft records across all schemas accessible to the current user — used by the publisher badge in the navigation bar |
+| `GET` | `/api/object-counts` | Return record counts per object for every schema the current user can read — used by the sidebar and the home page cards. See [Record counts](#record-counts) |
+
+#### Record counts
+
+`GET /api/object-counts` answers with one entry per object in each readable schema:
+
+```json
+{
+  "schemas": {
+    "mycompany": {
+      "supplier": { "active": 1240, "pending": 3 },
+      "customer": { "active": 87,   "pending": 0 }
+    }
+  }
+}
+```
+
+- `active` — records in state `active` (the golden records). Draft, retired and soft-deleted records are not counted.
+- `pending` — records in state `draft` (soft-deleted ones excluded). **Only present for schemas where the caller has Publisher access** (admins have it everywhere); Viewers and Editors get `active` only.
+- Schemas the caller cannot read are omitted. Editing an active record creates a draft copy, so such an object counts once under `active` and once under `pending`.
+- The UI formats the numbers with the browser's locale (so `1,240` or `1 240`, depending on the user) and abbreviates numbers above 99,999 (`250K`).
 
 ### Inbound Webhooks
 

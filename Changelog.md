@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- **Record counts in the sidebar and on the home page**: every object in the sidebar and in the home page schema cards now shows how many active (golden) records it holds, so you no longer have to open the object page to find out. Publishers and Admins also get a blue pill with the number of pending drafts per object, shown only when there are any and only for schemas where they hold publish access (Viewers and Editors never see it). Draft, retired and soft-deleted records are not part of the active count. Numbers are formatted with the browser's locale (`1,240` or `1 240` depending on the user) and abbreviated above 99,999 (`250K`); hovering shows the exact value. Backed by the new `GET /api/object-counts` endpoint, which answers with a single query and is fetched asynchronously so page rendering is not slowed; see `docs/reference.md`'s new "Record counts" section. 9 new API tests (`tests/test_api_object_counts.py`) cover per-role visibility, soft-deletes and draft-copies, and 6 browser tests (`tests/browser/test_record_counts.py`) cover the rendering, locale formatting and hover styling
+
 ## [0.8.1] – 2026-10-03
 
 ### Added

@@ -1681,6 +1681,53 @@ async function loadPendingBadge() {
 document.addEventListener("DOMContentLoaded", loadPendingBadge);
 
 // ------------------------------------------------------------------
+// Record counts (sidebar + home page cards)
+// ------------------------------------------------------------------
+
+// Formatted with the browser's locale, so grouping follows the user's settings.
+// Very large numbers are abbreviated (12.4K) to keep the sidebar tidy.
+const _COMPACT_ABOVE = 99999;
+function formatCount(n) {
+  const opts = n > _COMPACT_ABOVE ? { notation: "compact", maximumFractionDigits: 1 } : {};
+  try {
+    return new Intl.NumberFormat(undefined, opts).format(n);
+  } catch (_) {
+    return String(n);
+  }
+}
+
+function renderObjectCounts(counts) {
+  document.querySelectorAll(".mdm-counts").forEach(el => {
+    const c = ((counts[el.dataset.countsSchema] || {})[el.dataset.countsObject]);
+    el.textContent = "";
+    if (!c) return;
+    const active = document.createElement("span");
+    active.className = "mdm-count-active";
+    active.textContent = formatCount(c.active);
+    active.title = `${c.active.toLocaleString()} active`;
+    el.appendChild(active);
+    if (c.pending > 0) {
+      const pending = document.createElement("span");
+      pending.className = "mdm-count-pending";
+      pending.textContent = formatCount(c.pending);
+      pending.title = `${c.pending.toLocaleString()} pending draft${c.pending === 1 ? "" : "s"}`;
+      el.appendChild(pending);
+    }
+  });
+}
+
+async function loadObjectCounts() {
+  if (!document.querySelector(".mdm-counts")) return;
+  try {
+    const res = await fetch("/api/object-counts");
+    if (!res.ok) return;
+    renderObjectCounts((await res.json()).schemas || {});
+  } catch (_) { /* non-critical — counts are optional */ }
+}
+
+document.addEventListener("DOMContentLoaded", loadObjectCounts);
+
+// ------------------------------------------------------------------
 // Users page — tab switching
 // ------------------------------------------------------------------
 
