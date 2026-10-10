@@ -15,6 +15,7 @@
 | `tests/test_api_webhooks.py` | Integration – webhook delivery on publish/retire | Yes |
 | `tests/test_validation_rules.py` | Integration – config-based validation rules, `_validation_status` | Yes |
 | `tests/test_api_object_counts.py` | Integration – `GET /api/object-counts` (sidebar/home record counts), per-role visibility | Yes |
+| `tests/test_api_state_counts.py` | Integration – `GET /api/records/{schema}/{object}/state-counts` (list page tab counts), per-role access | Yes |
 | `tests/test_templates.py` | Template rendering – page structure | Yes |
 | `tests/browser/test_auth.py` | Browser – login/logout, auth redirects | Yes |
 | `tests/browser/test_records.py` | Browser – list and create records | Yes |
@@ -24,6 +25,7 @@
 | `tests/browser/test_import_export.py` | Browser – CSV/TSV import, CSV export download, import-template panel/download | Yes |
 | `tests/browser/test_admin.py` | Browser – users page and audit log | Yes |
 | `tests/browser/test_validation_rules.py` | Browser – validation-rule confirm/override banner | Yes |
+| `tests/browser/test_list_state_counts.py` | Browser – per-state counts on the list page tabs and next to "Show deleted" | Yes |
 | `tests/browser/test_record_counts.py` | Browser – record counts in the sidebar and home page cards, locale formatting | Yes |
 
 Unit tests run anywhere. Integration and template tests require a PostgreSQL test database and are automatically skipped when `TEST_DATABASE_URL` is not set. Browser tests additionally require the Playwright Chromium binary (see below).
@@ -136,6 +138,14 @@ All tests skip automatically when `TEST_DATABASE_URL` is not set, consistent wit
 - A rule violation on submit shows a persistent banner (not the auto-dismissing generic error) listing the violated attribute and rule, with "Save anyway" and "Cancel" buttons
 - Cancel dismisses the banner without saving and without navigating away from the form
 - "Save anyway" resubmits with `confirm_validation_override=true`, saves the record, and the resulting detail page shows the "Invalid" badge
+
+**`test_list_state_counts.py`**
+- Each state tab (Active / Draft / Retired / All states) shows its count, zero included, with the exact value as a tooltip
+- Switching tabs does not change the tab counts; the "Show deleted (N)" number follows the selected tab and matches the rows ticking the checkbox reveals
+- Deleting a row from the list refreshes the tab counts, the deleted count and the sidebar count without a reload
+- Editing a record (draft +1) and publishing it again (draft -1) are reflected on the next visit, and the superseded edit draft is not counted as deleted
+- A page restored from the back/forward cache reloads its counts
+- Numbers use the browser locale (`1,234` in en-US, `1.234` in de-DE) and are abbreviated above 99,999
 
 **`test_record_counts.py`**
 - Each sidebar entry shows the active record count for its object (zero included)
@@ -277,6 +287,13 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Revert recomputes `_validation_status` (to `invalid` when restoring rule-violating values and back to `valid`)
 - Inbound push accepts a native JSON boolean and answers 422 (not 500) for a value that can't be coerced to its column type
 - Rules flag but never crash: `compare` across a naive and a timezone-aware date (create and update), `char_class` on a native JSON number for a string attribute, and `record_violations()` on incomparable types all return a violation instead of an uncaught 500
+
+**`test_api_state_counts.py`**
+- Counts per state and per deleted state; an empty object returns zeros
+- Tab counts equal the list endpoint's `total` for every state (with and without `include_deleted`), so the UI numbers cannot drift from the rows
+- A published edit draft is not counted as deleted; a deleted stand-alone draft is
+- Counts follow create → edit → publish → retire
+- Viewer, Editor and Publisher all get the full breakdown; no access → 403, unauthenticated → 401, unknown object → 404
 
 **`test_api_object_counts.py`**
 - Admin sees `active` and `pending` counts for every configured object, including zero-count objects

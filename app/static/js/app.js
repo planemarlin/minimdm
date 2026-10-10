@@ -93,6 +93,7 @@ class RecordList {
     this.includeDeleted = false;
     this.stateValue = "active";
     this.sourceSystem = "";
+    this.stateCounts = null;
 
     this.tbody = document.getElementById("record-tbody");
     this.paginationEl = document.getElementById("pagination");
@@ -128,13 +129,46 @@ class RecordList {
     }
 
     this.load();
+    this.loadStateCounts();
   }
 
   // Called by the segmented control buttons in list.html
   setStateFilter(value) {
     this.stateValue = value;
     this.page = 1;
+    this.renderStateCounts();  // the deleted count follows the selected tab
     this.load();
+  }
+
+  // Counts on the state tabs and next to "Show deleted". They describe the whole
+  // object, so search and source-system filters don't change them.
+  async loadStateCounts() {
+    try {
+      const res = await fetch(`/api/records/${this.schema}/${this.obj}/state-counts`);
+      if (!res.ok) return;
+      this.stateCounts = await res.json();
+      this.renderStateCounts();
+    } catch (_) { /* non-critical — counts are optional */ }
+  }
+
+  renderStateCounts() {
+    const c = this.stateCounts;
+    if (!c) return;
+    const sum = (byState) => Object.values(byState).reduce((a, b) => a + b, 0);
+    const setCount = (el, n, label, text) => {
+      el.textContent = text;
+      el.title = `${n.toLocaleString()} ${label}`;
+    };
+    document.querySelectorAll("#state-seg [data-count-state]").forEach(el => {
+      const st = el.dataset.countState;
+      const n = st === "all" ? sum(c.states) : c.states[st];
+      setCount(el, n, "record" + (n === 1 ? "" : "s"), formatCount(n));
+    });
+    const deletedEl = document.getElementById("deleted-count");
+    if (deletedEl) {
+      const n = this.stateValue === "all" ? sum(c.deleted) : c.deleted[this.stateValue];
+      setCount(deletedEl, n, "deleted record" + (n === 1 ? "" : "s"), `(${formatCount(n)})`);
+    }
   }
 
   get userAttributes() {
@@ -297,6 +331,8 @@ class RecordList {
     );
     if (res.ok || res.status === 204) {
       this.load();
+      this.loadStateCounts();
+      loadObjectCounts();  // sidebar
     } else {
       alert("Failed to delete record.");
     }
@@ -313,6 +349,16 @@ function initListPage(schema, obj, objConfig) {
     if (btn && menu && !btn.contains(e.target) && !menu.contains(e.target)) closeToolsMenu();
   });
 }
+
+// Coming back to the list via the browser's back button can restore a cached page;
+// reload so the rows and counts reflect records created, edited or published meanwhile.
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted && window.recordList) {
+    window.recordList.load();
+    window.recordList.loadStateCounts();
+    loadObjectCounts();
+  }
+});
 
 function setStateFilter(value) {
   document.querySelectorAll('#state-seg button').forEach(b => {

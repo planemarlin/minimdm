@@ -68,15 +68,15 @@
 
 <div class="mdm-toolbar">
   <div class="mdm-seg" id="state-seg">
-    <button class="is-on" data-state="active" onclick="setStateFilter('active')">Active</button>
-    <button data-state="draft" onclick="setStateFilter('draft')">Draft</button>
-    <button data-state="retired" onclick="setStateFilter('retired')">Retired</button>
-    <button data-state="all" onclick="setStateFilter('all')">All states</button>
+    <button class="is-on" data-state="active" onclick="setStateFilter('active')">Active<span class="mdm-seg-count" data-count-state="active"></span></button>
+    <button data-state="draft" onclick="setStateFilter('draft')">Draft<span class="mdm-seg-count" data-count-state="draft"></span></button>
+    <button data-state="retired" onclick="setStateFilter('retired')">Retired<span class="mdm-seg-count" data-count-state="retired"></span></button>
+    <button data-state="all" onclick="setStateFilter('all')">All states<span class="mdm-seg-count" data-count-state="all"></span></button>
   </div>
   <input class="mdm-input" type="search" id="source-system-filter" placeholder="Source system…" style="width:160px" />
   <label class="mdm-check">
     <input type="checkbox" id="show-deleted-toggle" />
-    Show deleted
+    <span>Show deleted<span class="mdm-seg-count" id="deleted-count"></span></span>
   </label>
   <div style="flex:1"></div>
   <span style="font-size:13px;color:var(--mdm-mute)"><span id="total-count">…</span> records</span>
