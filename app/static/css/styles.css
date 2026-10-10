@@ -415,7 +415,9 @@ details[open] > .related-panel__summary::before { transform: rotate(90deg); }
 .schema-card { padding: 1rem; }
 .schema-card__name { font-size: 1rem; font-weight: 700; margin-bottom: .75rem; color: var(--text); }
 .schema-card__objects { list-style: none; }
-.schema-card__objects li { padding: .3rem 0; border-bottom: 1px solid var(--border); font-size: .875rem; }
+.schema-card__objects li { padding: .3rem 0; border-bottom: 1px solid var(--border); font-size: .875rem; display: flex; align-items: center; gap: .75rem; }
+.schema-card__label { flex: 1 1 auto; min-width: 0; }
+.schema-card__objects .mdm-count-active { color: var(--text-muted); font-size: .8rem; }
 .schema-card__objects li:last-child { border-bottom: none; }
 
 /* ===== Import/Export bar ===== */

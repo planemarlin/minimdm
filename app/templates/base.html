@@ -25,7 +25,10 @@
       {% for object in schema.objects %}
       {% set _prefix = '/' + schema.name + '/' + object.key %}
       <a class="mdm-side-item{% if request.url.path == _prefix or request.url.path.startswith(_prefix + '/') %} is-active{% endif %}"
-         href="/{{ schema.name }}/{{ object.key }}">{{ object.name }}</a>
+         href="/{{ schema.name }}/{{ object.key }}">
+        <span class="mdm-side-item-name">{{ object.name }}</span>
+        <span class="mdm-counts" data-counts-schema="{{ schema.name }}" data-counts-object="{{ object.key }}"></span>
+      </a>
       {% endfor %}
     </div>
     {% endfor %}
@@ -92,6 +95,7 @@
           <div class="help-card">
             <div class="help-card-title">Lifecycle states</div>
             <p>Every record is <strong>Active</strong> (the golden record), <strong>Draft</strong> (pending approval), or <strong>Retired</strong>. Editing an active record creates a draft alongside it — the active record is unchanged until a Publisher approves. <em>Publish</em> and <em>Retire</em> require Publisher or Admin role.</p>
+            <p>The number beside each object in the sidebar is its count of active records. Publishers and Admins also see a blue pill with the number of pending drafts.</p>
           </div>
 
           <div class="help-card">

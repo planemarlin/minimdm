@@ -55,6 +55,8 @@ Restart the server (or call `POST /api/config/reload` if you want zero downtime)
 
 Navigate to **mycompany → Supplier** in the sidebar. Click **+ New record** and fill in the form.
 
+The number next to each object in the sidebar (and on the home page) is its count of active records. If you are a Publisher or Admin, a blue pill beside it shows how many drafts are waiting to be published.
+
 Alternatively, use the API directly:
 
 ```bash

@@ -1,11 +1,15 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from sqlalchemy import func, select
+from sqlalchemy import func, literal, select, union_all
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.core.permissions import get_accessible_schemas, require_schema_access
+from app.core.permissions import (
+    get_accessible_schemas,
+    get_user_permissions,
+    require_schema_access,
+)
 from app.core.schema_loader import load_config, validate_config
 
 router = APIRouter()
@@ -155,3 +159,64 @@ def pending_draft_count(request: Request):
                 ).scalar() or 0
             total += count
     return {"total": total}
+
+
+@router.get(
+    "/object-counts",
+    summary="Record counts per object",
+    description=(
+        "Returns the number of active (golden) records for every object in the schemas "
+        "the current user can read. Users with publish access to a schema (and admins) "
+        "also get the number of pending drafts per object. Soft-deleted records are "
+        "never counted."
+    ),
+)
+def object_counts(request: Request):
+    """Counts for the sidebar and the home page cards.
+
+    Shape: ``{"schemas": {schema: {object: {"active": n, "pending": n}}}}`` — the
+    ``pending`` key is present only where the user may publish.
+    """
+    tm = request.app.state.table_manager
+    user = getattr(request.state, "current_user", None)
+    if not user:
+        return {"schemas": {}}
+
+    if user.get("is_admin"):
+        readable = set(tm.list_schemas())
+        publishable = readable
+    else:
+        perms = get_user_permissions(tm.engine, user["user_id"])
+        readable = {p["schema_name"] for p in perms if p["can_read"]}
+        publishable = {p["schema_name"] for p in perms if p["can_publish"]}
+
+    selects = []
+    for schema_name in tm.list_schemas():
+        if schema_name not in readable:
+            continue
+        for obj in tm.list_objects(schema_name):
+            try:
+                table = tm.get_table(schema_name, obj["key"])
+            except KeyError:
+                continue
+            selects.append(
+                select(
+                    literal(schema_name).label("schema"),
+                    literal(obj["key"]).label("object"),
+                    func.count().filter(table.c._state == "active").label("active"),
+                    func.count().filter(table.c._state == "draft").label("pending"),
+                )
+                .select_from(table)
+                .where(table.c._deleted_at.is_(None))
+            )
+
+    result: dict[str, dict[str, dict[str, int]]] = {}
+    if selects:
+        with Session(tm.engine) as db:
+            rows = db.execute(union_all(*selects)).all()
+        for schema_name, obj_key, active, pending in rows:
+            counts = {"active": active}
+            if schema_name in publishable:
+                counts["pending"] = pending
+            result.setdefault(schema_name, {})[obj_key] = counts
+    return {"schemas": result}

@@ -14,10 +14,13 @@
     <ul class="schema-card__objects">
       {% for obj in schema.objects %}
       <li>
-        <a href="/{{ schema.name }}/{{ obj.key }}">{{ obj.name }}</a>
-        {% if obj.description %}
-        <span style="font-size:.75rem; color:var(--text-muted); margin-left:.25rem">– {{ obj.description }}</span>
-        {% endif %}
+        <span class="schema-card__label">
+          <a href="/{{ schema.name }}/{{ obj.key }}">{{ obj.name }}</a>
+          {% if obj.description %}
+          <span style="font-size:.75rem; color:var(--text-muted); margin-left:.25rem">– {{ obj.description }}</span>
+          {% endif %}
+        </span>
+        <span class="mdm-counts" data-counts-schema="{{ schema.name }}" data-counts-object="{{ obj.key }}"></span>
       </li>
       {% endfor %}
     </ul>
