@@ -82,6 +82,14 @@ A `clean_browser_records` fixture (autouse) truncates all `browser`-schema table
 
 All tests skip automatically when `TEST_DATABASE_URL` is not set, consistent with the rest of the test suite.
 
+### Writing browser tests: gotchas
+
+- **Never use `page.wait_for_function("js string")`.** Evaluating a string as JavaScript violates the app's CSP (`script-src 'self' 'unsafe-inline'`). Use locator-based waits instead, e.g. `expect(locator).not_to_have_text(...)`.
+- **Scope button locators to their container.** `button:has-text('Publish')` is ambiguous because both the header button and the modal's confirm button carry that text. Use e.g. `#publish-modal-backdrop .mdm-btn-primary`.
+- **Wait for action buttons to be visible before clicking.** `#btn-publish`, `#btn-retire` and `#btn-delete` start as `display:none` and are shown by JavaScript after an async fetch, so waiting for `.mdm-attrs` is not enough. Use `page.wait_for_selector("#btn-X:visible")`.
+- **Use auto-retrying assertions after a reload.** After `window.location.reload()` the old DOM is still present when Playwright resumes, so a direct assertion can read stale content. Use `expect(locator).to_have_text("new value")`, which retries.
+- **The browser suite only logs in as the admin (`browser_admin`).** Per-role behaviour (Viewer, Editor, Publisher) is covered by the API tests, not by browser tests.
+
 ### What the browser tests cover
 
 **`test_auth.py`**
@@ -327,6 +335,8 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 ## Test isolation
 
 Each integration test that creates or modifies data requests the `clean_records` fixture, which deletes all rows from the test schema tables before the test runs. The session-scoped `client` fixture creates the schema once for the whole run and drops it on teardown. Tests that only read HTML (template tests) do not need `clean_records`.
+
+Because the `client` fixture is session-scoped and shares one app instance, a test must never mutate app-wide state (for example by calling the config reload endpoint): it would change the configuration for every test that runs after it.
 
 ## Known test gaps (pre-next-release)
 
