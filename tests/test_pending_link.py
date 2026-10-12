@@ -128,8 +128,8 @@ def test_viewer_does_not_see_pending_link(client):
 
 def test_pending_link_comes_first_in_top_bar(client):
     html = client.get("/").text
-    top = html[html.index('<header class="mdm-top">'):]
-    assert top.index(_LINK) < top.index('href="/admin/users"') < top.index('href="/docs"')
+    top = html[html.index('<header class="mdm-top">'):html.index("</header>")]
+    assert top.index(_LINK) < top.index('href="/admin/users"') < top.index('id="theme-btn"')
 
 
 def test_pending_page_still_renders_for_viewer(client):

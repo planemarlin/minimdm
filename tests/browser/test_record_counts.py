@@ -85,7 +85,7 @@ def test_pending_link_is_first_in_top_bar_and_shows_count(logged_in_page, api_cl
     """The Pending link leads the top bar; its count is filled in without moving other items."""
     api_client.post("/api/records/browser/governed_item", json={"code": "TOP-1"}).raise_for_status()
     logged_in_page.goto("/browser/company")
-    links = logged_in_page.locator(".mdm-top > a.mdm-top-link")
+    links = logged_in_page.locator(".mdm-top .mdm-top-link")
     expect(links.first).to_have_attribute("href", "/pending")
     count = logged_in_page.locator("#pending-badge-count")
     expect(count).to_have_text("1")
@@ -101,3 +101,35 @@ def test_pending_link_stays_visible_without_drafts(logged_in_page):
     logged_in_page.goto("/browser/company")
     expect(logged_in_page.locator("#pending-badge-link")).to_be_visible()
     expect(logged_in_page.locator("#pending-badge-count")).to_be_hidden()
+
+
+def test_top_bar_groups_are_separated_by_dividers(logged_in_page):
+    groups = logged_in_page.locator(".mdm-top-group")
+    expect(groups).to_have_count(3)
+    expect(groups.nth(0)).not_to_have_css("border-left-width", "1px")
+    expect(groups.nth(1)).to_have_css("border-left-width", "1px")
+    expect(groups.nth(2)).to_have_css("border-left-width", "1px")
+
+
+def test_api_docs_link_sits_at_the_bottom_of_the_sidebar(logged_in_page):
+    logged_in_page.goto("/browser/company")
+    link = logged_in_page.locator(".mdm-side-foot a[href='/docs']")
+    expect(link).to_be_visible()
+    expect(logged_in_page.locator(".mdm-top a[href='/docs']")).to_have_count(0)
+    last_object = logged_in_page.locator(".mdm-side-item[href^='/browser/']").last
+    assert link.bounding_box()["y"] > last_object.bounding_box()["y"]
+
+
+def test_current_top_bar_page_is_underlined(logged_in_page):
+    logged_in_page.goto("/admin/users")
+    current = logged_in_page.locator(".mdm-top-link[aria-current='page']")
+    expect(current).to_have_text("Users")
+    expect(current).to_have_css("text-decoration-line", "underline")
+
+
+def test_theme_toggle_updates_aria_pressed(logged_in_page):
+    logged_in_page.goto("/")
+    btn = logged_in_page.locator("#theme-btn")
+    before = btn.get_attribute("aria-pressed")
+    btn.click()
+    expect(btn).not_to_have_attribute("aria-pressed", before)

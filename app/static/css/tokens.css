@@ -77,6 +77,7 @@
   color: var(--mdm-on-dark);
   display: flex; flex-direction: column;
   padding: 22px 0;
+  overflow-y: auto;
 }
 .mdm-side-brand {
   display: block;
@@ -132,6 +133,12 @@
   padding: 0 5px;
   line-height: 1;
 }
+/* Pinned to the bottom when the object list is short; scrolls after it when long */
+.mdm-side-foot {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--mdm-nav-edge);
+}
 .mdm-side-item.is-active {
   background: var(--mdm-nav-2);
   border-left-color: var(--mdm-blue);
@@ -159,6 +166,20 @@
   position: relative;
 }
 .mdm-top-link:hover { color: #fff; }
+.mdm-top-link[aria-current="page"] {
+  color: #fff;
+  text-decoration: underline;
+  text-decoration-color: var(--mdm-blue);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 8px;
+}
+/* Groups: work and admin | utilities | account, separated by a thin divider */
+.mdm-top-group { display: flex; align-items: center; gap: 22px; }
+.mdm-top-group--icons { gap: 4px; }
+.mdm-top-group + .mdm-top-group {
+  padding-left: 22px;
+  border-left: 1px solid rgba(255,255,255,0.14);
+}
 /* Pending link: the count is positioned absolutely, so filling it in never shifts the bar */
 .mdm-top-pending { padding-right: 18px; }
 .mdm-top-pending-count {
