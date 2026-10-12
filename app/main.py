@@ -24,7 +24,11 @@ from app.core.auth import (
 from app.core.limiter import limiter
 from app.core.logging import RequestIdFilter, configure_logging, new_request_id
 from app.core.migrations import run_migrations
-from app.core.permissions import check_permission, get_accessible_schemas
+from app.core.permissions import (
+    check_permission,
+    get_accessible_schemas,
+    get_publishable_schemas,
+)
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
 from app.database import engine
@@ -128,6 +132,20 @@ app.add_middleware(SlowAPIMiddleware)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 templates.env.policies["json.dumps_kwargs"] = {"sort_keys": False}
+
+
+def _can_review_pending(request: Request) -> bool:
+    """Whether the top bar shows the Pending link: admins and users who can publish somewhere."""
+    user = getattr(request.state, "current_user", None)
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    engine = request.app.state.table_manager.engine
+    return bool(get_publishable_schemas(engine, user["user_id"]))
+
+
+templates.env.globals["can_review_pending"] = _can_review_pending
 
 # -----------------------------------------------------------------
 # Auth middleware

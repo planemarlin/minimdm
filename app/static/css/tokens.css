@@ -159,6 +159,23 @@
   position: relative;
 }
 .mdm-top-link:hover { color: #fff; }
+/* Pending link: the count is positioned absolutely, so filling it in never shifts the bar */
+.mdm-top-pending { padding-right: 18px; }
+.mdm-top-pending-count {
+  position: absolute; top: -4px; right: 0;
+  background: var(--mdm-blue);
+  color: #fff;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 16px;
+  height: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 4px;
+  line-height: 1;
+}
+.mdm-top-pending-count[hidden] { display: none; }
 .mdm-top-icon {
   width: 32px; height: 32px;
   display: inline-flex; align-items: center; justify-content: center;

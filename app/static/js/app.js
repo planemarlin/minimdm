@@ -1710,16 +1710,17 @@ document.addEventListener("click", e => {
 // ------------------------------------------------------------------
 
 async function loadPendingBadge() {
+  // The link itself is rendered by the server for users who can publish; only the count is fetched.
+  const countEl = document.getElementById("pending-badge-count");
+  if (!countEl) return;
   try {
     const res = await fetch("/api/pending-count");
     if (!res.ok) return;
     const data = await res.json();
     const count = data.total || 0;
-    const badge = document.getElementById("pending-badge");
-    const countEl = document.getElementById("pending-badge-count");
-    if (badge && count > 0) {
+    if (count > 0) {
       countEl.textContent = count > 99 ? "99+" : count;
-      badge.style.display = "";
+      countEl.hidden = false;
     }
   } catch (_) { /* non-critical — badge is optional */ }
 }

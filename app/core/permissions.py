@@ -128,6 +128,20 @@ def get_accessible_schemas(engine, user_id: str) -> set[str]:
         return {r[0] for r in rows}
 
 
+def get_publishable_schemas(engine, user_id: str) -> set[str]:
+    """Return the set of schema names the user can read and publish in."""
+    tbl = _perms_table(engine)
+    uid = uuid.UUID(user_id)
+    with Session(engine) as s:
+        rows = s.execute(
+            select(tbl.c.schema_name)
+            .where(tbl.c.user_id == uid)
+            .where(tbl.c.can_read == True)  # noqa: E712
+            .where(tbl.c.can_publish == True)  # noqa: E712
+        ).all()
+        return {r[0] for r in rows}
+
+
 def require_schema_access(request: Request, schema: str, write: bool = False) -> None:
     """Raise HTTP 403 if the current user cannot access the schema.
 

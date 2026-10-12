@@ -79,3 +79,25 @@ def test_hover_underlines_object_name_but_not_counts(logged_in_page, api_client)
     assert underlined(".mdm-side-item-name") == "underline"
     assert underlined(".mdm-count-active") == "none"
     assert underlined(".mdm-count-pending") == "none"
+
+
+def test_pending_link_is_first_in_top_bar_and_shows_count(logged_in_page, api_client):
+    """The Pending link leads the top bar; its count is filled in without moving other items."""
+    api_client.post("/api/records/browser/governed_item", json={"code": "TOP-1"}).raise_for_status()
+    logged_in_page.goto("/browser/company")
+    links = logged_in_page.locator(".mdm-top > a.mdm-top-link")
+    expect(links.first).to_have_attribute("href", "/pending")
+    count = logged_in_page.locator("#pending-badge-count")
+    expect(count).to_have_text("1")
+    users = logged_in_page.locator(".mdm-top-link[href='/admin/users']")
+    before = users.bounding_box()["x"]
+    api_client.post("/api/records/browser/governed_item", json={"code": "TOP-2"}).raise_for_status()
+    logged_in_page.reload()
+    expect(count).to_have_text("2")
+    assert users.bounding_box()["x"] == before
+
+
+def test_pending_link_stays_visible_without_drafts(logged_in_page):
+    logged_in_page.goto("/browser/company")
+    expect(logged_in_page.locator("#pending-badge-link")).to_be_visible()
+    expect(logged_in_page.locator("#pending-badge-count")).to_be_hidden()

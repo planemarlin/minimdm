@@ -558,7 +558,7 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 | `GET` | `/api/schemas/{schema}/objects/{obj}` | Get object definition |
 | `GET` | `/api/config` | Get current loaded config (schema definitions only; webhook URLs are excluded). Non-admins only see the schemas they hold a read permission for, same as `GET /api/schemas` |
 | `POST` | `/api/config/reload` | Reload config from disk and sync database schema — **Admin only** |
-| `GET` | `/api/pending-count` | Return total count of pending draft records across all schemas accessible to the current user — used by the publisher badge in the navigation bar |
+| `GET` | `/api/pending-count` | Return `{"total": n}`, the number of pending draft records in schemas where the current user can publish (all schemas for admins; Viewers and Editors always get `0`). Soft-deleted drafts are excluded. Used by the count on the top-bar Pending link, which is shown only to Publishers and Admins |
 | `GET` | `/api/object-counts` | Return record counts per object for every schema the current user can read — used by the sidebar and the home page cards. See [Record counts](#record-counts) |
 
 #### Record counts
