@@ -105,7 +105,7 @@ See [docs/logging.md](logging.md) for full details including field reference and
 
 ```bash
 curl https://mdm.example.com/health
-# {"status": "ok", "version": "0.8.1"}
+# {"status": "ok", "version": "0.8.2"}
 ```
 
 ## Docker
