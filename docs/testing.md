@@ -16,6 +16,8 @@
 | `tests/test_validation_rules.py` | Integration – config-based validation rules, `_validation_status` | Yes |
 | `tests/test_api_object_counts.py` | Integration – `GET /api/object-counts` (sidebar/home record counts), per-role visibility | Yes |
 | `tests/test_api_state_counts.py` | Integration – `GET /api/records/{schema}/{object}/state-counts` (list page tab counts), per-role access | Yes |
+| `tests/test_pending_link.py` | Integration – `GET /api/pending-count` and the top-bar Pending link, per-role visibility | Yes |
+| `tests/test_top_bar.py` | Template rendering – top bar groups, current-page marker, API Docs link in the sidebar | Yes |
 | `tests/test_templates.py` | Template rendering – page structure | Yes |
 | `tests/browser/test_auth.py` | Browser – login/logout, auth redirects | Yes |
 | `tests/browser/test_records.py` | Browser – list and create records | Yes |
@@ -161,6 +163,8 @@ All tests skip automatically when `TEST_DATABASE_URL` is not set, consistent wit
 - The home page cards show the same counts
 - Counts are formatted with the browser locale (`1,234` in en-US, `1.234` in de-DE) and numbers above 99,999 are abbreviated
 - Hovering a sidebar entry underlines the object name only, not the counts beside it
+- The Pending link leads the top bar, shows the drafts count, stays visible at zero, and filling in the count does not move the other items
+- The top bar has three groups separated by dividers, the current top-bar page is underlined, the theme toggle's `aria-pressed` follows the theme, and API Docs sits at the bottom of the sidebar and not in the top bar
 
 ## Setting up the test database
 
@@ -308,6 +312,17 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Soft-deleted records are never counted; editing an active record counts once as active and once as pending
 - Viewers and Editors get `active` only; Publishers get `pending` too
 - A user without access to a schema gets no entry for it; an unauthenticated request is rejected
+
+**`test_pending_link.py`**
+- `GET /api/pending-count` counts drafts for Admins and Publishers, excludes soft-deleted drafts, and returns 0 for Editors, Viewers and users without access
+- The Pending link is rendered for Admins and Publishers (even with no drafts) and not for Editors or Viewers, and it comes first in the top bar
+- `/pending` itself still renders for a Viewer: only the link is hidden
+
+**`test_top_bar.py`**
+- API Docs is a sidebar link (new tab, `rel="noopener"`, visible to Viewers) and not a top-bar link
+- The top bar has three groups for an Admin and two for a Viewer (no empty work group)
+- Exactly one top-bar link carries `aria-current="page"` on Pending, Users and Audit Log, and none on other pages
+- The theme button exposes `aria-pressed`
 
 **`test_api_query_params.py`**
 - `?role=master` returns only active (golden) records
