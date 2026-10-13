@@ -154,9 +154,9 @@ Low-severity items found by the pre-v0.8.0 full-project security review and deli
 - **`override_reason` / `_reason` have no length limit.** Bounded in practice by the URL/body size limits, but they are written verbatim to the audit log.
 - **CSP still allows `'unsafe-inline'` for scripts and styles** (tracked separately in the roadmap as the inline-script extraction backlog item).
 
-### Dependabot alerts that remain open or ship in the Docker image
+### Dependabot alerts and the Docker image
 
-- **PyJWT GHSA-gvp8-978c-rx2q (alert #34)** — `jwt.decode()` mutates a caller-supplied `options` dict when `verify_signature` is falsy, so reusing that dict for a later verifying call can skip claim checks. No patched PyJWT release exists yet (affected range `>= 2.11.0, <= 2.13.0` per GitHub, but the maintainers confirm it on 2.14.0 and `master`, and 2.15.1 is the latest). miniMDM never passes an `options` dict to `jwt.decode()` (`app/core/auth.py`), so it is not exploitable here; the alert can stay open or be dismissed as "not used". Re-check when a new PyJWT release lands, and never introduce a shared `options` dict around `jwt.decode()`.
+- **PyJWT GHSA-gvp8-978c-rx2q (alert #34) is fixed in the locked version.** `jwt.decode()` mutated a caller-supplied `options` dict when `verify_signature` was falsy, so reusing that dict for a later verifying call could skip claim checks. The advisory metadata listed no patched version and its text said 2.14.0 was still affected, but reusing the dict on PyJWT 2.13.0 accepts an expired token while 2.14.0 and 2.15.1 reject it, so the `pyjwt>=2.15.1` floor covers it. It never applied to miniMDM anyway, which does not pass an `options` dict to `jwt.decode()` (`app/core/auth.py`); still avoid introducing a shared `options` dict around `jwt.decode()`.
 - **The Docker image installs the `dev` dependency group** (the `Dockerfile` runs `uv export --frozen --no-emit-project` without `--no-dev`), so dev-only packages — including `urllib3`/`requests` via `pytest-playwright` — are present in the image although the app never imports them. This is deliberate: the full test suite is run inside the image against the compose database. If a slimmer production image is wanted, add `--no-dev` to the `uv export` and run Docker tests from a separate build target.
 
 ### Improvements from 2026 codebase analysis
