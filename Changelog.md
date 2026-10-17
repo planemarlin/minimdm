@@ -9,6 +9,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Security
 - **Bumped `mako` 1.3.12 → 1.4.3** (floor in `pyproject.toml` is now `>=1.4.2`), resolving Dependabot alert #35 (GHSA-5639-2j2p-m4mx, medium): on Windows, a `TemplateLookup` URI starting with a drive designator (`C:/../../x`) bypasses the traversal check and can read files outside the template directory. Not reachable in miniMDM: Mako is only a transitive dependency of Alembic (used to render migration script templates from `alembic/script.py.mako`), the app renders pages with Jinja2, and nothing passes user-controlled names to `TemplateLookup`. Mako 1.4.x requires Python >=3.10, which the project's `>=3.11` already satisfies
 
+### Docs
+- **Export `limit` and `offset` are now documented**: `GET /api/records/{schema}/{obj}/export` has accepted `limit` and `offset` (plus `X-Total-Count` and `X-Offset` response headers) since v0.2.0, but they were never listed in `docs/reference.md` or in this changelog. `docs/reference.md` now describes both parameters and the headers, and notes that one request's rows are built in memory before the response is sent
+- **`docs/known_issues.md` now lists only open items**: fixed and implemented entries (the 0.1.x fixes, the 0.2.0 production-readiness list, and the resolved `httpx2`, `Settings.host`/`port` and Pending-link notes) were removed because this changelog already records them. What remains are deliberate design decisions and open issues
+
 ## [0.8.2] – 2026-10-13
 
 ### Added
