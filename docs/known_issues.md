@@ -9,24 +9,23 @@ Design decisions that are deliberate, and open issues that are not fixed yet. An
 ### Sorting on parent and reference columns is not supported
 **Decision:** Parent and reference column headers are intentionally non-sortable. These values are resolved from other tables client-side; a correct global sort would require a SQL JOIN per relationship at query time, adding significant complexity for limited benefit. Sort on the underlying data attributes instead. This is documented in [reference.md](reference.md).
 
-### Validation rules: allowed-value lists and reference-state checks are deferred
-**Decision:** The v0.8.0 config-based [validation rules](reference.md#validation-rules) feature deliberately does not cover two rule shapes from the original catalog:
-- **A fixed allowed-value list per attribute** (e.g. `industry: [Manufacturing, Retail, Logistics]`). Cerberus supports this natively (`allowed: [...]`), but miniMDM's config has no enum concept today — an attribute only supports `name`/`type`/`required`/`unique`/`reference`. `reference` already renders as a dropdown in `app/static/js/app.js`, but that links to *another object's records*, not a fixed list of literal values. Building this properly needs a new schema-loader config key plus a matching UI change to render it as a dropdown — a schema-loader + frontend feature, not just a validator addition, so it's scoped as separate future work rather than bundled in.
-- **Referenced-record state checks** (e.g. a product's `preferred_supplier` must be `active`). Architecturally distinct from every other validation rule: it requires fetching a *different* record from the database mid-validation, which neither Cerberus nor JSON Schema do natively (both validate a single document in isolation). A different implementation shape from same-record rules entirely — likely a later phase, not decided when.
-
-Neither is scheduled to a version yet.
-
-### In-place changes to golden records outside draft → publish
-**Decision (v0.8.0):** Reverting an *active* (golden) or *retired* record, and editing a *retired* record, rewrite the record directly rather than going through a draft. Rather than let any Editor do that, these now require Publisher (the same rule reverting a retired record already had). Found by the pre-v0.8.0 security review.
-
-**Future feature (not scheduled):** route these through draft-copy like an ordinary edit — a revert on an active record would create (or update) a draft carrying the historical values, and a Publisher promotes it — so Editors keep revert and the Publisher still approves the result. Related in-place paths to consider at the same time: soft-delete of an active record by an Editor (documented Editor capability today), and an upsert import as `active` (already Publisher-only).
-
 ### Default secrets are logged and documented, not enforced
 **Decision:** With the placeholder `SECRET_KEY` still in place, miniMDM logs an `ERROR` at startup ("JWTs can be trivially forged") and keeps running, rather than refusing to start. Failing fast would break the zero-configuration local and Docker quickstarts for the sake of a situation that is already loudly reported in the server log and listed in the pre-launch checklist in [deployment.md](deployment.md#security-checklist-before-going-live). Changing `SECRET_KEY` and `ADMIN_PASSWORD` before exposing an instance is the operator's responsibility. Recorded by the pre-v0.8.0 security review.
+
+### The Docker image installs the `dev` dependency group
+**Decision:** The `Dockerfile` runs `uv export --frozen --no-emit-project` without `--no-dev`, so dev-only packages — including `urllib3`/`requests` via `pytest-playwright` — are present in the image although the app never imports them. This is deliberate: the full test suite is run inside the image against the compose database. If a slimmer production image is wanted, add `--no-dev` to the `uv export` and run Docker tests from a separate build target.
 
 ---
 
 ## Open Issues
+
+### Editors cannot revert golden or retired records, and the UI does not say so
+
+Reverting an *active* (golden) or *retired* record, and editing a *retired* record, rewrite the record directly instead of going through a draft. Since v0.8.0 these require Publisher (or Admin), so an Editor cannot change the golden record without approval; found by the pre-v0.8.0 security review. Editors can still revert drafts, and editing an active record still creates a draft as usual.
+
+The history page shows the **Revert** button to everyone with write access, so an Editor who clicks it on an active or retired record's history gets a `403` from the API and only a generic "Failed to revert." alert. Edit and Delete are already hidden for retired records; Revert is not hidden or explained.
+
+**Planned, not scheduled:** route these through a draft copy like an ordinary edit. A revert on an active record would create (or update) a draft carrying the historical values and a Publisher promotes it, so Editors keep revert and the Publisher still approves the result. Related in-place paths to consider at the same time: soft-delete of an active record by an Editor (a documented Editor capability today), and an upsert import as `active` (already Publisher-only).
 
 ### Security review findings deferred from the pre-v0.8.0 review
 
@@ -41,35 +40,33 @@ Low-severity items found by the pre-v0.8.0 full-project security review and deli
 - **`override_reason` / `_reason` have no length limit.** Bounded in practice by the URL/body size limits, but they are written verbatim to the audit log.
 - **CSP still allows `'unsafe-inline'` for scripts and styles** (tracked separately in the roadmap as the inline-script extraction backlog item).
 
-### Dependabot alerts and the Docker image
-
-- **The Docker image installs the `dev` dependency group** (the `Dockerfile` runs `uv export --frozen --no-emit-project` without `--no-dev`), so dev-only packages — including `urllib3`/`requests` via `pytest-playwright` — are present in the image although the app never imports them. This is deliberate: the full test suite is run inside the image against the compose database. If a slimmer production image is wanted, add `--no-dev` to the `uv export` and run Docker tests from a separate build target.
-
 ### Improvements from 2026 codebase analysis
 
 Identified during a full architecture/best-practices review (branch `chore/codebase-analysis-2026`). None are urgent — the codebase is already ahead of average on security and migrations — but these are worth doing deliberately.
 
-**Dead code**
-
-1. ~~Remove four orphaned table-bootstrap helpers in `app/core/`, superseded by Alembic migration `0001_initial_system_tables.py`: `auth.py`'s `ensure_token_blocklist_table()`, `ensure_password_reset_tokens_table()`, `ensure_users_table()`, and `permissions.py`'s `ensure_permissions_table()`. Verified zero call sites anywhere in `app/` or `tests/`.~~ **Done in v0.7.3.**
-
 **Tooling — high value, low effort**
 
-2. Expand the `ruff` rule selection beyond `E, F, W, I` to include `B` (bugbear), `UP` (pyupgrade), `SIM`, `C4` — cheap to adopt given the existing lint gate in CI.
-3. Add `mypy`/`pyright` as a dev dependency and CI job. Type hints are already used throughout; nothing currently enforces them.
-4. Add a coverage floor to the CI test job (`pytest --cov=app --cov-fail-under=NN`); `pytest-cov` is installed but unused in CI today.
-5. ~~Add a `HEALTHCHECK` to the Dockerfile using the existing `/health` endpoint~~ **Done in v0.7.3.** Simplifying the install step to `uv sync --frozen --no-dev` is still open — left alone for now since it changes how dependencies are installed (venv-based vs. the current `uv export | pip install` into system site-packages), a bigger change than a patch release should carry.
+1. Expand the `ruff` rule selection beyond `E, F, W, I` to include `B` (bugbear), `UP` (pyupgrade), `SIM`, `C4` — cheap to adopt given the existing lint gate in CI.
+2. Add `mypy`/`pyright` as a dev dependency and CI job. Type hints are already used throughout; nothing currently enforces them.
+3. Add a coverage floor to the CI test job (`pytest --cov=app --cov-fail-under=NN`); `pytest-cov` is installed but unused in CI today.
+4. Simplify the Dockerfile's install step from `uv export | pip install` into system site-packages to a venv-based `uv sync --frozen`. Left alone because it changes how dependencies are installed, a bigger change than a patch release should carry. The image deliberately keeps the `dev` group (see Design Decisions), so this would not add `--no-dev`.
 
 **Architecture — medium effort**
 
-6. Extract the repeated "close history row → write history → audit log → commit → webhook" sequence in `app/api/objects.py` (duplicated near-identically across create/update/delete/revert/publish/retire, ~500 lines) into a single internal helper.
-7. Split `app/static/js/app.js` (1755 lines, ~77 global functions) into native ES modules (`<script type="module">`, no build step needed) — e.g. `list.js`, `detail.js`, `admin.js`, `audit.js`, shared `api.js`.
-8. Move business logic currently embedded in `app/main.py` route handlers (e.g. `pending_drafts()`'s per-object DB query loop) into `table_manager.py` or a small service module, consistent with how `objects.py`/`import_export.py` are already separated out.
+5. Extract the repeated "close history row → write history → audit log → commit → webhook" sequence in `app/api/objects.py` (duplicated near-identically across create/update/delete/revert/publish/retire, ~500 lines) into a single internal helper.
+6. Split `app/static/js/app.js` (1755 lines, ~77 global functions) into native ES modules (`<script type="module">`, no build step needed) — e.g. `list.js`, `detail.js`, `admin.js`, `audit.js`, shared `api.js`.
+7. Move business logic currently embedded in `app/main.py` route handlers (e.g. `pending_drafts()`'s per-object DB query loop) into `table_manager.py` or a small service module, consistent with how `objects.py`/`import_export.py` are already separated out.
 
 **Decisions worth making explicitly, not urgent**
 
-9. Decide and document an API versioning stance (`/api/` has none today) before inbound webhook integrations proliferate.
-10. `check_permission()` opens a fresh SQLAlchemy session per call, up to twice per request. Fine at current scale; revisit if permission checks become a hot path.
+8. Decide and document an API versioning stance (`/api/` has none today) before inbound webhook integrations proliferate.
+9. `check_permission()` opens a fresh SQLAlchemy session per call, up to twice per request. Fine at current scale; revisit if permission checks become a hot path.
+
+### Validation rules: allowed-value lists and reference-state checks are not supported yet
+
+The v0.8.0 config-based [validation rules](reference.md#validation-rules) feature was deliberately scoped to leave out two rule shapes from the original catalog. Both are intended future work; neither is scheduled to a version yet.
+- **A fixed allowed-value list per attribute** (e.g. `industry: [Manufacturing, Retail, Logistics]`). Cerberus supports this natively (`allowed: [...]`), but miniMDM's config has no enum concept today — an attribute only supports `name`/`type`/`required`/`unique`/`reference`. `reference` already renders as a dropdown in `app/static/js/app.js`, but that links to *another object's records*, not a fixed list of literal values. Building this properly needs a new schema-loader config key plus a matching UI change to render it as a dropdown — a schema-loader + frontend feature, not just a validator addition, so it was kept out of the validation-rules release.
+- **Referenced-record state checks** (e.g. a product's `preferred_supplier` must be `active`). Architecturally distinct from every other validation rule: it requires fetching a *different* record from the database mid-validation, which neither Cerberus nor JSON Schema do natively (both validate a single document in isolation). A different implementation shape from same-record rules entirely — likely a later phase, not decided when.
 
 ### Publish versioned container images
 

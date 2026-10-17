@@ -139,7 +139,7 @@ an `integer`) is rejected when the config loads, since it could never be evaluat
 stored without a timezone; if a client sends a timezone-aware timestamp (`2026-06-01T00:00:00Z`)
 for one side, the naive side is treated as UTC for the comparison.
 
-**Not yet supported** (see `docs/known_issues.md`'s Design Decisions section for the full
+**Not yet supported** (see `docs/known_issues.md`'s Open Issues section for the full
 rationale): a fixed allowed-value list for an attribute (needs a new schema-loader enum concept
 plus a UI dropdown — tracked as a separate feature), and rules that check the state of a
 *referenced* record (e.g. "preferred_supplier must be active" — requires a cross-object database

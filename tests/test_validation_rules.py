@@ -1,6 +1,6 @@
 """Config-based validation rules (v0.8.0) — see docs/reference.md's "Validation
-Rules" section for the full contract, and docs/known_issues.md's Design
-Decisions section for what's intentionally deferred (allowed-value lists,
+Rules" section for the full contract, and docs/known_issues.md's Open
+Issues section for what's intentionally deferred (allowed-value lists,
 reference_state) and why.
 
 The `validation_demo` object lives in tests/conftest.py's SAMPLE_CONFIG (not
