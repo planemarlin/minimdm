@@ -11,7 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Docs
 - **Export `limit` and `offset` are now documented**: `GET /api/records/{schema}/{obj}/export` has accepted `limit` and `offset` (plus `X-Total-Count` and `X-Offset` response headers) since v0.2.0, but they were never listed in `docs/reference.md` or in this changelog. `docs/reference.md` now describes both parameters and the headers, and notes that one request's rows are built in memory before the response is sent
-- **`docs/known_issues.md` now lists only open items**: fixed and implemented entries (the 0.1.x fixes, the 0.2.0 production-readiness list, and the resolved `httpx2`, `Settings.host`/`port` and Pending-link notes) were removed because this changelog already records them. What remains are deliberate design decisions and open issues. `CLAUDE.md`'s Definition of done now says the same: a fix is recorded here, not in `known_issues.md`, and a resolved item is deleted from it
+- **`docs/known_issues.md` now lists only open items**: fixed and implemented entries (the 0.1.x fixes, the 0.2.0 production-readiness list, and the resolved `httpx2`, `Settings.host`/`port` and Pending-link notes) were removed because this changelog already records them. What remains are deliberate design decisions and open issues. `CLAUDE.md`'s Definition of done now says the same: a fix is recorded here, not in `known_issues.md`, and a resolved item is deleted from it. `CONTRIBUTING.md` now also asks reporters to check `known_issues.md` before opening a bug report or feature request
 
 ## [0.8.2] – 2026-10-13
 

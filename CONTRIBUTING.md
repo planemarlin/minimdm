@@ -26,7 +26,7 @@ This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.
 
 ## How to report a bug
 
-1. Search [existing issues](../../issues) first — the bug may already be reported.
+1. Search [existing issues](../../issues) and the [known issues list](docs/known_issues.md) first — the bug may already be reported, or be a known limitation.
 2. If not, open a new issue using the **Bug report** template.
 3. Include as much detail as possible: steps to reproduce, expected behaviour, actual behaviour, and your environment (OS, Python version, PostgreSQL version).
 
@@ -36,7 +36,7 @@ Security vulnerabilities should **not** be reported as public issues. Please con
 
 ## How to suggest a feature
 
-1. Search [existing issues](../../issues) to see if it has already been discussed.
+1. Search [existing issues](../../issues) and the [known issues list](docs/known_issues.md) to see if it has already been discussed or deliberately left out.
 2. Open a new issue using the **Feature request** template.
 3. Describe the problem you are trying to solve, not just the solution. This helps the maintainer understand the use case and suggest the best approach.
 4. Wait for the maintainer to acknowledge the issue before investing time in an implementation. This avoids wasted work if the direction is not right for the project.
