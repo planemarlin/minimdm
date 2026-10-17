@@ -36,10 +36,10 @@ CI additionally runs `pip-audit` on the dependencies and runs the non-browser te
 
 ## Definition of done
 - Tests pass (`uv run pytest`, including `tests/browser/` for UI changes) and `uv run ruff check .` is clean. New behaviour and bug fixes come with tests.
-- Add a line under `[Unreleased]` in `Changelog.md`.
+- Add a line under `[Unreleased]` in `Changelog.md`. Released entries are a logbook and are not rewritten, so make each one self-contained and cite issue or PR numbers, not an entry in `docs/known_issues.md` that will be deleted once it is resolved.
 - Update every doc surface the change touches: `docs/reference.md` (API and config contract), `docs/quickstart.md` / `docs/testing.md` where relevant, `README.md` for user-facing features, **and** the in-app Quick Reference (the `#help-modal` in `app/templates/base.html`, one `.help-card` per topic). The last one is easy to miss because it is not under `docs/`.
-- A bug fix also gets an entry in `docs/known_issues.md`. Scoped-out ideas that surface mid-task are logged there too.
-- Commit outcomes, not process: don't commit design or planning documents. Put the user-facing contract in `docs/reference.md` and design rationale in `docs/known_issues.md`.
+- `docs/known_issues.md` holds only open items: deliberate design decisions, and known bugs or limitations we do not plan to fix before the next release. A bug fix does **not** get an entry there; the `Changelog.md` line is its record. When a listed item is resolved, delete it from `known_issues.md` in the same change. Ideas and planned features do not go there; ask the user where to record them.
+- Commit outcomes, not process: don't commit design or planning documents. Put the user-facing contract in `docs/reference.md` and the rationale for a deliberate decision in the Design Decisions section of `docs/known_issues.md`.
 
 ## Key architecture notes
 - Tables for objects are created dynamically from YAML config via `app/core/table_manager.py` (`sync_schema()`) — there is no static ORM model per object. The fixed system tables (users, permissions, `inbound_keys`, `audit_log`) are managed by Alembic migrations in `alembic/versions/`, run at startup by `app/core/migrations.py`
