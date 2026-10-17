@@ -139,7 +139,7 @@ an `integer`) is rejected when the config loads, since it could never be evaluat
 stored without a timezone; if a client sends a timezone-aware timestamp (`2026-06-01T00:00:00Z`)
 for one side, the naive side is treated as UTC for the comparison.
 
-**Not yet supported** (see `docs/known_issues.md`'s Design Decisions section for the full
+**Not yet supported** (see `docs/known_issues.md`'s Open Issues section for the full
 rationale): a fixed allowed-value list for an attribute (needs a new schema-loader enum concept
 plus a UI dropdown — tracked as a separate feature), and rules that check the state of a
 *referenced* record (e.g. "preferred_supplier must be active" — requires a cross-object database
@@ -675,6 +675,10 @@ Content-Type: application/json
 |---|---|---|
 | `format` | `csv` | File format: `csv`, `tsv`, or `json` |
 | `state` | `active` | Lifecycle state filter: `active`, `draft`, `retired`, or `all` |
+| `limit` | *(all rows)* | Maximum number of rows to export (minimum 1) |
+| `offset` | `0` | Number of rows to skip (minimum 0) |
+
+Rows are ordered by creation time, so `limit` and `offset` page through the same sequence on repeated calls. Every response carries `X-Total-Count` (the number of rows matching `state`, ignoring `limit` and `offset`) and `X-Offset` headers, so a client can export a large object in batches until `offset` reaches the total. The rows of one request are built in memory before the response is sent, so use `limit` for very large objects.
 
 > **Spreadsheet safety:** in CSV and TSV exports, a text value that starts with `=`, `+`, `-`, `@`, a tab, or a carriage return is written with a leading apostrophe (`'=SUM(A1)`), so Excel or Sheets shows it as text instead of executing it as a formula. Anyone able to write a record — or an inbound source system — could otherwise plant a formula that runs on whoever opens the export. The apostrophe is removed again when a CSV/TSV file is imported, so export → edit → re-import round-trips losslessly. JSON exports are never modified, and numbers (including negative ones) are unaffected.
 

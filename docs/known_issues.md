@@ -1,119 +1,6 @@
 # Known Issues
 
-This document tracks confirmed bugs and design limitations found during testing.
-Issues marked **Fixed** are resolved in the current codebase. Issues marked **Implemented** are resolved features.
-
----
-
-## Fixed in 0.1.1
-
-### Edit form showed a spinning circle (never loaded)
-**Root cause:** The Jinja2 template produced `\"uuid\"` (with backslashes) instead of `"uuid"` for the record ID argument in the inline JavaScript call. This was a syntax error that prevented the script from executing.
-
-### Export/import URLs returned "Invalid record ID"
-**Root cause:** FastAPI matched `/api/records/{schema}/{obj}/export` against the `/{record_id}` route (registered first), treating the literal string `"export"` as a record ID. Fixed by registering the import/export router before the objects router.
-
-### Search field always returned "Failed to load records"
-**Root cause:** A Python operator-precedence bug in the text-column filter caused an incorrect set of columns to be passed to SQLAlchemy's `ilike()`, resulting in a database error on every search request.
-
-### Config reload did not apply new attributes to the database
-**Root cause:** `TableManager.sync_schema()` short-circuited when tables were already cached, so new attributes added to the config were never added to the PostgreSQL table. Fixed by resetting the table cache on each call to `sync_schema` and issuing `ALTER TABLE … ADD COLUMN IF NOT EXISTS` for any new columns.
-
----
-
-## Fixed / Implemented in 0.1.2
-
-### Column names do not match values in the record list table
-**Root cause:** The Jinja2 header loop used `loop.index <= 6` which counted all attributes (including references) toward the 6-column cap, while the JavaScript filtered out references before slicing. Fixed by using a Jinja2 namespace counter that increments only for non-reference attributes.
-
-### Deleted records are not browsable from the UI
-**Root cause:** The record list API filtered out soft-deleted records and there was no UI path to reach their history. Fixed by adding an `include_deleted` query parameter to the list API and a "Show deleted" checkbox to the record list toolbar. Deleted rows are shown with strikethrough styling and link to their history page.
-
-### A referenced record's ID still shows after the referenced record is deleted
-**Root cause:** Reference fields were rendered as raw UUIDs with no lookup. The detail page now resolves references at display time: active references show a clickable display name; deleted references show the name with a red "deleted" badge. `GET /api/records/{schema}/{obj}/{id}` extended with `include_deleted=true` to support this lookup.
-
-### Numeric fields accept non-numeric input without a visible error message
-**Root cause:** No client-side validation existed; non-numeric text was silently dropped by the browser (`value=""` with `validity.badInput=true`). Fixed by checking `badInput` before submission and highlighting invalid inputs with a red border and field-level error message. Integer fields carry `step="1"`; server 422 detail arrays are now rendered as readable text.
-
-### Parent FK silently dropped on create and update
-**Root cause:** `_filter_columns` excluded all `_`-prefixed keys to block system columns, but parent FK columns (e.g. `_division_id`) also start with `_` and were dropped. Fixed by enumerating the known system columns explicitly.
-
-### Parent / child records not visible from the detail view
-**Root cause:** No UI existed to navigate to or display related records. Fixed by adding collapsible child-record panels below the main card for every object whose `parent` points to the current object. Each panel shows a record count and a table with View links; panels are open by default.
-
-### History page does not show historic attribute values
-**Root cause:** The history API returned version metadata only; attribute values were stored in `_history` tables but not rendered. Fixed by passing the full attribute snapshot to the history template and rendering it per version entry.
-
-### Audit log has no dedicated UI page
-**Root cause:** No UI existed to browse audit log entries. Fixed by adding `/admin/audit`: a paginated, filterable table (schema, object, action, record, reason, timestamp) with a cascading object dropdown and datetime range filter. Accessible from the header navigation on every page.
-
----
-
-## Implemented
-
-### Audit logging for user management actions
-**Implemented in:** Unreleased (current branch).
-`USER_CREATED`, `USER_ACTIVATED`, `USER_DEACTIVATED`, `USER_ROLE_CHANGED`, `USER_PASSWORD_CHANGED`, `PERMISSION_GRANTED`, and `PERMISSION_REVOKED` are now written to `_system.audit_log` and visible on the Auth Events tab.
-
----
-
-## Production Readiness — Blockers
-
-All blockers resolved in current branch.
-
-### 1. Rate limiting — **Resolved**
-10 req/min per IP on login; 10 req/min on import. Implemented with `slowapi`. Disabled in test environments via `RATE_LIMIT_ENABLED=false`.
-
-### 2. CSRF protection — **Resolved**
-Session cookie changed from `SameSite=lax` to `SameSite=strict`.
-
-### 3. File upload size limit — **Resolved**
-Import endpoint reads at most `MAX_UPLOAD_SIZE+1` bytes and rejects with HTTP 413 if exceeded. Default 10 MB, configurable via `MAX_UPLOAD_SIZE`.
-
-### 4. Health check endpoint — **Resolved**
-`GET /health` returns 200 `{"status": "ok", "version": "..."}` when DB is reachable, 503 otherwise. No authentication required.
-
-### 5. Startup validation — **Resolved**
-Database connectivity is verified in the lifespan hook before the app accepts requests. Fails fast with a clear error if the DB is unreachable.
-
-### 6. Password policy — **Resolved**
-Minimum 12-character password enforced on user creation and password change endpoints.
-
-### 7. History version atomicity — **Resolved**
-`SELECT … FOR UPDATE` added to the current open history row before reading its version number. Concurrent updates queue rather than racing.
-
-### 8. Bulk import rollback — **Resolved**
-`strict=true` (default): any row error rolls back the entire import and returns all errors. `strict=false`: savepoints isolate each row so valid rows are committed even when others fail.
-
-### 9. HTTPS / TLS — **Resolved (documentation)**
-`docs/deployment.md` added with nginx and Caddy examples, required environment variables, and a pre-launch security checklist.
-
----
-
-## Production Readiness — High Priority
-
-These issues should be addressed before the first deployment with live users.
-
-### 10. Password reset flow — **Resolved**
-Admins generate a one-time reset link from the User Management page (Reset link button). The link contains a URL-safe token valid for 24 hours. The user visits the link, enters a new password, and is redirected to the login page. Tokens are single-use; expired and used entries are pruned at startup.
-
-### 11. Token revocation on logout — **Resolved**
-Each JWT now carries a `jti` (UUID). On logout the JTI is written to `_system.token_blocklist` with the token's expiry timestamp. The auth middleware rejects any token whose JTI appears in the blocklist. Expired blocklist entries are pruned at startup.
-
-### 12. Database-level foreign key and unique constraints — **Resolved**
-`FOREIGN KEY (ON DELETE SET NULL)` constraints are created for parent and reference columns; `UNIQUE` constraints for attributes marked `unique: true`. `_ensure_constraints()` adds missing constraints to existing tables on each startup using `pg_constraint` checks. `IntegrityError` in create/update is caught and returned as 422. Until the fix for [#56](https://github.com/planemarlin/minimdm/issues/56), this only covered the *add* direction — changing an attribute back to `unique: false` left the old index in place; `_ensure_constraints()` now drops it too.
-
-### 13. Export pagination — **Resolved**
-Export endpoints now accept `limit` and `offset` query parameters. Results are streamed using server-side cursors so large tables do not cause out-of-memory errors.
-
-### 14. Structured logging with request IDs — **Resolved**
-Each request is assigned a UUID in `RequestIdMiddleware`. The ID is injected into every log line via `RequestIdFilter` and returned as the `X-Request-Id` response header. `LOG_FORMAT=json` switches to single-line JSON output. See `docs/logging.md`.
-
-### 15. Database migrations (Alembic) — **Resolved**
-Alembic manages all `_system` schema tables. Migration `0001` creates the five system tables; future changes to system tables get new numbered migrations. Migrations run automatically at startup. Legacy installs (tables exist without Alembic) are detected and stamped to head transparently. See `docs/migrations.md`.
-
-### 16. Backup and restore documentation — **Resolved**
-`docs/backup-restore.md` added covering `pg_dump` / `pg_restore` for full backups, Docker volume backup, cron automation, backup verification, and a note on point-in-time recovery.
+Design decisions that are deliberate, and open issues that are not fixed yet. Anything resolved is recorded in [Changelog.md](../Changelog.md) and does not stay here.
 
 ---
 
@@ -122,24 +9,23 @@ Alembic manages all `_system` schema tables. Migration `0001` creates the five s
 ### Sorting on parent and reference columns is not supported
 **Decision:** Parent and reference column headers are intentionally non-sortable. These values are resolved from other tables client-side; a correct global sort would require a SQL JOIN per relationship at query time, adding significant complexity for limited benefit. Sort on the underlying data attributes instead. This is documented in [reference.md](reference.md).
 
-### Validation rules: allowed-value lists and reference-state checks are deferred
-**Decision:** The v0.8.0 config-based [validation rules](reference.md#validation-rules) feature deliberately does not cover two rule shapes from the original catalog:
-- **A fixed allowed-value list per attribute** (e.g. `industry: [Manufacturing, Retail, Logistics]`). Cerberus supports this natively (`allowed: [...]`), but miniMDM's config has no enum concept today — an attribute only supports `name`/`type`/`required`/`unique`/`reference`. `reference` already renders as a dropdown in `app/static/js/app.js`, but that links to *another object's records*, not a fixed list of literal values. Building this properly needs a new schema-loader config key plus a matching UI change to render it as a dropdown — a schema-loader + frontend feature, not just a validator addition, so it's scoped as separate future work rather than bundled in.
-- **Referenced-record state checks** (e.g. a product's `preferred_supplier` must be `active`). Architecturally distinct from every other validation rule: it requires fetching a *different* record from the database mid-validation, which neither Cerberus nor JSON Schema do natively (both validate a single document in isolation). A different implementation shape from same-record rules entirely — likely a later phase, not decided when.
-
-Neither is scheduled to a version yet.
-
-### In-place changes to golden records outside draft → publish
-**Decision (v0.8.0):** Reverting an *active* (golden) or *retired* record, and editing a *retired* record, rewrite the record directly rather than going through a draft. Rather than let any Editor do that, these now require Publisher (the same rule reverting a retired record already had). Found by the pre-v0.8.0 security review.
-
-**Future feature (not scheduled):** route these through draft-copy like an ordinary edit — a revert on an active record would create (or update) a draft carrying the historical values, and a Publisher promotes it — so Editors keep revert and the Publisher still approves the result. Related in-place paths to consider at the same time: soft-delete of an active record by an Editor (documented Editor capability today), and an upsert import as `active` (already Publisher-only).
-
 ### Default secrets are logged and documented, not enforced
 **Decision:** With the placeholder `SECRET_KEY` still in place, miniMDM logs an `ERROR` at startup ("JWTs can be trivially forged") and keeps running, rather than refusing to start. Failing fast would break the zero-configuration local and Docker quickstarts for the sake of a situation that is already loudly reported in the server log and listed in the pre-launch checklist in [deployment.md](deployment.md#security-checklist-before-going-live). Changing `SECRET_KEY` and `ADMIN_PASSWORD` before exposing an instance is the operator's responsibility. Recorded by the pre-v0.8.0 security review.
+
+### The Docker image installs the `dev` dependency group
+**Decision:** The `Dockerfile` runs `uv export --frozen --no-emit-project` without `--no-dev`, so dev-only packages — including `urllib3`/`requests` via `pytest-playwright` — are present in the image although the app never imports them. This is deliberate: the full test suite is run inside the image against the compose database. If a slimmer production image is wanted, add `--no-dev` to the `uv export` and run Docker tests from a separate build target.
 
 ---
 
 ## Open Issues
+
+### Editors cannot revert golden or retired records, and the UI does not say so
+
+Reverting an *active* (golden) or *retired* record, and editing a *retired* record, rewrite the record directly instead of going through a draft. Since v0.8.0 these require Publisher (or Admin), so an Editor cannot change the golden record without approval; found by the pre-v0.8.0 security review. Editors can still revert drafts, and editing an active record still creates a draft as usual.
+
+The history page shows the **Revert** button to everyone with write access, so an Editor who clicks it on an active or retired record's history gets a `403` from the API and only a generic "Failed to revert." alert. Edit and Delete are already hidden for retired records; Revert is not hidden or explained.
+
+**Planned, not scheduled:** route these through a draft copy like an ordinary edit. A revert on an active record would create (or update) a draft carrying the historical values and a Publisher promotes it, so Editors keep revert and the Publisher still approves the result. Related in-place paths to consider at the same time: soft-delete of an active record by an Editor (a documented Editor capability today), and an upsert import as `active` (already Publisher-only).
 
 ### Security review findings deferred from the pre-v0.8.0 review
 
@@ -154,56 +40,41 @@ Low-severity items found by the pre-v0.8.0 full-project security review and deli
 - **`override_reason` / `_reason` have no length limit.** Bounded in practice by the URL/body size limits, but they are written verbatim to the audit log.
 - **CSP still allows `'unsafe-inline'` for scripts and styles** (tracked separately in the roadmap as the inline-script extraction backlog item).
 
-### Dependabot alerts and the Docker image
-
-- **PyJWT GHSA-gvp8-978c-rx2q (alert #34) is fixed in the locked version.** `jwt.decode()` mutated a caller-supplied `options` dict when `verify_signature` was falsy, so reusing that dict for a later verifying call could skip claim checks. The advisory metadata listed no patched version and its text said 2.14.0 was still affected, but reusing the dict on PyJWT 2.13.0 accepts an expired token while 2.14.0 and 2.15.1 reject it, so the `pyjwt>=2.15.1` floor covers it. It never applied to miniMDM anyway, which does not pass an `options` dict to `jwt.decode()` (`app/core/auth.py`); still avoid introducing a shared `options` dict around `jwt.decode()`.
-- **The Docker image installs the `dev` dependency group** (the `Dockerfile` runs `uv export --frozen --no-emit-project` without `--no-dev`), so dev-only packages — including `urllib3`/`requests` via `pytest-playwright` — are present in the image although the app never imports them. This is deliberate: the full test suite is run inside the image against the compose database. If a slimmer production image is wanted, add `--no-dev` to the `uv export` and run Docker tests from a separate build target.
-
 ### Improvements from 2026 codebase analysis
 
 Identified during a full architecture/best-practices review (branch `chore/codebase-analysis-2026`). None are urgent — the codebase is already ahead of average on security and migrations — but these are worth doing deliberately.
 
-**Dead code**
-
-1. ~~Remove four orphaned table-bootstrap helpers in `app/core/`, superseded by Alembic migration `0001_initial_system_tables.py`: `auth.py`'s `ensure_token_blocklist_table()`, `ensure_password_reset_tokens_table()`, `ensure_users_table()`, and `permissions.py`'s `ensure_permissions_table()`. Verified zero call sites anywhere in `app/` or `tests/`.~~ **Done in v0.7.3.**
-
 **Tooling — high value, low effort**
 
-2. Expand the `ruff` rule selection beyond `E, F, W, I` to include `B` (bugbear), `UP` (pyupgrade), `SIM`, `C4` — cheap to adopt given the existing lint gate in CI.
-3. Add `mypy`/`pyright` as a dev dependency and CI job. Type hints are already used throughout; nothing currently enforces them.
-4. Add a coverage floor to the CI test job (`pytest --cov=app --cov-fail-under=NN`); `pytest-cov` is installed but unused in CI today.
-5. ~~Add a `HEALTHCHECK` to the Dockerfile using the existing `/health` endpoint~~ **Done in v0.7.3.** Simplifying the install step to `uv sync --frozen --no-dev` is still open — left alone for now since it changes how dependencies are installed (venv-based vs. the current `uv export | pip install` into system site-packages), a bigger change than a patch release should carry.
+1. Expand the `ruff` rule selection beyond `E, F, W, I` to include `B` (bugbear), `UP` (pyupgrade), `SIM`, `C4` — cheap to adopt given the existing lint gate in CI.
+2. Add `mypy`/`pyright` as a dev dependency and CI job. Type hints are already used throughout; nothing currently enforces them.
+3. Add a coverage floor to the CI test job (`pytest --cov=app --cov-fail-under=NN`); `pytest-cov` is installed but unused in CI today.
+4. Simplify the Dockerfile's install step from `uv export | pip install` into system site-packages to a venv-based `uv sync --frozen`. Left alone because it changes how dependencies are installed, a bigger change than a patch release should carry. The image deliberately keeps the `dev` group (see Design Decisions), so this would not add `--no-dev`.
 
 **Architecture — medium effort**
 
-6. Extract the repeated "close history row → write history → audit log → commit → webhook" sequence in `app/api/objects.py` (duplicated near-identically across create/update/delete/revert/publish/retire, ~500 lines) into a single internal helper.
-7. Split `app/static/js/app.js` (1755 lines, ~77 global functions) into native ES modules (`<script type="module">`, no build step needed) — e.g. `list.js`, `detail.js`, `admin.js`, `audit.js`, shared `api.js`.
-8. Move business logic currently embedded in `app/main.py` route handlers (e.g. `pending_drafts()`'s per-object DB query loop) into `table_manager.py` or a small service module, consistent with how `objects.py`/`import_export.py` are already separated out.
+5. Extract the repeated "close history row → write history → audit log → commit → webhook" sequence in `app/api/objects.py` (duplicated near-identically across create/update/delete/revert/publish/retire, ~500 lines) into a single internal helper.
+6. Split `app/static/js/app.js` (1755 lines, ~77 global functions) into native ES modules (`<script type="module">`, no build step needed) — e.g. `list.js`, `detail.js`, `admin.js`, `audit.js`, shared `api.js`.
+7. Move business logic currently embedded in `app/main.py` route handlers (e.g. `pending_drafts()`'s per-object DB query loop) into `table_manager.py` or a small service module, consistent with how `objects.py`/`import_export.py` are already separated out.
 
 **Decisions worth making explicitly, not urgent**
 
-9. Decide and document an API versioning stance (`/api/` has none today) before inbound webhook integrations proliferate.
-10. `check_permission()` opens a fresh SQLAlchemy session per call, up to twice per request. Fine at current scale; revisit if permission checks become a hot path.
+8. Decide and document an API versioning stance (`/api/` has none today) before inbound webhook integrations proliferate.
+9. `check_permission()` opens a fresh SQLAlchemy session per call, up to twice per request. Fine at current scale; revisit if permission checks become a hot path.
+
+### Validation rules: allowed-value lists and reference-state checks are not supported yet
+
+The v0.8.0 config-based [validation rules](reference.md#validation-rules) feature was deliberately scoped to leave out two rule shapes from the original catalog. Both are intended future work; neither is scheduled to a version yet.
+- **A fixed allowed-value list per attribute** (e.g. `industry: [Manufacturing, Retail, Logistics]`). Cerberus supports this natively (`allowed: [...]`), but miniMDM's config has no enum concept today — an attribute only supports `name`/`type`/`required`/`unique`/`reference`. `reference` already renders as a dropdown in `app/static/js/app.js`, but that links to *another object's records*, not a fixed list of literal values. Building this properly needs a new schema-loader config key plus a matching UI change to render it as a dropdown — a schema-loader + frontend feature, not just a validator addition, so it was kept out of the validation-rules release.
+- **Referenced-record state checks** (e.g. a product's `preferred_supplier` must be `active`). Architecturally distinct from every other validation rule: it requires fetching a *different* record from the database mid-validation, which neither Cerberus nor JSON Schema do natively (both validate a single document in isolation). A different implementation shape from same-record rules entirely — likely a later phase, not decided when.
 
 ### Publish versioned container images
 
 Raised via [#49](https://github.com/planemarlin/minimdm/issues/49). Docker deployments currently build from source (`docker compose build`) — there's no CI job that publishes tagged images to a registry (e.g. `ghcr.io/planemarlin/minimdm:vX.Y.Z`), so upgrading a Docker deployment still means a `git checkout` + rebuild, documented in [upgrading.md](upgrading.md). Adding one would need a new publish-on-tag GitHub Actions workflow; not started.
 
-### `starlette.testclient` deprecation warning after removing `httpx2` (#59) — **Resolved**
+### Export builds the whole result in memory
 
-Every test run using `TestClient` (nearly the whole suite) printed:
-```
-StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
-```
-The installed Starlette (1.3.1)'s `testclient.py` tries `import httpx2 as httpx` first and only falls back to plain `httpx` — with this warning — when `httpx2` isn't installed; a future Starlette release could drop the fallback entirely and require `httpx2` outright, which would raise `RuntimeError` instead of a warning and break every test using `TestClient`. `httpx2` is exactly the package removed in [#59](../../issues/59) for four Dependabot-flagged vulnerabilities (decompression amplification `GHSA-8xx6-hgc6-gc2m`, multipart header injection `GHSA-h4x7-gw46-3wm6`, request smuggling `GHSA-pf96-p4fj-6566`, and — in transitive dependency `httpcore2` — a SOCKS-proxied TLS bypass `GHSA-7mj9-2mp8-4m2p`), and at the time only one release existed (`2.3.0`, the vulnerable one). Initially assumed to still be the case; checking PyPI's per-release vulnerability data directly (`https://pypi.org/pypi/httpx2/<version>/json`, which lists OSV-sourced advisories per version including `fixed_in`) showed this was stale — `httpx2` has since released up to `2.12.0`, and all four advisories are fixed: the two `httpx2`-side ones (`GHSA-h4x7-gw46-3wm6`, `GHSA-pf96-p4fj-6566`) in `2.11.0`, the decompression one (`GHSA-8xx6-hgc6-gc2m`) in `2.12.0`, and `2.12.0` pins `httpcore2==2.12.0` exactly, well past that package's own fix for `GHSA-7mj9-2mp8-4m2p` in `2.10.0`. **Resolution**: `httpx2>=2.12.0` re-added to the `dev` dependency group; verified empirically (not just by semver assumption) — the full 306-test backend suite plus the 38 browser tests pass identically with it installed, and the deprecation warning no longer appears at all.
-
-### `Settings.host`/`Settings.port` aren't wired to the actual server bind — **Resolved**
-
-Found while adding the Dockerfile `HEALTHCHECK` in v0.7.3 (hardcoded to port `8000` — correct, since that's the container's fixed internal port; only `APP_PORT` varies the host-side mapping in `docker-compose.yml`). Investigating that hardcoded value surfaced a separate, unrelated gap: `app/config.py`'s `host` and `port` fields on `Settings` were read by nothing — the actual `--host`/`--port` uvicorn flags were hardcoded on three separate command lines instead (Dockerfile `CMD`, `docker-compose.yml`'s `command:`, and the manual `uvicorn` invocation in `docs/installation.md`). Not a functional bug (the container's internal port never needs to change for Docker users, and bare-metal users pass `--host`/`--port` directly on their own command line anyway), but the fields were dead config surface implying an option that didn't work. Resolved by removing both fields from `Settings` rather than wiring them up — no deployment path had a real need for `.env`-based host/port control, so the smaller, no-behavior-change fix was preferred over adding it across three files.
-
-### Top-bar Pending link: visibility and load flash — **Resolved**
-
-The top-bar Pending link was shown to every user, and its number counted drafts in every readable schema, so a Viewer or Editor saw a count of work they could not do (the sidebar pill, in contrast, was already limited to Publishers and Admins). It was also hidden until `/api/pending-count` returned and then inserted mid-bar, shifting the items to its left on every page load. **Resolution**: the link is server-rendered for admins and users with publish access (`can_review_pending` Jinja global in `app/main.py`), stays visible at zero, leads the bar, and only the count is fetched; the endpoint counts publishable schemas only. Deliberately *not* done: restricting `/pending` itself (it lists nothing a reader cannot already see in the Draft tab of the list page, so hiding the link is enough) and showing Editors the link (it is a Publisher work queue, not a general shortcut).
+`GET /api/records/{schema}/{obj}/export` accepts `limit` and `offset` (see [reference.md](reference.md)), but each request reads its rows into memory and builds the file as one string before sending it, so exporting a very large object without `limit` uses memory proportional to the object's size. Export in batches with `limit` and `offset` until then. Streaming the response row by row is not planned yet.
 
 ### Mobile and narrow-window layout is not yet usable
 
