@@ -139,6 +139,8 @@ All tests skip automatically when `TEST_DATABASE_URL` is not set, consistent wit
 **`test_admin.py`**
 - User Management page renders with the correct heading
 - The `browser_admin` user appears in the users table
+- The "N users · N active · N admins" summary line keeps its parts and separator dots apart
+- The blue Admin pill meets WCAG AA text contrast (4.5:1) in both light and dark theme
 - Creating a user via the New user modal adds them to the table
 - Audit Log page renders with the correct heading
 - After creating a record, its INSERT entry appears in the audit log filtered by schema

@@ -38,6 +38,51 @@ def test_users_table_shows_admin(logged_in_page):
     logged_in_page.wait_for_selector(f"#users-tbody td:has-text('{_ADMIN_USER}')")
 
 
+def test_users_summary_has_visible_separators(logged_in_page):
+    """The "N users · N active · N admins" line keeps its parts apart."""
+    logged_in_page.goto("/admin/users")
+    logged_in_page.wait_for_selector("#users-meta .dot")
+    parts = logged_in_page.locator("#users-meta > span:not(.dot)")
+    assert parts.count() == 3
+    boxes = [parts.nth(i).bounding_box() for i in range(3)]
+    for left, right in zip(boxes, boxes[1:]):
+        assert right["x"] - (left["x"] + left["width"]) >= 8
+    assert logged_in_page.locator("#users-meta .dot").first.bounding_box()["width"] > 0
+
+
+def _luminance(rgb):
+    def channel(c):
+        c /= 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (channel(c) for c in rgb)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(fg, bg):
+    hi, lo = sorted((_luminance(fg), _luminance(bg)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _rgb(css_color):
+    return [int(float(v)) for v in css_color[css_color.index("(") + 1 : -1].split(",")[:3]]
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_admin_pill_is_readable(logged_in_page, theme):
+    """The blue Admin pill keeps WCAG AA text contrast in both themes."""
+    logged_in_page.goto("/admin/users")
+    if logged_in_page.locator("html").get_attribute("data-theme") != theme:
+        logged_in_page.click("#theme-btn")
+    expect(logged_in_page.locator("html")).to_have_attribute("data-theme", theme)
+    pill = logged_in_page.locator("#users-tbody .mdm-pill-blue", has_text="Admin").first
+    pill.wait_for()
+    colors = pill.evaluate(
+        "el => [getComputedStyle(el).color, getComputedStyle(el).backgroundColor]"
+    )
+    assert _contrast(_rgb(colors[0]), _rgb(colors[1])) >= 4.5
+
+
 def test_create_user_via_modal(logged_in_page, cleanup_temp_user):
     """Creating a user via the New user modal makes it appear in the table."""
     logged_in_page.goto("/admin/users")
