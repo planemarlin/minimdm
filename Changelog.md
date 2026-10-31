@@ -7,6 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Security
+- **Bumped `certifi` 2026.5.20 → 2026.10.23** in `uv.lock` (GHSA-6q48-6c7w-9gw2 / PYSEC-2026-4320, critical): certifi versions before 2026.10.18 bundled the `emSign ECC Root CA - G3` root, and eight eMudhra intermediate CAs under it have compromised, revoked keys, so an on-path attacker holding one of them could present a valid-looking certificate for any hostname. miniMDM is affected only through outbound TLS from `httpx` (webhooks); certifi is a transitive dependency (also pulled in by `requests` in the dev group), so there is no floor in `pyproject.toml` and the lockfile pin is the fix. Found by the CI `pip-audit` job (first seen failing on PR #76; it would have failed any run since the advisory was published on 2026-10-20); GitHub raised no Dependabot alert for it
 - **Bumped `mako` 1.3.12 → 1.4.3** (floor in `pyproject.toml` is now `>=1.4.2`), resolving Dependabot alert #35 (GHSA-5639-2j2p-m4mx, medium): on Windows, a `TemplateLookup` URI starting with a drive designator (`C:/../../x`) bypasses the traversal check and can read files outside the template directory. Not reachable in miniMDM: Mako is only a transitive dependency of Alembic (used to render migration script templates from `alembic/script.py.mako`), the app renders pages with Jinja2, and nothing passes user-controlled names to `TemplateLookup`. Mako 1.4.x requires Python >=3.10, which the project's `>=3.11` already satisfies
 
 ### Fixed
