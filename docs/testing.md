@@ -42,7 +42,7 @@ miniMDM supports Python 3.11 or newer and PostgreSQL 15 or newer. CI (`.github/w
 | API, unit and template tests | 3.14 | 15 and 18 |
 | Browser tests (Playwright) | 3.14 | 16 |
 
-So PostgreSQL 15 and 18 are only tested with Python 3.14, and PostgreSQL 17 is not tested at all: it sits between two tested versions and no miniMDM code depends on what changed in it. A combination outside the table (for example Python 3.12 with PostgreSQL 18, or PostgreSQL 17) is expected to work but has not been run by CI. Python 3.15 and newer is not supported yet, see [known_issues.md](known_issues.md). The Docker image and `docker-compose.yml` pin their own Python and PostgreSQL versions (see `Dockerfile` and `docker-compose.yml`).
+So PostgreSQL 15 and 18 are only tested with Python 3.14, and PostgreSQL 17 is not tested at all: it sits between two tested versions and no miniMDM code depends on what changed in it. A combination outside the table (for example Python 3.12 with PostgreSQL 18, or PostgreSQL 17) is expected to work but has not been run by CI. Python 3.15 and newer is not supported yet, see [known_issues.md](known_issues.md). The Docker image (`Dockerfile`, Python 3.13) and `docker-compose.yml` (PostgreSQL 16) pin their own versions; both combinations are in the table, but CI does not build the image itself.
 
 When you change the matrix in `ci.yml`, update this table, the requirement lines in `README.md`, `CONTRIBUTING.md`, `docs/installation.md` and `docs/deployment.md`, and the CI sentence in `CLAUDE.md`.
 
