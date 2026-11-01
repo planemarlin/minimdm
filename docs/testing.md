@@ -175,7 +175,7 @@ Create a dedicated database so tests never touch your production data:
 ```sql
 CREATE DATABASE minimdm_test;
 GRANT ALL PRIVILEGES ON DATABASE minimdm_test TO minimdm;
--- PostgreSQL 15+ also requires:
+-- Required on PostgreSQL 15 and newer (public schema no longer grants CREATE):
 GRANT CREATE ON SCHEMA public TO minimdm;
 ```
 

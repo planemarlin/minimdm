@@ -79,3 +79,11 @@ Raised via [#49](https://github.com/planemarlin/minimdm/issues/49). Docker deplo
 ### Mobile and narrow-window layout is not yet usable
 
 The interface is designed for desktop-width windows, and below 768px it does not behave as you would expect. For example, the sidebar is hidden with no way to open it, so the object pages cannot be reached, and the top bar wraps its labels onto two lines ("Audit Log" breaks in two). The mobile and narrow-window layout will be reviewed and updated in a future release.
+
+### Docker Compose cannot run PostgreSQL 18 yet
+
+`docker-compose.yml` uses `postgres:16-alpine`. miniMDM itself works on PostgreSQL 18 (the backend and browser test suites pass against it), but the `postgres:18` image exits at start-up with the compose file's volume mounted at `/var/lib/postgresql/data`: images from 18 on expect a single mount at `/var/lib/postgresql`. Simply changing the mount would leave an existing deployment's `postgres_data` volume unused, and a PostgreSQL 16 data directory cannot be opened by 18 anyway, so moving the Docker setup to 18 needs a documented dump-and-restore upgrade path. Until then, Docker deployments stay on 16; installations with their own PostgreSQL can run any version from 15 to 18. Not scheduled.
+
+### Python 3.15 is not supported yet
+
+miniMDM supports Python 3.11 to 3.14. On 3.15 the locked dependencies do not install: `psycopg2-binary` 2.9.11, `pydantic-core` 2.41.5 and `watchfiles` 1.1.1 have no 3.15 wheels, and building them from source fails (`pydantic-core`'s PyO3 0.26 supports at most 3.14). Support needs a refresh of `uv.lock` and a 3.15 entry in the CI test matrix once the dependencies publish wheels. `uv sync` without `--python` picks the newest interpreter installed, so on a machine that has 3.15 use `uv sync --python 3.14`.

@@ -104,7 +104,7 @@ uv run ruff check app tests
 
 ## Setting up a development environment
 
-Requirements: Python 3.11+, PostgreSQL 14+, [uv](https://docs.astral.sh/uv/).
+Requirements: Python 3.11+, PostgreSQL 15+, [uv](https://docs.astral.sh/uv/).
 
 ```bash
 git clone <repository-url>
