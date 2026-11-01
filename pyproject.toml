@@ -41,10 +41,11 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 filterwarnings = [
-    # slowapi uses asyncio.iscoroutinefunction() which is deprecated since Python 3.12.
-    # This is a third-party issue; suppress until slowapi ships a fix.
+    # slowapi calls asyncio.iscoroutinefunction(), which warns on Python 3.14 and is
+    # removed in 3.16. Third-party issue; see docs/known_issues.md.
     "ignore::DeprecationWarning:slowapi",
 ]
 

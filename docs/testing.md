@@ -32,6 +32,22 @@
 
 Unit tests run anywhere. Integration and template tests require a PostgreSQL test database and are automatically skipped when `TEST_DATABASE_URL` is not set. Browser tests additionally require the Playwright Chromium binary (see below).
 
+## Tested versions
+
+miniMDM supports Python 3.11 or newer and PostgreSQL 15 or newer. CI (`.github/workflows/ci.yml`) tests these combinations on every push and pull request:
+
+| Suite | Python | PostgreSQL |
+|---|---|---|
+| API, unit and template tests | 3.11, 3.12, 3.13, 3.14 | 16 |
+| API, unit and template tests | 3.14 | 15 and 18 |
+| Browser tests (Playwright) | 3.14 | 16 |
+
+So PostgreSQL 15 and 18 are only tested with Python 3.14, and PostgreSQL 17 is not tested at all: it sits between two tested versions and no miniMDM code depends on what changed in it. A combination outside the table (for example Python 3.12 with PostgreSQL 18, or PostgreSQL 17) is expected to work but has not been run by CI. Python 3.15 and newer is not supported yet, see [known_issues.md](known_issues.md). The Docker image and `docker-compose.yml` pin their own Python and PostgreSQL versions (see `Dockerfile` and `docker-compose.yml`).
+
+When you change the matrix in `ci.yml`, update this table, the requirement lines in `README.md`, `CONTRIBUTING.md`, `docs/installation.md` and `docs/deployment.md`, and the CI sentence in `CLAUDE.md`.
+
+---
+
 ## Browser (end-to-end) tests
 
 The browser test suite drives a real Chromium browser against a live miniMDM server to verify that the UI behaves correctly from a user's perspective. These tests complement the API integration tests by catching template bugs, JavaScript errors, and full user flows.

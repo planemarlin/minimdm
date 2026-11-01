@@ -87,3 +87,7 @@ The interface is designed for desktop-width windows, and below 768px it does not
 ### Python 3.15 is not supported yet
 
 miniMDM supports Python 3.11 to 3.14. On 3.15 the locked dependencies do not install: `psycopg2-binary` 2.9.11, `pydantic-core` 2.41.5 and `watchfiles` 1.1.1 have no 3.15 wheels, and building them from source fails (`pydantic-core`'s PyO3 0.26 supports at most 3.14). Support needs a refresh of `uv.lock` and a 3.15 entry in the CI test matrix once the dependencies publish wheels. `uv sync` without `--python` picks the newest interpreter installed, so on a machine that has 3.15 use `uv sync --python 3.14`.
+
+### Python 3.16 needs a fix or replacement for slowapi
+
+The rate limiter ([slowapi](https://github.com/laurentS/slowapi), used on login, import and the inbound endpoint) calls `asyncio.iscoroutinefunction()`, which Python 3.14 deprecates and Python 3.16 removes. slowapi 0.1.10, the latest release, still calls it. Nothing is wrong on 3.11 to 3.14: the warning appears only when running tests and is filtered in `pyproject.toml`. On 3.16 the `@limiter.limit` decorators fail when the app is imported, so the app will not start. Before 3.16 is supported, slowapi needs a release that uses `inspect.iscoroutinefunction()`, or the rate limiter has to be replaced. Python 3.16 is due in October 2027. Not scheduled.

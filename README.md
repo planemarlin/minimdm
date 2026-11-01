@@ -37,6 +37,8 @@ See [docs/quickstart.md](docs/quickstart.md) for a step-by-step guide, or [docs/
 
 Or use Docker (no local Python or PostgreSQL installation required) — see [docs/docker-setup.md](docs/docker-setup.md).
 
+The exact Python and PostgreSQL versions that CI tests are listed under [Tested versions](docs/testing.md#tested-versions).
+
 ## Installation
 
 See [docs/installation.md](docs/installation.md) for full instructions.
