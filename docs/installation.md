@@ -6,6 +6,8 @@
 - PostgreSQL 15 or newer
 - [uv](https://docs.astral.sh/uv/) package manager
 
+CI tests Python 3.11 to 3.14 and PostgreSQL 15, 16 and 18; see [Tested versions](testing.md#tested-versions) for the exact combinations.
+
 ## Install uv
 
 ```bash

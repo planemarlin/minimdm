@@ -46,18 +46,28 @@ jobs:
 
   # ── Test ────────────────────────────────────────────────────────────────────
   # Runs the full test suite against a real PostgreSQL database.
+  # Every supported Python version runs against PostgreSQL 16; the oldest
+  # (15) and newest (18) supported PostgreSQL versions run on the newest
+  # Python. Keep docs/testing.md ("Tested versions") in sync with this matrix.
   test:
-    name: Test (Python ${{ matrix.python-version }})
+    name: Test (Python ${{ matrix.python-version }}, PostgreSQL ${{ matrix.postgres-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        postgres-version: ["16"]
+        include:
+          - python-version: "3.14"
+            postgres-version: "15"
+          - python-version: "3.14"
+            postgres-version: "18"
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:${{ matrix.postgres-version }}
         env:
           POSTGRES_USER: minimdm
           POSTGRES_PASSWORD: minimdm
@@ -92,8 +102,9 @@ jobs:
   # Runs the Playwright end-to-end suite against a real server and database.
   # Separated from the unit/integration job so the browser binary install and
   # slower test run do not block the fast feedback loop.
+  # Runs on one pinned Python and PostgreSQL 16, not on the full matrix.
   browser-test:
-    name: Browser tests (Playwright)
+    name: Browser tests (Playwright, Python 3.14, PostgreSQL 16)
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -116,6 +127,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
 
       - name: Install dependencies
         run: uv sync --group dev

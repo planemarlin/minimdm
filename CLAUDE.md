@@ -22,7 +22,7 @@ uv run ruff format .                   # format
 
 `TEST_DATABASE_URL` must be set in the environment (shell profile, direnv, or inline before the command) and point at a dedicated test database, never the development one. It is read from `os.environ`, **not** from `.env`, so a `.env` entry is silently ignored. Without it, integration and browser tests are skipped rather than failed, so a "green" run with many skips means it was not set. Browser tests also require the Playwright Chromium binary — install once with `uv run playwright install chromium`. See `docs/testing.md` for setup details.
 
-CI additionally runs `pip-audit` on the dependencies and runs the non-browser tests on both Python 3.11 and 3.12 (browser tests run on one version).
+CI additionally runs `pip-audit` on the dependencies and runs the non-browser tests on Python 3.11–3.14 with PostgreSQL 16, plus Python 3.14 with PostgreSQL 15 and 18; browser tests run on Python 3.14 and PostgreSQL 16. The tested versions are documented in `docs/testing.md` ("Tested versions"); keep it in sync with `.github/workflows/ci.yml`.
 
 ## Git
 - **Before editing any file for a task, create a feature branch first — never edit directly on `main` or on an old/stale branch.** Run `git branch --show-current` as your first action; if it's `main` (or a branch you didn't just create for this task), run `git fetch minimdm && git checkout -b <branch> minimdm/main` before making any Edit/Write call. This applies even to small changes and even mid-session after a `/clear`.
