@@ -6,7 +6,7 @@ miniMDM is a standard ASGI application served by Uvicorn. For production use it 
 
 - A reverse proxy with TLS support (nginx, Caddy, or equivalent)
 - A valid TLS certificate (e.g. from Let's Encrypt)
-- PostgreSQL 14+ running on a private interface
+- PostgreSQL 15+ running on a private interface
 
 ## Recommended architecture
 

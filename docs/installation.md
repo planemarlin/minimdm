@@ -3,7 +3,7 @@
 ## System Requirements
 
 - Python 3.11 or newer
-- PostgreSQL 14 or newer
+- PostgreSQL 15 or newer
 - [uv](https://docs.astral.sh/uv/) package manager
 
 ## Install uv
