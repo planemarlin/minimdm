@@ -7,6 +7,8 @@ This guide explains how to run miniMDM using Docker and Docker Compose.
 - Docker (v20.10+)
 - Docker Compose (v2.0+)
 
+The app image is built on Python 3.13 (`python:3.13-slim`) and the Compose file runs PostgreSQL 16 (`postgres:16-alpine`); both combinations are covered by CI (see [Tested versions](testing.md#tested-versions)). You do not need Python or PostgreSQL installed on the host.
+
 ## Quick Start
 
 ### Option 1: Automated Setup (Recommended)
