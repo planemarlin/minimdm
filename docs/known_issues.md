@@ -13,7 +13,7 @@ Design decisions that are deliberate, and open issues that are not fixed yet. An
 **Decision:** With the placeholder `SECRET_KEY` still in place, miniMDM logs an `ERROR` at startup ("JWTs can be trivially forged") and keeps running, rather than refusing to start. Failing fast would break the zero-configuration local and Docker quickstarts for the sake of a situation that is already loudly reported in the server log and listed in the pre-launch checklist in [deployment.md](deployment.md#security-checklist-before-going-live). Changing `SECRET_KEY` and `ADMIN_PASSWORD` before exposing an instance is the operator's responsibility. Recorded by the pre-v0.8.0 security review.
 
 ### The Docker image installs the `dev` dependency group
-**Decision:** The `Dockerfile` runs `uv export --frozen --no-emit-project` without `--no-dev`, so dev-only packages — including `urllib3`/`requests` via `pytest-playwright` — are present in the image although the app never imports them. This is deliberate: the full test suite is run inside the image against the compose database. If a slimmer production image is wanted, add `--no-dev` to the `uv export` and run Docker tests from a separate build target.
+**Decision:** The `Dockerfile` runs `uv export --frozen --no-emit-project` without `--no-dev`, so dev-only packages — pytest, Playwright and their dependencies — are present in the image although the app never imports them. This is deliberate: the full test suite is run inside the image against the compose database. If a slimmer production image is wanted, add `--no-dev` to the `uv export` and run Docker tests from a separate build target.
 
 ---
 
