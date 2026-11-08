@@ -1,6 +1,6 @@
 # Database Migrations
 
-miniMDM uses [Alembic](https://alembic.sqlalchemy.org/) to version-control the `_system` schema (users, audit log, token blocklist, password reset tokens, schema permissions, and inbound API keys). User-defined data tables — created from your YAML config — are still managed dynamically by the application and are not touched by Alembic.
+miniMDM uses [Alembic](https://alembic.sqlalchemy.org/) to version-control the `_system` schema (users, audit log, token blocklist, password reset tokens, schema permissions, inbound API keys, and duplicate-detection flags and scan state). User-defined data tables — created from your YAML config — are still managed dynamically by the application and are not touched by Alembic.
 
 ## How migrations run
 
@@ -22,6 +22,7 @@ alembic/
     0001_initial_system_tables.py          — users, audit_log, token_blocklist, password_reset_tokens, schema_permissions
     0002_add_can_publish_to_schema_permissions.py  — adds can_publish column (v0.4.0)
     0003_add_inbound_keys_table.py         — _system.inbound_keys for inbound webhook API keys + ix_inbound_keys_schema_active index (v0.7.0)
+    0004_add_duplicate_detection_tables.py — _system.duplicate_flags and _system.duplicate_scans for duplicate detection (v0.9.0)
 ```
 
 ## Writing a new migration

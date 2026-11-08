@@ -5,6 +5,7 @@
 | File | Type | Requires DB |
 |---|---|---|
 | `tests/test_schema_loader.py` | Unit – config parsing | No |
+| `tests/test_duplicate_config.py` | Unit – `duplicates:` config parsing and validation | No |
 | `tests/test_table_manager.py` | Unit – table manager helpers | No |
 | `tests/test_auth_tokens.py` | Unit – JWT decoding hardening (`decode_token`) | No |
 | `tests/test_api_records.py` | Integration – CRUD, history, revert | Yes |
@@ -18,6 +19,11 @@
 | `tests/test_api_state_counts.py` | Integration – `GET /api/records/{schema}/{object}/state-counts` (list page tab counts), per-role access | Yes |
 | `tests/test_pending_link.py` | Integration – `GET /api/pending-count` and the top-bar Pending link, per-role visibility | Yes |
 | `tests/test_top_bar.py` | Template rendering – top bar groups, current-page marker, API Docs link in the sidebar | Yes |
+| `tests/test_duplicate_tables.py` | Integration – `_system.duplicate_flags`/`duplicate_scans`: migration 0004 matches the SQLAlchemy definition, constraints | Yes |
+| `tests/test_duplicates.py` | Integration – duplicate matching core (normalisation, drafts, dismissals, incremental refresh vs rescan, interrupted scans, automatic rescan, scan audit entries) in its own schema | Yes |
+| `tests/test_api_duplicates.py` | Integration – duplicate flags kept current by every write path (create, edit, revert, publish, retire, delete, import, upsert, inbound) | Yes |
+| `tests/test_api_duplicates_review.py` | Integration – `/api/duplicates/...` review API, dismiss/reopen permissions per role, scan status and rescan, `duplicates` in `/api/object-counts` | Yes |
+| `tests/test_duplicates_page.py` | Template rendering – Duplicates top-bar link per role (count rendered hidden), the `/duplicates` page, the notice container on a record page | Yes |
 | `tests/test_templates.py` | Template rendering – page structure | Yes |
 | `tests/browser/test_auth.py` | Browser – login/logout, auth redirects | Yes |
 | `tests/browser/test_records.py` | Browser – list and create records | Yes |
@@ -29,6 +35,7 @@
 | `tests/browser/test_validation_rules.py` | Browser – validation-rule confirm/override banner | Yes |
 | `tests/browser/test_list_state_counts.py` | Browser – per-state counts on the list page tabs and next to "Show deleted" | Yes |
 | `tests/browser/test_record_counts.py` | Browser – record counts in the sidebar and home page cards, locale formatting | Yes |
+| `tests/browser/test_duplicates.py` | Browser – Duplicates link/pill counts, review page (dismiss, reopen, rescan), record-page notice, import message | Yes |
 
 Unit tests run anywhere. Integration and template tests require a PostgreSQL test database and are automatically skipped when `TEST_DATABASE_URL` is not set. Browser tests additionally require the Playwright Chromium binary (see below).
 
@@ -106,6 +113,7 @@ All tests skip automatically when `TEST_DATABASE_URL` is not set, consistent wit
 - **Scope button locators to their container.** `button:has-text('Publish')` is ambiguous because both the header button and the modal's confirm button carry that text. Use e.g. `#publish-modal-backdrop .mdm-btn-primary`.
 - **Wait for action buttons to be visible before clicking.** `#btn-publish`, `#btn-retire` and `#btn-delete` start as `display:none` and are shown by JavaScript after an async fetch, so waiting for `.mdm-attrs` is not enough. Use `page.wait_for_selector("#btn-X:visible")`.
 - **Use auto-retrying assertions after a reload.** After `window.location.reload()` the old DOM is still present when Playwright resumes, so a direct assertion can read stale content. Use `expect(locator).to_have_text("new value")`, which retries.
+- **Scope dialog locators to the dialog.** `.modal-backdrop .modal` also matches the hidden help modal, so Playwright's strict mode rejects it. The generic confirm dialog built by `mdmDialog()` (dismiss, reopen, rescan) is `#mdm-dlg`, with `#mdm-dlg-ok` for its confirm button and `#mdm-dlg-reason` for its reason field.
 - **The browser suite only logs in as the admin (`browser_admin`).** Per-role behaviour (Viewer, Editor, Publisher) is covered by the API tests, not by browser tests.
 
 ### What the browser tests cover
@@ -236,6 +244,19 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
   uv run pytest tests/ --cov=app --cov-report=term-missing
 ```
 
+**`test_duplicates.py`** (the browser suite logs in as the admin only; who may dismiss or rescan is covered by the API and template tests)
+- The sidebar shows an amber pill with the number of open duplicate groups beside an object and the top-bar Duplicates link shows the total; with no duplicates there is no pill or count, but the link is still there
+- Filling in the top-bar count does not move any other top-bar item (their bounding boxes are identical with and without it)
+- The review page lists a group with its rule name and record count, the values as entered (never the normalised match key), and marks only the column its rule compares; the Open and Dismissed tabs show their counts
+- Dismissing a group (with a reason) removes it, updates the tab counts, the sidebar pill and the top-bar count; the Dismissed tab shows who dismissed it and why; Reopen brings it back
+- Cancelling the dialog or pressing Escape changes nothing
+- In a group of three, one record can be dismissed on its own and the others stay flagged
+- Section headings match the Pending page (plain-text schema tag and counts, no pills, no underline on hover, same heading style)
+- A flagged record's page shows the notice with the rule, the record's own value and the other record, and "Not a duplicate" dismisses it; an unflagged record shows no notice
+- Rescan opens a dialog with the number of records to read and the last scan, then updates the "Last scan" line; the stale-flags banner offers a primary "Rescan now" while the header Rescan button stays secondary
+- A completed scan appears on the audit log's Auth Events tab
+- The import result links to the Duplicates page
+
 ## What the integration tests cover
 
 **`test_auth_tokens.py`** (unit, no database)
@@ -365,11 +386,44 @@ TEST_DATABASE_URL=postgresql://minimdm:your_password@localhost:5432/minimdm_test
 - Owner and steward are displayed on the list page when configured on the object
 - Owner/steward block is absent when neither field is set
 
+**`test_duplicate_config.py`** (unit, no database)
+- Objects without a `duplicates` block get an empty rule list and the default `dismissed_by: editor`; the installation-wide `rescan` defaults to `on_rule_change`
+- Rules are parsed with their defaults (`normalize: text`, an unnamed rule is named after its fields)
+- An invalid `rescan`, `dismissed_by` or `normalize` value, an unknown or repeated field, and a duplicate rule name are validation errors; a structurally wrong block (not a mapping, empty `fields`, a bad identifier) raises when the config is loaded
+
+**`test_duplicate_tables.py`**
+- The SQLAlchemy definitions of `_system.duplicate_flags` and `duplicate_scans` match the database, and re-running migration 0004 from scratch (in a rolled-back transaction) creates the same columns and indexes
+- The flag status is constrained, a record can be flagged once per rule and match, and can sit in two groups
+
+**`test_duplicates.py`** (own schema and `TableManager`, not the shared `client`)
+- Matching: exact and normalised values, punctuation kept apart from spacing (`a@bc.com` is not `ab@c.com`), empty values never match, `digits`, composite rules need every field, date/integer/numeric/reference fields are compared exactly
+- Drafts: a draft copy never matches its own golden record, a new draft matches an active record, a draft edit moves the record between groups and publishing keeps it consistent, delete and retire dissolve groups
+- Dismissals survive unrelated edits, are dropped when the value changes, and are reopened when a newcomer joins
+- A full rescan equals the incremental result, finds records written without a check, keeps dismissals, and purges flags of removed rules; the fingerprint and `needs_rescan` follow the rules; indexes follow the rules
+- A requested rescan is cleared only by a scan that began after it; `only_if_needed` skips work that is already done; an interrupted scan leaves the flags and scan state untouched and releases its lock
+- Automatic rescan after a config load scans changed objects in the background, only reports in `manual` mode, and purges flags when all rules are removed
+- Every completed scan writes one `DUPLICATE_SCAN` audit entry with its trigger; skipped and interrupted scans write none
+
+**`test_api_duplicates.py`**
+- Each write path flags and clears duplicates: create, edit of an active record (draft copy), edit of a draft in place, publish (both branches) and revert, retire, delete, import (inline and upsert), a failed strict import (no flags left behind), a big import (committed first, scanned in the background, request remembered if the scan never runs) and inbound pushes (new draft, update, draft copy of an active record)
+- Objects without rules are untouched: no `possible_duplicates`, no `duplicate_check`
+
+**`test_api_duplicates_review.py`**
+- Listing, pagination, `counts` for both statuses, `fields`, the `dismissed` status, draft copies shown through their golden record, flags of removed rules ignored
+- Dismiss and reopen (one record, a whole group, repeated, invalid input, a flag of another object), a newcomer reopening a dismissed group, a reason required when the object requires one
+- Per role: Viewers and users without access are refused everywhere; an Editor may dismiss under `dismissed_by: editor` but not `publisher`; a Publisher may dismiss under `publisher`; only an Admin may rescan
+- Scan status and rescan (including a held lock showing `running` and blocking a second scan), and the `duplicates` figure in `/api/object-counts` (writers only, objects with rules only)
+
+**`test_duplicates_page.py`**
+- The top-bar Duplicates link is rendered by the server for writers (not Viewers), sits in the work group, carries `aria-current` on its own page, and its count is rendered `hidden` inside CSS-reserved space, so filling it in cannot shift the bar
+- `/duplicates` has a section per object with rules, a Rescan button for admins only, the per-column and rule data for the script, and refuses Viewers and users without access
+- A record page has the notice container for writers on objects with rules, and not for Viewers or objects without rules
+
 ## Test isolation
 
 Each integration test that creates or modifies data requests the `clean_records` fixture, which deletes all rows from the test schema tables before the test runs. The session-scoped `client` fixture creates the schema once for the whole run and drops it on teardown. Tests that only read HTML (template tests) do not need `clean_records`.
 
-Because the `client` fixture is session-scoped and shares one app instance, a test must never mutate app-wide state (for example by calling the config reload endpoint): it would change the configuration for every test that runs after it.
+Because the `client` fixture is session-scoped and shares one app instance, a test must never mutate app-wide state (for example by calling the config reload endpoint): it would change the configuration for every test that runs after it. Tests that need a config of their own (`test_duplicates.py`, `test_table_manager.py`) create a dedicated schema with their own `TableManager` and engine and drop it afterwards. The duplicate-detection test objects (`dup_item`, `dup_governed_item`, `dup_audited_item`) live in `SAMPLE_CONFIG`, and `clean_records` also clears their flags, scan state and `DUPLICATE_SCAN` audit entries.
 
 ## Known test gaps (pre-next-release)
 

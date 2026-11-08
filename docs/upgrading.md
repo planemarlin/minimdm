@@ -27,6 +27,17 @@ No git available? Download the "Source code (zip)" or "(tar.gz)" asset from the 
 
 ---
 
+## Duplicate detection: the first start with rules
+
+Duplicate detection (see [reference.md](reference.md#duplicate-detection)) needs no action when you upgrade: the migration that adds its two system tables runs by itself, and objects without `duplicates:` rules are untouched. When you **add rules to an object** (or change them), the next start does a little extra work:
+
+1. **An index per rule is built** on the object's table while the application starts. That takes about 8 seconds per million records, so a very large object delays that one start by about that long. Later starts skip it.
+2. **The object is scanned in the background** for existing duplicates (about 12 seconds per million records) and the application is usable meanwhile. The Duplicates page shows "Scanning for duplicates…" until it finishes, then lists what was found. The scan also runs after `POST /api/config/reload`.
+
+If you would rather choose the moment, set `duplicates: rescan: manual` under `minimdm:` in the config. Nothing is scanned automatically then: the log names the objects that are out of date, the Duplicates page shows a banner, and an Admin presses **Rescan**. A scan that is interrupted by a restart changes nothing and is simply repeated.
+
+---
+
 ## Bare-metal / systemd
 
 ```bash
