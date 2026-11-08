@@ -1127,7 +1127,11 @@ async function importFile(schema, obj, input) {
       const errHtml = data.errors.length
         ? `<br>Errors: ${data.errors.map(e => `Row ${escHtml(String(e.row))}: ${escHtml(String(e.error))}`).join("; ")}`
         : "";
-      statusEl.innerHTML = `<div class="alert alert-success">${parts.join(", ") || "0 records"}.${errHtml}</div>`;
+      const dupNote = data.duplicate_check
+        ? ` ${data.duplicate_check === "rescan_scheduled" ? "Duplicates are being checked in the background. " : ""}<a href="/duplicates#${encodeURIComponent(schema)}-${encodeURIComponent(obj)}">Review possible duplicates</a>.`
+        : "";
+      statusEl.innerHTML = `<div class="alert alert-success">${parts.join(", ") || "0 records"}.${errHtml}${dupNote}</div>`;
+      if (data.duplicate_check) loadObjectCounts();
       if (typeof recordList !== "undefined") recordList.load();
     } else {
       const detail = data.detail;
@@ -1256,6 +1260,8 @@ async function loadAuditLog(page) {
       RETIRE: "mdm-pill-slate",
       DRAFT_CREATED: "mdm-pill-amber",
       REVERT: "mdm-pill-amber",
+      DUPLICATE_DISMISSED: "mdm-pill-slate",
+      DUPLICATE_REOPENED: "mdm-pill-amber",
     }[a] || "mdm-pill-slate";
     return `<span class="mdm-pill ${cls}">${a}</span>`;
   };
@@ -1331,6 +1337,7 @@ async function loadAuthLog(page) {
       INBOUND_KEY_REVOKED: "mdm-pill-red",
       INBOUND_CALL: "mdm-pill-blue",
       INBOUND_CALL_FAILED: "mdm-pill-red",
+      DUPLICATE_SCAN: "mdm-pill-blue",
     }[a] || "mdm-pill-slate";
     return `<span class="mdm-pill ${cls}">${a}</span>`;
   };
@@ -1760,7 +1767,33 @@ function renderObjectCounts(counts) {
       pending.title = `${c.pending.toLocaleString()} pending draft${c.pending === 1 ? "" : "s"}`;
       el.appendChild(pending);
     }
+    if (c.duplicates > 0) {
+      const schema = el.dataset.countsSchema, obj = el.dataset.countsObject;
+      const dup = document.createElement("span");
+      dup.className = "mdm-count-duplicates";
+      dup.textContent = formatCount(c.duplicates);
+      dup.title = `${c.duplicates.toLocaleString()} open duplicate group${c.duplicates === 1 ? "" : "s"} — click to review`;
+      dup.setAttribute("role", "link");
+      dup.tabIndex = 0;
+      const go = e => { e.preventDefault(); e.stopPropagation(); window.location.href = `/duplicates#${schema}-${obj}`; };
+      dup.addEventListener("click", go);
+      dup.addEventListener("keydown", e => { if (e.key === "Enter") go(e); });
+      el.appendChild(dup);
+    }
   });
+  renderDuplicatesBadge(counts);
+}
+
+// The top-bar link is rendered by the server for users who can review duplicates; only the
+// number is filled in here. It is positioned absolutely, so filling it in moves nothing.
+function renderDuplicatesBadge(counts) {
+  let total = 0;
+  Object.values(counts).forEach(objs => Object.values(objs).forEach(c => { total += c.duplicates || 0; }));
+  const badge = document.getElementById("duplicates-badge-count");
+  if (badge) {
+    badge.hidden = total <= 0;
+    if (total > 0) badge.textContent = total > 99 ? "99+" : total;
+  }
 }
 
 async function loadObjectCounts() {
@@ -1933,3 +1966,405 @@ async function revokeInboundKey(btn) {
   if (!res.ok && res.status !== 204) { alert("Failed to revoke key."); return; }
   loadInboundKeys();
 }
+
+
+// ── Dialog helper ────────────────────────────────────────────────────────────
+
+// A small confirm dialog on the existing modal styles. `onConfirm(reason)` runs when the user
+// confirms; return an error message (string) to keep the dialog open and show it, or nothing
+// to close. Resolves true if the user confirmed and onConfirm succeeded, false if cancelled.
+function mdmDialog({ title, bodyHtml = "", reason = null, confirmLabel = "Confirm", onConfirm }) {
+  return new Promise(resolve => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.style.display = "flex";
+    const reasonHtml = reason ? `
+      <div class="form-group" style="margin-top:1rem">
+        <label for="mdm-dlg-reason">${escHtml(reason.label || "Reason")}${reason.required
+          ? ' <span style="color:var(--danger)">*</span>'
+          : ' <span style="font-weight:400;color:var(--text-muted)">(optional)</span>'}</label>
+        <input type="text" id="mdm-dlg-reason" placeholder="${escHtml(reason.placeholder || "")}" />
+      </div>` : "";
+    backdrop.innerHTML = `
+      <div class="modal" id="mdm-dlg" role="dialog" aria-modal="true" aria-labelledby="mdm-dlg-title">
+        <div class="modal__header">
+          <span class="modal__title" id="mdm-dlg-title">${escHtml(title)}</span>
+          <button type="button" class="modal__close" data-dlg="cancel" aria-label="Close">&times;</button>
+        </div>
+        <div>${bodyHtml}</div>${reasonHtml}
+        <div class="alert alert-error" id="mdm-dlg-error" style="display:none;margin-top:1rem"></div>
+        <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1.25rem">
+          <button type="button" class="mdm-btn" data-dlg="cancel">Cancel</button>
+          <button type="button" class="mdm-btn mdm-btn-primary" id="mdm-dlg-ok">${escHtml(confirmLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+
+    const okBtn = backdrop.querySelector("#mdm-dlg-ok");
+    const errEl = backdrop.querySelector("#mdm-dlg-error");
+    const reasonEl = backdrop.querySelector("#mdm-dlg-reason");
+    const close = result => {
+      document.removeEventListener("keydown", onKey);
+      backdrop.remove();
+      resolve(result);
+    };
+    const showError = msg => { errEl.textContent = msg; errEl.style.display = ""; };
+    const confirm = async () => {
+      const text = reasonEl ? reasonEl.value.trim() : "";
+      if (reason && reason.required && !text) { showError("A reason is required."); reasonEl.focus(); return; }
+      errEl.style.display = "none";
+      okBtn.disabled = true;
+      let err = null;
+      try { err = onConfirm ? await onConfirm(text) : null; }
+      catch (e) { err = (e && e.message) || "Something went wrong."; }
+      if (err) { okBtn.disabled = false; showError(err); return; }
+      close(true);
+    };
+    const onKey = e => { if (e.key === "Escape") close(false); };
+    document.addEventListener("keydown", onKey);
+    backdrop.addEventListener("click", e => {
+      if (e.target === backdrop || e.target.closest("[data-dlg='cancel']")) close(false);
+    });
+    okBtn.addEventListener("click", confirm);
+    if (reasonEl) {
+      reasonEl.addEventListener("keydown", e => { if (e.key === "Enter") confirm(); });
+      reasonEl.focus();
+    } else {
+      okBtn.focus();
+    }
+  });
+}
+
+// ── Duplicates ───────────────────────────────────────────────────────────────
+
+const _DUP_PAGE_SIZE = 50;
+let _dupStatus = "open";
+const _dupState = {};   // "schema/object" -> { cfg, el, total, groups, canDismiss, scan, polling }
+
+function _dupKey(cfg) { return `${cfg.schema}/${cfg.key}`; }
+function _dupUrl(cfg, tail = "") { return `/api/duplicates/${encodeURIComponent(cfg.schema)}/${encodeURIComponent(cfg.key)}${tail}`; }
+
+function fmtDuration(ms) {
+  if (ms == null) return "";
+  if (ms < 1000) return `${ms} ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(s < 10 ? 1 : 0)} s`;
+  return `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`;
+}
+
+function initDuplicatesPage() {
+  const raw = document.getElementById("dup-config");
+  if (!raw) return;
+  let cfgs = [];
+  try { cfgs = JSON.parse(raw.textContent); } catch (_) { return; }
+
+  cfgs.forEach(cfg => {
+    const el = document.getElementById(`${cfg.schema}-${cfg.key}`);
+    if (!el) return;
+    _dupState[_dupKey(cfg)] = { cfg, el, total: 0, counts: { open: 0, dismissed: 0 }, groups: [], canDismiss: false, scan: null, polling: false };
+    el.addEventListener("click", _dupClick);
+    el.querySelector(".dup-more-btn").addEventListener("click", () => loadDupGroups(cfg, true));
+    const rescan = el.querySelector(".dup-rescan-btn");
+    if (rescan) rescan.addEventListener("click", () => dupRescan(cfg));
+    loadDupGroups(cfg, false);
+    loadDupScan(cfg);
+  });
+
+  document.querySelectorAll("#dup-status-seg button").forEach(b => b.addEventListener("click", () => {
+    _dupStatus = b.dataset.status;
+    document.querySelectorAll("#dup-status-seg button").forEach(x => x.classList.toggle("is-on", x === b));
+    Object.values(_dupState).forEach(st => loadDupGroups(st.cfg, false));
+  }));
+}
+
+async function loadDupGroups(cfg, append) {
+  const st = _dupState[_dupKey(cfg)];
+  const box = st.el.querySelector(".dup-groups");
+  const status = _dupStatus;
+  const offset = append ? st.groups.length : 0;
+  if (!append) box.innerHTML = `<div class="dup-empty"><span class="spinner"></span></div>`;
+  let data;
+  try {
+    const res = await fetch(_dupUrl(cfg, `?status=${status}&limit=${_DUP_PAGE_SIZE}&offset=${offset}`));
+    if (!res.ok) throw new Error(String(res.status));
+    data = await res.json();
+  } catch (_) {
+    box.innerHTML = `<div class="alert alert-error">Failed to load duplicates.</div>`;
+    return;
+  }
+  if (status !== _dupStatus) return;   // the tab changed while this was loading
+  st.groups = append ? st.groups.concat(data.groups) : data.groups;
+  st.total = data.total;
+  st.counts = data.counts || st.counts;
+  st.canDismiss = data.can_dismiss;
+  renderDupGroups(cfg);
+  renderDupTabCounts();
+}
+
+// The numbers on the Open / Dismissed tabs: groups across all objects on the page.
+function renderDupTabCounts() {
+  const sum = key => Object.values(_dupState).reduce((n, st) => n + (st.counts[key] || 0), 0);
+  [["open", "dup-open-count"], ["dismissed", "dup-dismissed-count"]].forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = sum(key) > 0 ? sum(key) : "";
+  });
+}
+
+function renderDupGroups(cfg) {
+  const st = _dupState[_dupKey(cfg)];
+  const box = st.el.querySelector(".dup-groups");
+  const count = st.el.querySelector(".dup-section-count");
+  count.hidden = !st.total;
+  count.textContent = _dupStatus === "open"
+    ? `${st.total} group${st.total === 1 ? "" : "s"}`
+    : `${st.total} dismissed`;
+  if (!st.groups.length) {
+    box.innerHTML = _dupStatus === "open"
+      ? `<div class="dup-empty"><div style="font-weight:600;color:var(--mdm-ink)">No open duplicates</div><div style="font-size:.85rem;margin-top:.25rem">Nothing in ${escHtml(cfg.name)} matches under its duplicate rules.</div></div>`
+      : `<div class="dup-empty">Nothing has been dismissed.</div>`;
+  } else {
+    box.innerHTML = st.groups.map(g => _dupGroupHtml(cfg, st, g)).join("");
+  }
+  st.el.querySelector(".dup-more").hidden = st.groups.length >= st.total;
+}
+
+function _dupGroupHtml(cfg, st, g) {
+  const dismissedView = _dupStatus === "dismissed";
+  const open = g.members.filter(m => m.status === "open");
+  const dismissed = g.members.filter(m => m.status === "dismissed");
+  const ids = list => escHtml(list.map(m => m.flag_id).join(","));
+  let action = "";
+  if (st.canDismiss) {
+    action = dismissedView
+      ? `<button type="button" class="mdm-btn dup-btn-sm" data-dup-act="reopen" data-flags="${ids(dismissed)}">Reopen</button>`
+      : `<button type="button" class="mdm-btn dup-btn-sm" data-dup-act="dismiss" data-flags="${ids(open)}">Not duplicates</button>`;
+  }
+  const matched = new Set(g.fields || []);
+  const head = cfg.columns.map(c => `<th${matched.has(c.key) ? ' class="dup-rulecol" title="Compared by this rule"' : ""}>${escHtml(c.label).toUpperCase()}</th>`).join("")
+    + "<th>STATE</th><th>UPDATED</th><th></th>";
+  const rows = g.members.map(m => _dupRowHtml(cfg, st, m, open.length, dismissedView)).join("");
+  return `<div class="dup-group">
+    <div class="dup-group-head">
+      <span class="dup-rule">${escHtml(g.rule)}</span>
+      <span class="dup-count">${g.members.length} records</span>
+      <div class="dup-actions">${action}</div>
+    </div>
+    <div class="mdm-table-wrap"><table class="mdm-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>
+  </div>`;
+}
+
+function _dupRowHtml(cfg, st, m, openCount, dismissedView) {
+  const rec = m.record || {};
+  const cells = cfg.columns.map(c => {
+    const v = rec[c.key];
+    const txt = v === null || v === undefined ? "" : (typeof v === "boolean" ? (v ? "Yes" : "No") : String(v));
+    return `<td>${escHtml(txt)}</td>`;
+  }).join("");
+  const stateCls = { active: "mdm-pill-green", draft: "mdm-pill-amber" }[rec._state] || "mdm-pill-slate";
+  const state = rec._state
+    ? `<span class="mdm-pill ${stateCls}">${escHtml(rec._state.charAt(0).toUpperCase() + rec._state.slice(1))}</span>` : "";
+  const draft = m.has_draft ? ` <span class="mdm-pill mdm-pill-amber" title="A draft copy with changes is pending">+ draft</span>` : "";
+  const note = m.status === "dismissed"
+    ? `<div class="dup-note">Dismissed by ${escHtml(m.dismissed_by || "")}, ${escHtml(fmtDate(m.dismissed_at))}${m.dismiss_reason ? ` — ${escHtml(m.dismiss_reason)}` : ""}</div>` : "";
+  const own = (st.canDismiss && !dismissedView && m.status === "open" && openCount >= 3)
+    ? `<button type="button" class="mdm-btn dup-btn-sm" data-dup-act="dismiss" data-flags="${escHtml(m.flag_id)}" title="Keep the others flagged">Not a duplicate of the others</button>` : "";
+  const view = `<a class="mdm-btn dup-btn-sm" href="/${encodeURIComponent(cfg.schema)}/${encodeURIComponent(cfg.key)}/${encodeURIComponent(m.entity_id)}">View</a>`;
+  return `<tr class="${m.status === "dismissed" ? "dup-row--dismissed" : ""}">${cells}
+    <td>${state}${draft}${note}</td>
+    <td class="mdm-mono" style="white-space:nowrap;color:var(--mdm-ink-2);font-size:12.5px">${escHtml(fmtDate(rec._updated_at))}</td>
+    <td style="text-align:right;white-space:nowrap">${own} ${view}</td></tr>`;
+}
+
+function _dupClick(e) {
+  const btn = e.target.closest("[data-dup-act]");
+  if (!btn) return;
+  const sec = btn.closest(".dup-section");
+  const st = _dupState[`${sec.dataset.schema}/${sec.dataset.obj}`];
+  const act = btn.dataset.dupAct;
+  if (act === "rescan") { dupRescan(st.cfg); return; }
+  const ids = (btn.dataset.flags || "").split(",").filter(Boolean);
+  dupResolve(st.cfg, act, ids).then(ok => { if (ok) loadDupGroups(st.cfg, false); });
+}
+
+// Dismiss ("not a duplicate") or reopen flags; resolves true when it went through.
+// `own` means the flags all belong to one record (the notice on its page), however many
+// groups it is in; otherwise they are the members of one group.
+async function dupResolve(cfg, action, flagIds, own = false) {
+  const dismiss = action === "dismiss";
+  const n = flagIds.length;
+  const single = own || n === 1;
+  const ok = await mdmDialog({
+    title: dismiss ? "Not duplicates" : "Reopen as possible duplicates",
+    bodyHtml: dismiss
+      ? (single
+        ? `<p style="margin:0">Mark this record as not a duplicate of the others it matches. It stays unflagged until its matching value changes or another matching record turns up.</p>`
+        : `<p style="margin:0">Mark these ${n} records as not duplicates of each other. They stay unflagged until a matching value changes or another matching record turns up.</p>`)
+      : `<p style="margin:0">Flag ${single ? "this record" : `these ${n} records`} as ${single ? "a possible duplicate" : "possible duplicates"} again.</p>`,
+    reason: { label: "Reason", required: !!cfg.require_reason, placeholder: dismiss ? "Why are these different records?" : "" },
+    confirmLabel: dismiss ? "Dismiss" : "Reopen",
+    onConfirm: async reason => {
+      const res = await fetch(_dupUrl(cfg, `/${action}`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flag_ids: flagIds, reason: reason || null }),
+      });
+      if (res.ok) return null;
+      try { const d = await res.json(); if (typeof d.detail === "string") return d.detail; } catch (_) { /* fall through */ }
+      return `The request failed (${res.status}).`;
+    },
+  });
+  if (ok) loadObjectCounts();
+  return ok;
+}
+
+async function loadDupScan(cfg) {
+  const st = _dupState[_dupKey(cfg)];
+  let s;
+  try {
+    const res = await fetch(_dupUrl(cfg, "/scan"));
+    if (!res.ok) return;
+    s = await res.json();
+  } catch (_) { return; }
+  st.scan = s;
+  renderDupScan(cfg);
+  if (s.running) pollDupScan(cfg);
+}
+
+function renderDupScan(cfg) {
+  const st = _dupState[_dupKey(cfg)];
+  const s = st.scan;
+  if (!s) return;
+  const last = s.last_scan;
+  st.el.querySelector(".dup-section-meta").textContent = last
+    ? `Last scan ${fmtDate(last.scanned_at)} · ${formatCount(last.record_count)} records · ${fmtDuration(last.duration_ms)}`
+    : "Not scanned yet";
+  const btn = st.el.querySelector(".dup-rescan-btn");
+  if (btn) btn.disabled = !!s.running;
+  const banner = st.el.querySelector(".dup-scan-banner");
+  if (s.running) {
+    banner.innerHTML = `<div class="dup-banner"><span class="spinner"></span><span class="dup-banner-text">Scanning for duplicates… the list updates when the scan has finished.</span></div>`;
+  } else if (s.needs_rescan) {
+    const admin = !!btn;
+    banner.innerHTML = `<div class="dup-banner"><span class="dup-banner-text"><strong>Flags may be out of date.</strong> The duplicate rules changed or a scan did not finish.${admin ? " Run a rescan to update them." : " An administrator can run a rescan."}</span>${admin ? '<div class="dup-banner-actions"><button type="button" class="mdm-btn mdm-btn-primary" data-dup-act="rescan">Rescan now</button></div>' : ""}</div>`;
+  } else {
+    banner.innerHTML = "";
+  }
+}
+
+// Poll the scan status until it has finished, then reload the list. `since` is the
+// scanned_at of the last scan when a rescan was just requested (the background task may
+// take a moment to start); omit it when the page merely found a scan already running.
+function pollDupScan(cfg, since) {
+  const st = _dupState[_dupKey(cfg)];
+  if (st.polling) return;
+  st.polling = true;
+  const started = Date.now();
+  const finish = () => { st.polling = false; loadDupGroups(cfg, false); loadObjectCounts(); };
+  const tick = async () => {
+    let s = null;
+    try { const res = await fetch(_dupUrl(cfg, "/scan")); if (res.ok) s = await res.json(); } catch (_) { /* retry */ }
+    if (s) {
+      st.scan = s;
+      renderDupScan(cfg);
+      const scannedAt = (s.last_scan && s.last_scan.scanned_at) || "";
+      if (!s.running && (since === undefined || scannedAt !== since)) { finish(); return; }
+      if (!s.running && Date.now() - started > 60000) { st.polling = false; return; }   // never started
+    }
+    if (Date.now() - started > 30 * 60 * 1000) { st.polling = false; return; }
+    setTimeout(tick, 1500);
+  };
+  setTimeout(tick, 800);
+}
+
+async function dupRescan(cfg) {
+  const st = _dupState[_dupKey(cfg)];
+  let s;
+  try {
+    const res = await fetch(_dupUrl(cfg, "/scan"));
+    if (!res.ok) return;
+    s = await res.json();
+  } catch (_) { return; }
+  st.scan = s;
+  renderDupScan(cfg);
+  if (s.running) { pollDupScan(cfg); return; }
+
+  const last = s.last_scan;
+  const records = s.record_count == null ? "all" : formatCount(s.record_count);
+  const ok = await mdmDialog({
+    title: `Rescan ${cfg.name} for duplicates`,
+    bodyHtml: `<p style="margin:0 0 .75rem">Reads ${records} records and rebuilds the duplicate flags for this object's ${cfg.rules.length} rule${cfg.rules.length === 1 ? "" : "s"}. Dismissals are kept where the same record still matches. You can keep working while it runs.</p>`
+      + `<p style="margin:0;color:var(--mdm-mute)">${last
+        ? `Last scan: ${escHtml(fmtDate(last.scanned_at))}, ${formatCount(last.record_count)} records, took ${escHtml(fmtDuration(last.duration_ms))}.`
+        : "This object has not been scanned yet."}</p>`,
+    confirmLabel: "Rescan",
+    onConfirm: async () => {
+      const res = await fetch(_dupUrl(cfg, "/rescan"), { method: "POST" });
+      if (res.ok) return null;
+      if (res.status === 409) return "A scan of this object is already running.";
+      try { const d = await res.json(); if (typeof d.detail === "string") return d.detail; } catch (_) { /* fall through */ }
+      return `The request failed (${res.status}).`;
+    },
+  });
+  if (ok) {
+    st.scan = { ...s, running: true };
+    renderDupScan(cfg);
+    pollDupScan(cfg, (last && last.scanned_at) || "");
+  }
+}
+
+// Notice on a record's page when it is flagged as a possible duplicate (writers only; the
+// server renders the empty container, and only for objects that have duplicate rules).
+async function loadDuplicateBanner() {
+  const box = document.getElementById("duplicate-banner");
+  if (!box) return;
+  const { schema, obj, record, labelKey } = box.dataset;
+  const base = `/api/duplicates/${encodeURIComponent(schema)}/${encodeURIComponent(obj)}`;
+  let data;
+  try {
+    const res = await fetch(`${base}/record/${encodeURIComponent(record)}`);
+    if (!res.ok) return;
+    data = await res.json();
+  } catch (_) { return; }
+  if (!data.groups.length) { box.hidden = true; return; }
+
+  const own = data.entity_id;
+  const label = m => ((m.record || {})[labelKey]) || m.entity_id.slice(0, 8);
+  // The record's own values for the fields the rule compares, as typed, not the normalised
+  // form the match was made on.
+  const valueOf = g => {
+    const m = g.members.find(x => x.entity_id === own) || g.members[0];
+    const rec = (m && m.record) || {};
+    return (g.fields || []).map(f => rec[f]).filter(v => v !== null && v !== undefined && v !== "").join(", ");
+  };
+  const lines = data.groups.slice(0, 3).map(g => {
+    const others = g.members.filter(m => m.entity_id !== own && m.status === "open");
+    const named = others.slice(0, 3).map(m => {
+      const st = (m.record || {})._state;
+      const state = st ? st.charAt(0).toUpperCase() + st.slice(1) : "";
+      return `<a href="/${encodeURIComponent(schema)}/${encodeURIComponent(obj)}/${encodeURIComponent(m.entity_id)}">${escHtml(label(m))}</a>${state ? ` (${escHtml(state)})` : ""}`;
+    });
+    const more = others.length > 3 ? ` and ${others.length - 3} more` : "";
+    const value = valueOf(g);
+    return `<div>${escHtml(g.rule)}${value ? `: <strong>${escHtml(value)}</strong>` : ""} — also ${named.join(", ")}${more}</div>`;
+  });
+  const rest = data.groups.length > 3
+    ? `<div>…and ${data.groups.length - 3} more rule${data.groups.length === 4 ? "" : "s"}.</div>` : "";
+  const dismiss = data.can_dismiss
+    ? `<button type="button" class="mdm-btn" id="dup-banner-dismiss">Not a duplicate</button>` : "";
+  box.innerHTML = `<div class="dup-banner">
+    <div class="dup-banner-text"><strong>Possible duplicate.</strong>${lines.join("")}${rest}</div>
+    <div class="dup-banner-actions">${dismiss}<a class="mdm-btn" href="/duplicates#${encodeURIComponent(schema)}-${encodeURIComponent(obj)}">Review duplicates</a></div>
+  </div>`;
+  box.hidden = false;
+
+  const btn = document.getElementById("dup-banner-dismiss");
+  if (btn) btn.addEventListener("click", async () => {
+    const flagIds = data.groups
+      .map(g => g.members.find(m => m.entity_id === data.entity_id && m.status === "open"))
+      .filter(Boolean).map(m => m.flag_id);
+    const ok = await dupResolve({ schema, key: obj, require_reason: box.dataset.requireReason === "1" }, "dismiss", flagIds, true);
+    if (ok) loadDuplicateBanner();
+  });
+}
+
+document.addEventListener("DOMContentLoaded", loadDuplicateBanner);

@@ -31,6 +31,8 @@ minimdm:
       url: https://example.com/hooks/minimdm
     - event: record.retired
       url: https://example.com/hooks/minimdm
+  duplicates:
+    rescan: <on_rule_change|manual>      # optional, default on_rule_change
   schemas:
     <schema_name>:
       objects:
@@ -53,6 +55,12 @@ minimdm:
             - name: <source_system_name>
               field_map:
                 <source_field>: <minimdm_field_or_system_column>
+          duplicates:                    # optional, see Duplicate Detection
+            dismissed_by: <editor|publisher>
+            rules:
+              - name: <rule name, optional>
+                fields: [<attribute_key>, ...]
+                normalize: <text|digits>
 ```
 
 ### Attribute Types
@@ -222,6 +230,94 @@ and `rows` (per-row detail including `_validation_status`) alongside the existin
 recomputes it fresh against the data being promoted to `active`. Publishing never blocks on an
 invalid record; the status is informational, visible on the record everywhere it's displayed
 (list view, detail view, Pending Drafts) so a publisher or steward can catch and fix it.
+
+### Duplicate Detection
+
+An object can declare rules that **flag records that look like duplicates of each other**. Duplicate detection only flags: it never blocks a write, merges records, or changes data. Flagged records are listed on the **Duplicates** page, where a user resolves them (retires or deletes the extra record) or marks them as *not a duplicate*.
+
+```yaml
+minimdm:
+  duplicates:
+    rescan: on_rule_change          # or: manual (see Scanning)
+  schemas:
+    crm:
+      objects:
+        contact:
+          name: Contact
+          attributes:
+            email:      {name: Email, type: email}
+            phone:      {name: Phone, type: string}
+            first_name: {name: First name, type: string}
+            last_name:  {name: Last name, type: string}
+            country:    {name: Country, type: string}
+          duplicates:
+            dismissed_by: editor    # editor (default) or publisher
+            rules:
+              - name: Same email
+                fields: [email]
+              - name: Same phone
+                fields: [phone]
+                normalize: digits
+              - name: Same name and country
+                fields: [last_name, first_name, country]
+```
+
+**Object-level keys** (`duplicates:` on an object):
+
+| Key | Default | Description |
+|---|---|---|
+| `rules` | none | List of rules. An object without rules does no duplicate detection and costs nothing. |
+| `dismissed_by` | `editor` | Who may mark flags as *not a duplicate* and reopen them: `editor` means anyone with write access, `publisher` limits it to Publishers. Admins always may. |
+
+**Rule keys:**
+
+| Key | Default | Description |
+|---|---|---|
+| `fields` | required | One or more attribute keys. A rule with several fields matches only when **all** of them match. Reference attributes can be used and are compared by the record they point to. |
+| `name` | the fields joined with ` + ` | Shown on the Duplicates page and in the audit log. Must be unique within the object. |
+| `normalize` | `text` | How text values are made comparable, see below. |
+
+An invalid block (an unknown field, an unknown `normalize` or `dismissed_by` value, a repeated field or rule name) is rejected when the config loads, like other config errors.
+
+**What counts as a match.** Two records match under a rule when every field of the rule has a value and the values are equal after normalising. An empty value never matches, so two records that both lack an email are not duplicates of each other. Text fields (`string`, `text`, `email`) are normalised; every other type is compared exactly:
+
+| Normalizer | Applies to | What it does |
+|---|---|---|
+| `text` (default) | text fields | Ignores case, surrounding and repeated spaces, and punctuation: `ACME  Ltd.` matches `acme ltd`. Punctuation becomes a space rather than disappearing, so `a@bc.com` and `ab@c.com` stay different. Non-ASCII letters are kept; how they are lower-cased follows the database's locale. |
+| `digits` | text fields | Keeps only the digits: `070-123 45 67` matches `(0701) 234567`. For phone numbers and similar identifiers. A value with no digits is empty. |
+| (exact) | integer, numeric, boolean, date, reference | Compared as stored. `1.0` and `1.00` are the same number; dates are compared including their time. |
+
+In a rule that mixes text and other fields, the normalizer applies to the text fields only. To normalise different fields differently, use separate rules.
+
+`unique: true` is not a substitute for a rule, and a rule on a unique field is still useful: `unique` rejects exact repeats among active records only, while a rule also catches `Anna@x.com` against `anna@x.com ` and a new draft whose value matches an active record (which `unique` only rejects when the draft is published).
+
+**What is compared.** Records in state `active` or `draft` that are not deleted. `retired` and deleted records are left out. A golden record and its draft copy are **one record** for this purpose: they never match each other, and a pending draft is compared too, so a record is flagged if either its active version or its pending draft matches another record. New drafts are therefore checked against the active records before they are published.
+
+**When flags are updated.** In the same transaction as the write, on every create, edit, revert, publish, retire, delete, bulk import and inbound push, so a flag is never out of step with the data. Creating or editing a record returns `possible_duplicates` when it matched something (see [Records](#records)).
+
+**Reviewing.** Users with write access to a schema see the **Duplicates** link in the top bar (with the number of open groups), an amber pill beside the object in the sidebar, and a notice on the page of any flagged record. The Duplicates page lists each group with the rule that matched and the records in it; the columns the rule compares are marked in the table heading. From there a user can open a record to retire or delete it, or:
+
+- **Not duplicates** dismisses every record in a group; in a group of three or more, **Not a duplicate of the others** dismisses just one record and keeps the others flagged. A reason is optional, or required when the object has `require_change_reason`.
+- A dismissal holds until the record's matching value changes (the record is then judged on its new value) or another matching record turns up in the group (the new record was never reviewed against the dismissed ones, so they are flagged again).
+- The **Dismissed** tab lists dismissed groups, and **Reopen** undoes a dismissal.
+
+Dismissals and reopenings are recorded in the audit log.
+
+**Scanning.** Flags are kept up to date as records are written, so a scan is only needed when the rules themselves change. A scan rebuilds all flags of an object from its data in one transaction. Dismissals survive it where the same record still matches.
+
+| `minimdm.duplicates.rescan` | Behaviour |
+|---|---|
+| `on_rule_change` (default) | At startup and after `POST /api/config/reload`, every object whose rules changed since it was last scanned (including the first time rules are added) is scanned automatically in the background. Objects that need nothing cost nothing. |
+| `manual` | Nothing is scanned automatically. The server logs which objects are out of date, the Duplicates page shows a banner, and an Admin presses **Rescan**. |
+
+An Admin can start a scan at any time with the **Rescan** button on the Duplicates page, which shows how many records it will read and how long the last scan took (`POST /api/duplicates/{schema}/{obj}/rescan`). Other things to know:
+
+- **Large imports.** A bulk import of up to 500 rows is checked row by row inside the import. A bigger one is committed first and one scan runs in the background afterwards, so the import itself stays short; the import response says which (`duplicate_check`). If the server stops before that scan has run, the request is remembered and picked up at the next start.
+- **Interrupted scans.** A scan that is stopped part-way (the server is restarted or killed) changes nothing and still counts as outstanding, so it is repeated: automatically at the next start, or by the banner and button in `manual` mode.
+- **One at a time.** Scans of the same object never run simultaneously.
+- **Audit.** Every completed scan writes one `DUPLICATE_SCAN` audit entry (see [Audit Log](#audit-log)); the entry's time is when it finished.
+
+**Storage and cost.** Flags live in `_system.duplicate_flags` (one row per flagged record, rule and match; managed by Alembic migration 0004), and the last scan of each object in `_system.duplicate_scans`. Matching uses one partial expression index per rule on the object's own table (named `ix_dup_<hash>`, created at startup and dropped again when a rule is removed or changed), plus an index on `_draft_of_id`. Measured on PostgreSQL 16 with two rules: creating the indexes takes about 0.7 s per 100,000 records and 8 s per million, and runs during startup; a full scan takes about 1 s per 100,000 records and 12 s per million; checking one written record takes about 10 to 25 ms. See [known_issues.md](known_issues.md#duplicate-detection-flags-matches-and-does-not-decide) for the limits of the design.
 
 ### Governance Metadata
 
@@ -406,11 +502,16 @@ All changes are recorded in `_system.audit_log`:
 | `schema_name` | Schema of the changed object |
 | `object_name` | Object key |
 | `record_id` | UUID of the changed record |
-| `action` | `INSERT` / `UPDATE` / `DELETE` / `REVERT` / `PUBLISH` / `RETIRE` / `VALIDATION_OVERRIDE` |
+| `action` | `INSERT` / `UPDATE` / `DELETE` / `REVERT` / `PUBLISH` / `RETIRE` / `VALIDATION_OVERRIDE` / `DUPLICATE_DISMISSED` / `DUPLICATE_REOPENED` / `DUPLICATE_SCAN` |
 | `old_values` | JSON snapshot before change |
 | `new_values` | JSON snapshot after change |
 | `reason` | Optional reason provided by the user |
 | `ip_address` | Client IP address |
+
+The duplicate-detection actions record:
+
+- `DUPLICATE_DISMISSED` and `DUPLICATE_REOPENED`: one entry per flag, with `record_id` set to the flagged record, `new_values` holding `status`, `rule` and the normalised `value` that matched, and the reason if one was given. They appear with the object's other data changes.
+- `DUPLICATE_SCAN`: one entry per **completed** scan, a system event like the inbound-key actions (`schema_name` is `_system`, `object_name` is `duplicate_scan`, `record_id` is the all-zero UUID). `user_name` is the Admin who pressed Rescan, the user who ran the import, or `system`. `new_values` holds `schema`, `object`, `trigger` (`manual`, `startup`, `config_reload` or `import`), `record_count`, `groups` and `duration_ms`; `reason` is a readable summary. The entry's `timestamp` is when the scan finished, so it started `duration_ms` earlier. Scans that were interrupted or skipped write nothing. In the UI these appear on the Auth Events tab.
 
 ## Authentication
 
@@ -531,6 +632,17 @@ When setting a permission, the body may include any combination of these flags. 
 ```
 The returned `id` is the new draft's UUID. The original active record UUID is unchanged.
 
+**Possible duplicates.** When the object has [duplicate rules](#duplicate-detection) and the saved record matched another record, the create and update responses also contain `possible_duplicates`. The key is absent when nothing matched, so existing clients see no change:
+```json
+{
+  "id": "<uuid>", "...": "...",
+  "possible_duplicates": [
+    { "rule": "Same email", "value": "anna x com", "matches": ["<record-uuid>"] }
+  ]
+}
+```
+`matches` holds the ids of the other records in the group (for a record that has a draft copy, the id of its golden record); `value` is the normalised form that matched, kept for reference rather than display. The save is never refused because of a match.
+
 **Publish response:**
 ```json
 { "id": "<active-uuid>", "published": true }
@@ -569,7 +681,7 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 {
   "schemas": {
     "mycompany": {
-      "supplier": { "active": 1240, "pending": 3 },
+      "supplier": { "active": 1240, "pending": 3, "duplicates": 2 },
       "customer": { "active": 87,   "pending": 0 }
     }
   }
@@ -578,6 +690,7 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 
 - `active` — records in state `active` (the golden records). Draft, retired and soft-deleted records are not counted.
 - `pending` — records in state `draft` (soft-deleted ones excluded). **Only present for schemas where the caller has Publisher access** (admins have it everywhere); Viewers and Editors get `active` only.
+- `duplicates` — the number of open [duplicate](#duplicate-detection) groups. **Only present for objects that have duplicate rules, and only for schemas where the caller has write access** (admins everywhere). Flags left over from rules that were later removed are not counted.
 - Schemas the caller cannot read are omitted. Editing an active record creates a draft copy, so such an object counts once under `active` and once under `pending`.
 - The UI formats the numbers with the browser's locale (so `1,240` or `1 240`, depending on the user) and abbreviates numbers above 99,999 (`250K`).
 
@@ -595,6 +708,73 @@ The returned `id` is the new draft's UUID. The original active record UUID is un
 - `states` — live (not deleted) records per lifecycle state. These are the numbers `GET /api/records/{schema}/{object}?state=<state>` returns as `total`; the **All states** tab is their sum.
 - `deleted` — soft-deleted records per state (the state they had when deleted), i.e. what `include_deleted=true` adds to each state. Edit drafts that the publish workflow soft-deleted are not counted, matching what **Show deleted** reveals.
 - The counts cover the whole object and ignore `search` and `source_system`. In the UI, **Show deleted (N)** shows the `deleted` number for the selected tab (the sum for **All states**).
+
+### Duplicates
+
+Endpoints behind the Duplicates page. They need **write access** to the schema (Editor, Publisher or Admin); Viewers and users without access get `403`, an unknown object `404`. See [Duplicate Detection](#duplicate-detection) for the rules and semantics.
+
+| Method | Path | Role required | Description |
+|---|---|---|---|
+| `GET` | `/api/duplicates/{schema}/{obj}` | Editor | List flagged groups with their records |
+| `GET` | `/api/duplicates/{schema}/{obj}/record/{id}` | Editor | The open groups one record is flagged in (a draft copy's id resolves to its golden record). Used for the notice on the record page |
+| `POST` | `/api/duplicates/{schema}/{obj}/dismiss` | Editor, or Publisher if the object sets `dismissed_by: publisher` | Mark flags as *not a duplicate* |
+| `POST` | `/api/duplicates/{schema}/{obj}/reopen` | same as dismiss | Undo a dismissal |
+| `GET` | `/api/duplicates/{schema}/{obj}/scan` | Editor | Scan status |
+| `POST` | `/api/duplicates/{schema}/{obj}/rescan` | Admin | Start a scan of the object in the background |
+
+**List** (`GET /api/duplicates/{schema}/{obj}`) takes `status=open` (default) or `dismissed`, `limit` (1 to 200, default 50) and `offset`. `open` lists the groups that still have two or more open records; `dismissed` lists the groups that contain a dismissed record, so it can be reopened.
+
+```json
+{
+  "status": "open",
+  "rules": ["Same email", "Same phone"],
+  "total": 1,
+  "counts": { "open": 1, "dismissed": 0 },
+  "limit": 50, "offset": 0,
+  "can_dismiss": true,
+  "groups": [
+    {
+      "rule": "Same email",
+      "fields": ["email"],
+      "value": "anna x com",
+      "match_hash": "…",
+      "members": [
+        {
+          "flag_id": "<uuid>", "entity_id": "<record-uuid>", "status": "open",
+          "dismissed_by": null, "dismissed_at": null, "dismiss_reason": null,
+          "has_draft": false,
+          "record": { "_id": "<record-uuid>", "_state": "active", "email": "Anna@x.com", "...": "..." }
+        }
+      ]
+    }
+  ]
+}
+```
+
+- `total` is the number of groups with the requested status; `counts` gives both numbers whichever status is listed.
+- `fields` names the attributes the rule compares. `value` is the normalised form that matched (for reference, never for display); show the records' own values.
+- `entity_id` is the record's id, or for a record that has a pending draft copy the golden record's id (`has_draft` is then true); open it at `/{schema}/{obj}/{entity_id}`. Members are ordered oldest first.
+- `can_dismiss` says whether the caller may dismiss or reopen under the object's `dismissed_by`.
+- Flags of rules that were removed from the config are left out.
+
+**Dismiss and reopen** take `{"flag_ids": ["<uuid>", ...], "reason": "…"}` (1 to 500 ids; `reason` optional, or required when the object has `require_change_reason`) and return `{"changed": n}`. Pass one member's `flag_id` to dismiss just that record, or all of a group's. Flags that already have the requested status are not counted, so repeating a call returns `{"changed": 0}`. `404` means none of the ids belong to this object; `403` means the caller is not allowed to dismiss under `dismissed_by`. Each changed flag writes a `DUPLICATE_DISMISSED` or `DUPLICATE_REOPENED` audit entry.
+
+**Scan status** (`GET .../scan`):
+
+```json
+{
+  "has_rules": true,
+  "running": false,
+  "needs_rescan": false,
+  "rescan_mode": "on_rule_change",
+  "record_count": 873,
+  "last_scan": { "scanned_at": "2026-11-08T13:00:30+00:00", "record_count": 870, "duration_ms": 8 }
+}
+```
+
+`needs_rescan` is true when the object's rules changed since the last scan or a scan was requested but never finished. `record_count` is how many records a new scan would read (`null` while a scan is running, or for an object without rules). `last_scan` is `null` if the object was never scanned.
+
+**Rescan** (`POST .../rescan`) answers `202 {"status": "started"}` and runs in the background; poll the status endpoint to follow it. It returns `409` if a scan of the object is already running and `422` if the object has no duplicate rules. The scan writes a `DUPLICATE_SCAN` audit entry when it completes.
 
 ### Inbound Webhooks
 
@@ -644,7 +824,7 @@ Content-Type: application/json
 |---|---|---|
 | `schema` | — | Filter by schema name (use `_system` for auth events) |
 | `obj` | — | Filter by object key within the schema |
-| `action` | — | Filter by action: `INSERT`, `UPDATE`, `DELETE`, `REVERT`, `PUBLISH`, `RETIRE`, `VALIDATION_OVERRIDE`, `LOGIN`, `LOGIN_FAILED`, `LOGOUT` |
+| `action` | — | Filter by action: `INSERT`, `UPDATE`, `DELETE`, `REVERT`, `PUBLISH`, `RETIRE`, `VALIDATION_OVERRIDE`, `DUPLICATE_DISMISSED`, `DUPLICATE_REOPENED`, `DUPLICATE_SCAN`, `LOGIN`, `LOGIN_FAILED`, `LOGOUT` |
 | `from_time` | — | ISO 8601 datetime — include entries at or after this time |
 | `to_time` | — | ISO 8601 datetime — include entries at or before this time |
 | `exclude_system` | `false` | When `true`, omit entries from system schemas (schema name starts with `_`) |
@@ -715,6 +895,8 @@ validation rule without a follow-up query:
   ]
 }
 ```
+
+For an object with [duplicate rules](#duplicate-detection) the response also has `duplicate_check`: `"inline"` when the rows were checked one by one during the import (up to 500 rows), or `"rescan_scheduled"` when the import was committed first and a scan of the object runs in the background afterwards. The key is absent for objects without rules.
 
 > **Note:** CSV/TSV/JSON import files must be UTF-8 encoded. Files in another encoding (e.g. Excel's Windows-1252 "CSV" or UTF-16 "Unicode Text" export) are rejected with HTTP 400 — re-save as "CSV UTF-8" or convert with `iconv` first. See `docs/troubleshooting.md`.
 

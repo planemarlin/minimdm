@@ -17,6 +17,19 @@ minimdm:
   #   - event: record.retired
   #     url: https://example.com/hooks/minimdm
 
+  # --- Duplicate detection (optional) ---
+  # Objects can flag records that look like duplicates of each other; see the
+  # `duplicates:` block on the supplier and product objects below. This setting only
+  # decides when miniMDM rescans an object after its duplicate rules changed (or were
+  # added for the first time):
+  #   on_rule_change  (default) rescan automatically in the background, at startup and
+  #                   after a config reload
+  #   manual          never automatically; an Admin presses Rescan on the Duplicates page
+  # Normal edits, imports and inbound pushes keep the flags up to date either way.
+  #
+  # duplicates:
+  #   rescan: on_rule_change
+
   schemas:
     # Replace 'mycompany' with a short identifier for your organisation or domain.
     # You can define multiple schemas in the same file.
@@ -50,6 +63,24 @@ minimdm:
             active:
               name: Active
               type: boolean
+          # Flag suppliers that look like the same company. Nothing is merged or blocked:
+          # possible duplicates are listed on the Duplicates page, where an Editor can
+          # retire one of them or mark them as "not a duplicate".
+          #
+          # A rule matches when ALL of its fields are filled in and equal after
+          # normalising; an empty value never matches. `unique` only stops exact repeats,
+          # a rule also catches "ACME@x.com" against "acme@x.com ".
+          #   normalize: text    (default) ignores case, spacing and punctuation
+          #   normalize: digits  keeps only the digits, for phone numbers
+          # dismissed_by: editor (default) lets anyone with write access dismiss a flag;
+          #   publisher limits that to Publishers.
+          duplicates:
+            dismissed_by: editor
+            rules:
+              - name: Same contact email
+                fields: [email]
+              - name: Same name and country
+                fields: [name, country]
 
         # --- Product Category ---
         # A standalone object used as a parent for products.
@@ -102,6 +133,14 @@ minimdm:
             preferred_supplier:
               name: Preferred Supplier
               reference: supplier
+          # New products start as drafts, and drafts are compared with active products too,
+          # so a duplicate is flagged before it is published. Only Publishers may mark a
+          # pair of products as "not a duplicate".
+          duplicates:
+            dismissed_by: publisher
+            rules:
+              - name: Same product name
+                fields: [name]
 
         # inbound_sources enables external systems to push records via
         # POST /api/inbound/{schema}/{object} authenticated with an API key

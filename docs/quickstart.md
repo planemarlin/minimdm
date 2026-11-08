@@ -118,6 +118,35 @@ curl -H "Authorization: Bearer <token>" \
   http://localhost:8000/api/audit?schema=mycompany&obj=supplier
 ```
 
+## 9. Find Duplicates
+
+miniMDM can flag records that look like duplicates of each other, such as the same email written in two ways. Add a `duplicates:` block with rules to an object in your config file:
+
+```yaml
+        supplier:
+          name: Supplier
+          attributes:
+            name:    {name: Supplier Name, type: string}
+            country: {name: Country, type: string}
+            email:   {name: Contact Email, type: email}
+          duplicates:
+            rules:
+              - name: Same contact email
+                fields: [email]
+              - name: Same name and country
+                fields: [name, country]
+```
+
+Restart miniMDM (or reload the config as an admin). The first start scans the existing records in the background. From then on every create, edit, import and inbound push is checked as it is saved. Nothing is ever blocked or merged: a record that matches another is simply flagged.
+
+To see it work, create two suppliers with the emails `Anna@x.com` and `anna@x.com ` (case and spacing are ignored). You will then see:
+
+- a **Duplicates** link in the top bar and an amber number beside *Supplier* in the sidebar (for anyone with write access),
+- a yellow notice at the top of each of the two records, and
+- both records, side by side, on the **Duplicates** page.
+
+There, click **Not duplicates** if they really are different records, or open one of them and retire or delete it if they are the same. A dismissal holds until one of the values changes or a third matching record appears. See [Duplicate Detection](reference.md#duplicate-detection) for the rules, the options and what is compared.
+
 ## API Documentation
 
 Explore all endpoints interactively at `http://localhost:8000/docs`.

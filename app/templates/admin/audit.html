@@ -44,6 +44,8 @@
         <option value="RETIRE">RETIRE — Active record retired</option>
         <option value="DRAFT_CREATED">DRAFT_CREATED — Draft copy created for editing</option>
         <option value="REVERT">REVERT — Record reverted to earlier version</option>
+        <option value="DUPLICATE_DISMISSED">DUPLICATE_DISMISSED — Marked as not a duplicate</option>
+        <option value="DUPLICATE_REOPENED">DUPLICATE_REOPENED — Dismissal undone</option>
       </select>
     </div>
     <div class="mdm-search">
@@ -100,6 +102,9 @@
       <optgroup label="Permissions">
         <option value="PERMISSION_GRANTED">PERMISSION_GRANTED — Schema access granted</option>
         <option value="PERMISSION_REVOKED">PERMISSION_REVOKED — Schema access revoked</option>
+      </optgroup>
+      <optgroup label="Duplicate detection">
+        <option value="DUPLICATE_SCAN">DUPLICATE_SCAN — Duplicate scan completed</option>
       </optgroup>
       <optgroup label="Inbound keys">
         <option value="INBOUND_KEY_CREATED">INBOUND_KEY_CREATED — Inbound API key generated</option>

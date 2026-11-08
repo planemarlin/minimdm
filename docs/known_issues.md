@@ -15,6 +15,21 @@ Design decisions that are deliberate, and open issues that are not fixed yet. An
 ### The Docker image installs the `dev` dependency group
 **Decision:** The `Dockerfile` runs `uv export --frozen --no-emit-project` without `--no-dev`, so dev-only packages — pytest, Playwright and their dependencies — are present in the image although the app never imports them. This is deliberate: the full test suite is run inside the image against the compose database. If a slimmer production image is wanted, add `--no-dev` to the `uv export` and run Docker tests from a separate build target.
 
+### Duplicate detection flags matches and does not decide
+**Decision:** [Duplicate detection](reference.md#duplicate-detection) only flags records that look alike. It never blocks a save, merges records, picks a surviving value or changes data; a person resolves a flag by retiring or deleting a record, or by dismissing it. Matching is exact after normalisation (case, spacing and punctuation for text, digits only for phone numbers), so spelling variants such as `Jon` and `John` are not found. Retired and deleted records are not compared, and a golden record and its pending draft count as one record. Merge tooling, survivorship rules and similarity or ML matching would turn a lightweight register into a mastering engine and are out of scope; an installation that needs them should do that matching outside miniMDM. Rules are written by the person who owns the config, so a rule that matches too much simply produces more flags to dismiss.
+
+### Concurrent writes of the same new value can miss each other
+**Decision:** The duplicate check for a record runs inside the request that writes it, and does not take locks. If two requests write the same new value at the same moment, neither can see the other's uncommitted row, so both can finish without flagging the pair. A **Rescan** on the Duplicates page finds it. Preventing this would mean holding a lock on the matching value until commit, which makes a long bulk import block every other writer that touches the same values and can deadlock two overlapping imports; for a flag, as opposed to a unique constraint, that cost was judged not worth paying.
+
+### Large imports are checked after the import, not during it
+**Decision:** Checking a record costs roughly 10 to 25 ms, which adds minutes to an import of tens of thousands of rows. A bulk import of up to 500 rows is checked row by row; a bigger one is committed first and one set-based scan of the object runs in the background afterwards (about 12 s per million records, regardless of the import's size). Duplicates introduced by a large import are therefore flagged a moment after it finishes, not as it runs; the import response says which mode was used (`duplicate_check`). If the server stops before the scan has run, the request is stored with the imported rows and the next start repeats it.
+
+### Duplicate indexes are built while the application starts
+**Decision:** Each duplicate rule is backed by an index on the object's table, created in `sync_schema()` at startup (and dropped when the rule is removed or changed). Building it takes about 8 s per million records and delays startup by that long, once, when a rule is first added or changed. It is not created `CONCURRENTLY`, which cannot run in that transaction, and the table is not writable while the build runs. Plan the first start after adding a rule to a very large object accordingly; later starts find the index and skip it.
+
+### Lower-casing of non-ASCII text follows the database locale
+**Decision:** The `text` normaliser lower-cases with PostgreSQL's `lower()`, which depends on the database's locale. Under a UTF-8 locale (the Docker image and most installations) `Éva` and `éva` match; in a database created with the `C` locale only ASCII letters are folded, so they do not. Punctuation is matched by an explicit character list instead, so that part does not depend on the locale.
+
 ---
 
 ## Open Issues

@@ -79,6 +79,61 @@ SAMPLE_CONFIG = {
                         "code": {"name": "Code", "type": "string", "required": True, "unique": False, "reference": None},  # noqa: E501
                     },
                 },
+                # Duplicate detection test objects — see tests/test_api_duplicates.py
+                "dup_item": {
+                    "name": "Dup Item",
+                    "description": "Duplicate rules on email and phone; writes go straight to active",  # noqa: E501
+                    "parent": None,
+                    "attributes": {
+                        "code": {"name": "Code", "type": "string"},
+                        "email": {"name": "Email", "type": "email"},
+                        "phone": {"name": "Phone", "type": "string"},
+                        "qty": {"name": "Qty", "type": "integer"},
+                    },
+                    "duplicates": {
+                        "dismissed_by": "editor",
+                        "rules": [
+                            {"name": "Same email", "fields": ["email"], "normalize": "text"},
+                            {"name": "Same phone", "fields": ["phone"], "normalize": "digits"},
+                        ],
+                    },
+                    "inbound_sources": [
+                        {
+                            "name": "test_erp",
+                            "field_map": {"erp_id": "_source_id", "mail": "email", "tel": "phone"},
+                            "match_key": None,
+                        }
+                    ],
+                },
+                "dup_governed_item": {
+                    "name": "Dup Governed Item",
+                    "description": "Duplicate rule on email; requires_draft so every record starts as a draft",  # noqa: E501
+                    "parent": None,
+                    "requires_draft": True,
+                    "attributes": {
+                        "email": {"name": "Email", "type": "email"},
+                    },
+                    "duplicates": {
+                        "dismissed_by": "publisher",
+                        "rules": [
+                            {"name": "Same email", "fields": ["email"], "normalize": "text"},
+                        ],
+                    },
+                },
+                "dup_audited_item": {
+                    "name": "Dup Audited Item",
+                    "description": "Duplicate rule on email; every change needs a reason",
+                    "parent": None,
+                    "require_change_reason": True,
+                    "attributes": {
+                        "email": {"name": "Email", "type": "email"},
+                    },
+                    "duplicates": {
+                        "rules": [
+                            {"name": "Same email", "fields": ["email"], "normalize": "text"},
+                        ],
+                    },
+                },
                 # Config-based validation rules test object — see tests/test_validation_rules.py
                 "validation_demo": {
                     "name": "Validation Demo",
@@ -205,7 +260,18 @@ def clean_records(client):
         conn.execute(text('DELETE FROM "test"."reference_data"'))
         conn.execute(text('DELETE FROM "test"."validation_demo_history"'))
         conn.execute(text('DELETE FROM "test"."validation_demo"'))
+        conn.execute(text('DELETE FROM "test"."dup_item_history"'))
+        conn.execute(text('DELETE FROM "test"."dup_item"'))
+        conn.execute(text('DELETE FROM "test"."dup_governed_item_history"'))
+        conn.execute(text('DELETE FROM "test"."dup_governed_item"'))
+        conn.execute(text('DELETE FROM "test"."dup_audited_item_history"'))
+        conn.execute(text('DELETE FROM "test"."dup_audited_item"'))
+        conn.execute(text("DELETE FROM _system.duplicate_flags WHERE schema_name = 'test'"))
+        conn.execute(text("DELETE FROM _system.duplicate_scans WHERE schema_name = 'test'"))
         conn.execute(text("DELETE FROM _system.audit_log WHERE schema_name = 'test'"))
+        conn.execute(text(
+            "DELETE FROM _system.audit_log WHERE action = 'DUPLICATE_SCAN' "
+            "AND new_values->>'schema' = 'test'"))
         conn.commit()
     yield
 

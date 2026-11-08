@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.import_export import _inbound_upsert
 from app.config import settings
 from app.core import audit as audit_svc
+from app.core import duplicates as duplicates_svc
 from app.core.keys import hash_api_key
 from app.core.limiter import limiter
 from app.database import get_db
@@ -199,6 +200,15 @@ async def receive_inbound(
         # is a bad request from the source system, not a server error.
         db.rollback()
         raise HTTPException(422, str(e)) from e
+
+    # record_id is the row that was written, which may be a draft copy: its entity is
+    # the golden record it belongs to.
+    written = db.execute(
+        select(table.c._id, table.c._draft_of_id).where(table.c._id == record_id)
+    ).first()
+    duplicates_svc.refresh_entity(
+        db, schema, obj, obj_config, (written[1] or written[0]) if written else record_id
+    )
     db.commit()
     _log_inbound_call(request, source_name, schema, obj, status)
 

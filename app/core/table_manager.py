@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     Numeric,
     Table,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy import (
@@ -21,6 +23,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.engine import Engine
+
+from app.core import duplicates
 
 TYPE_MAP = {
     "string": Text,
@@ -89,6 +93,8 @@ class TableManager:
 
         self._ensure_audit_log_table()
         self._ensure_inbound_keys_table()
+        self._ensure_duplicate_flags_table()
+        self._ensure_duplicate_scans_table()
 
         # Add any new columns to existing tables before create_all runs.
         self._alter_existing_tables()
@@ -98,6 +104,9 @@ class TableManager:
 
         # Add FK and UNIQUE constraints to tables that already existed.
         self._ensure_constraints()
+
+        # Expression indexes behind the duplicate-detection rules.
+        duplicates.sync_indexes(self.engine, config)
 
     def get_table(self, schema: str, obj: str) -> Table:
         key = f"{schema}.{obj}"
@@ -113,6 +122,12 @@ class TableManager:
 
     def get_inbound_keys_table(self) -> Table:
         return self.get_table("_system", "inbound_keys")
+
+    def get_duplicate_flags_table(self) -> Table:
+        return self.get_table("_system", "duplicate_flags")
+
+    def get_duplicate_scans_table(self) -> Table:
+        return self.get_table("_system", "duplicate_scans")
 
     def get_inbound_sources(self, schema: str, obj: str) -> list[dict]:
         """Return the inbound_sources list for a given schema/object, or []."""
@@ -303,6 +318,69 @@ class TableManager:
             table.c.schema_name,
             table.c.is_active,
         )
+        self._tables[table_key] = table
+        return table
+
+    def _ensure_duplicate_flags_table(self) -> Table:
+        """Mirror of migration 0004's `_system.duplicate_flags` (keep the two in step)."""
+        table_key = "_system.duplicate_flags"
+        if table_key in self._tables:
+            return self._tables[table_key]
+
+        columns = [
+            Column("id", PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4),
+            Column("schema_name", Text, nullable=False),
+            Column("object_name", Text, nullable=False),
+            Column("rule_name", Text, nullable=False),
+            Column("entity_id", PGUUID(as_uuid=True), nullable=False),
+            Column("match_hash", Text, nullable=False),
+            Column("match_value", Text, nullable=True),
+            # No server_default here on purpose: _alter_existing_tables() would run a
+            # backfill UPDATE over this table on every start. Code always sets status.
+            Column("status", Text, nullable=False),
+            Column("created_at", DateTime(timezone=True), nullable=False),
+            Column("updated_at", DateTime(timezone=True), nullable=False),
+            Column("dismissed_by", Text, nullable=True),
+            Column("dismissed_at", DateTime(timezone=True), nullable=True),
+            Column("dismiss_reason", Text, nullable=True),
+        ]
+
+        table = Table(
+            "duplicate_flags", self.metadata, *columns,
+            UniqueConstraint(
+                "schema_name", "object_name", "rule_name", "entity_id", "match_hash",
+                name="uq_duplicate_flags_member",
+            ),
+            CheckConstraint("status IN ('open', 'dismissed')", name="ck_duplicate_flags_status"),
+            schema="_system",
+        )
+        Index(
+            "ix_duplicate_flags_group",
+            table.c.schema_name, table.c.object_name, table.c.rule_name, table.c.match_hash,
+        )
+        Index(
+            "ix_duplicate_flags_entity",
+            table.c.schema_name, table.c.object_name, table.c.entity_id,
+        )
+        self._tables[table_key] = table
+        return table
+
+    def _ensure_duplicate_scans_table(self) -> Table:
+        """Mirror of migration 0004's `_system.duplicate_scans` (keep the two in step)."""
+        table_key = "_system.duplicate_scans"
+        if table_key in self._tables:
+            return self._tables[table_key]
+
+        columns = [
+            Column("schema_name", Text, primary_key=True),
+            Column("object_name", Text, primary_key=True),
+            Column("rules_fingerprint", Text, nullable=False),
+            Column("record_count", Integer, nullable=True),
+            Column("duration_ms", Integer, nullable=True),
+            Column("scanned_at", DateTime(timezone=True), nullable=False),
+            Column("rescan_requested_at", DateTime(timezone=True), nullable=True),
+        ]
+        table = Table("duplicate_scans", self.metadata, *columns, schema="_system")
         self._tables[table_key] = table
         return table
 

@@ -36,6 +36,12 @@ _TYPE_GROUPS = {
 }
 
 
+# Duplicate-detection config (see `duplicates:` in the example config).
+DUPLICATE_NORMALIZERS = ("text", "digits")
+DUPLICATE_DISMISSED_BY = ("editor", "publisher")
+DUPLICATE_RESCAN_MODES = ("on_rule_change", "manual")
+
+
 def _validate_identifier(value: str, context: str) -> None:
     if not _IDENTIFIER_RE.fullmatch(value):
         raise ValueError(
@@ -79,6 +85,44 @@ def _parse_inbound_sources(raw_list: list) -> list:
             _validate_identifier(match_key, "inbound_sources.match_key")
         sources.append({"name": name, "field_map": dict(field_map), "match_key": match_key})
     return sources
+
+
+def _parse_duplicates(raw, context: str) -> dict:
+    """Parse an object's `duplicates` block into `{"dismissed_by", "rules"}`.
+
+    Structural problems raise ValueError (like `inbound_sources`); values that must
+    come from a fixed set, or name attributes, are checked by `validate_config`.
+    Every object gets the same shape, with an empty rule list when none are configured.
+    """
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"[{context}] 'duplicates' must be a mapping.")
+    rules_raw = raw.get("rules") or []
+    if not isinstance(rules_raw, list):
+        raise ValueError(f"[{context}] 'duplicates.rules' must be a list.")
+
+    rules = []
+    for entry in rules_raw:
+        if not isinstance(entry, dict):
+            raise ValueError(f"[{context}] each 'duplicates.rules' entry must be a mapping.")
+        fields = entry.get("fields")
+        if (
+            not isinstance(fields, list)
+            or not fields
+            or not all(isinstance(f, str) for f in fields)
+        ):
+            raise ValueError(
+                f"[{context}] each 'duplicates.rules' entry needs a non-empty 'fields' list."
+            )
+        for field in fields:
+            _validate_identifier(field, f"{context}.duplicates.rules.fields")
+        rules.append({
+            "name": str(entry.get("name") or " + ".join(fields)),
+            "fields": list(fields),
+            "normalize": entry.get("normalize", "text"),
+        })
+    return {"dismissed_by": raw.get("dismissed_by", "editor"), "rules": rules}
 
 
 def _normalize(raw: dict) -> dict:
@@ -159,6 +203,9 @@ def _normalize(raw: dict) -> dict:
                 "inbound_sources": _parse_inbound_sources(
                     obj_body.get("inbound_sources", [])
                 ),
+                "duplicates": _parse_duplicates(
+                    obj_body.get("duplicates"), f"{schema_name}.{obj_key}"
+                ),
             }
 
         schemas[schema_name] = {"objects": objects}
@@ -180,13 +227,64 @@ def _normalize(raw: dict) -> dict:
             )
         webhooks.append({"event": str(event), "url": str(url)})
 
-    return {"schemas": schemas, "webhooks": webhooks}
+    duplicates_raw = raw.get("duplicates") or {}
+    if not isinstance(duplicates_raw, dict):
+        raise ValueError("'duplicates' must be a mapping.")
+    duplicates = {"rescan": duplicates_raw.get("rescan", "on_rule_change")}
+
+    return {"schemas": schemas, "webhooks": webhooks, "duplicates": duplicates}
+
+
+def _duplicate_errors(schema_name: str, obj_key: str, obj_body: dict) -> list[str]:
+    """Validate one object's `duplicates` block (dismissed_by, rule names/fields/normalize)."""
+    errors = []
+    dup = obj_body.get("duplicates") or {}
+    where = f"[{schema_name}.{obj_key}.duplicates]"
+
+    dismissed_by = dup.get("dismissed_by", "editor")
+    if dismissed_by not in DUPLICATE_DISMISSED_BY:
+        errors.append(
+            f"{where} dismissed_by '{dismissed_by}' is invalid"
+            f" (must be {' or '.join(DUPLICATE_DISMISSED_BY)})"
+        )
+
+    attrs = obj_body.get("attributes", {})
+    seen_names = set()
+    for rule in dup.get("rules", []):
+        name = rule.get("name", "")
+        rule_where = f"[{schema_name}.{obj_key}.duplicates.{name}]"
+        if name in seen_names:
+            errors.append(f"{where} duplicate rule name '{name}'")
+        seen_names.add(name)
+
+        normalize = rule.get("normalize", "text")
+        if normalize not in DUPLICATE_NORMALIZERS:
+            errors.append(
+                f"{rule_where} normalize '{normalize}' is invalid"
+                f" (must be {' or '.join(DUPLICATE_NORMALIZERS)})"
+            )
+
+        seen_fields = set()
+        for field in rule.get("fields", []):
+            if field not in attrs:
+                errors.append(f"{rule_where} field '{field}' not found in attributes")
+            if field in seen_fields:
+                errors.append(f"{rule_where} field '{field}' is listed more than once")
+            seen_fields.add(field)
+    return errors
 
 
 def validate_config(config: dict) -> list[str]:
     """Validate config references and return a list of error strings (empty = valid)."""
     errors = []
     schemas = config.get("schemas", {})
+
+    rescan = (config.get("duplicates") or {}).get("rescan", "on_rule_change")
+    if rescan not in DUPLICATE_RESCAN_MODES:
+        errors.append(
+            f"[duplicates] rescan '{rescan}' is invalid"
+            f" (must be {' or '.join(DUPLICATE_RESCAN_MODES)})"
+        )
 
     for schema_name, schema_body in schemas.items():
         objects = schema_body.get("objects", {})
@@ -259,6 +357,8 @@ def validate_config(config: dict) -> list[str]:
                         f"[{schema_name}.{obj_key}.{attr_key}]"
                         f" char_class only applies to string, text, or email attributes"
                     )
+
+            errors.extend(_duplicate_errors(schema_name, obj_key, obj_body))
 
             valid_targets = set(obj_body.get("attributes", {}).keys()) | {"_source_id"}
             seen_source_names = set()

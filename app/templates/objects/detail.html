@@ -44,6 +44,14 @@
   </div>
 </div>
 
+{% if can_write and (obj_config.get('duplicates') or {}).get('rules') %}
+{% set label = namespace(key='') %}
+{% for k, a in (obj_config.get('attributes') or {}).items() %}{% if not label.key and not a.get('reference') %}{% set label.key = k %}{% endif %}{% endfor %}
+<div id="duplicate-banner" hidden
+     data-schema="{{ schema }}" data-obj="{{ obj }}" data-record="{{ record_id }}"
+     data-label-key="{{ label.key }}" data-require-reason="{{ 1 if obj_config.get('require_change_reason') else 0 }}"></div>
+{% endif %}
+
 <div class="mdm-card">
   <div class="mdm-card-head">
     <div class="mdm-card-title">Attributes</div>
