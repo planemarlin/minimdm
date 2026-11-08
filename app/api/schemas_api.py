@@ -1,10 +1,11 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from sqlalchemy import func, literal, select, union_all
+from sqlalchemy import func, literal, select, text, union_all
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.core import duplicates as duplicates_svc
 from app.core.permissions import (
     get_accessible_schemas,
     get_publishable_schemas,
@@ -110,6 +111,7 @@ def reload_config(request: Request):
     tm = request.app.state.table_manager
     tm.sync_schema(config)
     request.app.state.app_config = config
+    duplicates_svc.start_auto_rescan(tm.engine, config, trigger="config_reload")
 
     return {"status": "ok", "message": "Config reloaded successfully"}
 
@@ -177,15 +179,17 @@ def pending_draft_count(request: Request):
     description=(
         "Returns the number of active (golden) records for every object in the schemas "
         "the current user can read. Users with publish access to a schema (and admins) "
-        "also get the number of pending drafts per object. Soft-deleted records are "
-        "never counted."
+        "also get the number of pending drafts per object. Users with write access to a "
+        "schema get the number of open duplicate groups for objects that have duplicate "
+        "rules. Soft-deleted records are never counted."
     ),
 )
 def object_counts(request: Request):
     """Counts for the sidebar and the home page cards.
 
-    Shape: ``{"schemas": {schema: {object: {"active": n, "pending": n}}}}`` — the
-    ``pending`` key is present only where the user may publish.
+    Shape: ``{"schemas": {schema: {object: {"active": n, "pending": n, "duplicates": n}}}}``
+    — ``pending`` is present only where the user may publish, ``duplicates`` only for
+    objects with duplicate rules in schemas where the user may write.
     """
     tm = request.app.state.table_manager
     user = getattr(request.state, "current_user", None)
@@ -195,10 +199,12 @@ def object_counts(request: Request):
     if user.get("is_admin"):
         readable = set(tm.list_schemas())
         publishable = readable
+        writable = readable
     else:
         perms = get_user_permissions(tm.engine, user["user_id"])
         readable = {p["schema_name"] for p in perms if p["can_read"]}
         publishable = {p["schema_name"] for p in perms if p["can_publish"]}
+        writable = {p["schema_name"] for p in perms if p["can_write"]}
 
     selects = []
     for schema_name in tm.list_schemas():
@@ -229,4 +235,40 @@ def object_counts(request: Request):
             if schema_name in publishable:
                 counts["pending"] = pending
             result.setdefault(schema_name, {})[obj_key] = counts
+
+    _add_duplicate_counts(tm, result, writable)
     return {"schemas": result}
+
+
+def _add_duplicate_counts(tm, result: dict, writable: set) -> None:
+    """Add ``duplicates`` (open groups) to objects that have rules, where the user can write."""
+    wanted: dict[tuple[str, str], set[str]] = {}
+    for schema_name in writable:
+        for obj in tm.list_objects(schema_name):
+            rules = {r["name"] for r in duplicates_svc.rules_of(
+                tm.get_object_config(schema_name, obj["key"]))}
+            if rules and obj["key"] in result.get(schema_name, {}):
+                wanted[(schema_name, obj["key"])] = rules
+    if not wanted:
+        return
+
+    with Session(tm.engine) as db:
+        rows = db.execute(
+            text(
+                "SELECT schema_name, object_name, rule_name, count(*) FROM ("
+                "SELECT schema_name, object_name, rule_name, match_hash "
+                "FROM _system.duplicate_flags WHERE schema_name = ANY(:schemas) "
+                "GROUP BY schema_name, object_name, rule_name, match_hash "
+                "HAVING count(*) FILTER (WHERE status = 'open') >= 2) g "
+                "GROUP BY schema_name, object_name, rule_name"
+            ),
+            {"schemas": sorted({s for s, _ in wanted})},
+        ).all()
+
+    open_groups = {key: 0 for key in wanted}
+    for schema_name, obj_key, rule_name, n in rows:
+        key = (schema_name, obj_key)
+        if key in wanted and rule_name in wanted[key]:  # ignore flags of removed rules
+            open_groups[key] += n
+    for (schema_name, obj_key), n in open_groups.items():
+        result[schema_name][obj_key]["duplicates"] = n

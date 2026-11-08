@@ -108,6 +108,8 @@ def clean_browser_records(_db_engine):
             '"browser"."governed_item"',
             '"browser"."audited_item_history"',
             '"browser"."audited_item"',
+            '"browser"."contact_history"',
+            '"browser"."contact"',
             '"browser"."division_history"',
             '"browser"."division"',
             '"browser"."company_history"',
@@ -115,6 +117,10 @@ def clean_browser_records(_db_engine):
         ):
             conn.execute(text(f"DELETE FROM {tbl}"))
         conn.execute(text("DELETE FROM _system.audit_log WHERE schema_name = 'browser'"))
+        conn.execute(text("DELETE FROM _system.duplicate_flags WHERE schema_name = 'browser'"))
+        conn.execute(text(
+            "DELETE FROM _system.audit_log WHERE action = 'DUPLICATE_SCAN' "
+            "AND new_values->>'schema' = 'browser'"))
         conn.commit()
     yield
 

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Duplicates – {{ app_name }}{% endblock %}
+
+{% block content %}
+{% set is_admin = request.state.current_user and request.state.current_user.is_admin %}
+<nav class="mdm-crumbs">
+  <a href="/">Home</a>
+  <span class="sep">/</span>
+  <span>Duplicates</span>
+</nav>
+
+<div class="mdm-page-head">
+  <div>
+    <h1 class="mdm-page-title">Duplicates</h1>
+    <div class="mdm-page-sub">Records that look like the same thing. Nothing is merged automatically: review each group, retire what you don't need, or mark it as not a duplicate.</div>
+  </div>
+  <div class="mdm-page-actions">
+    <div class="mdm-seg" id="dup-status-seg">
+      <button class="is-on" type="button" data-status="open">Open <span class="mdm-seg-count" id="dup-open-count"></span></button>
+      <button type="button" data-status="dismissed">Dismissed <span class="mdm-seg-count" id="dup-dismissed-count"></span></button>
+    </div>
+  </div>
+</div>
+
+{% if duplicate_objects %}
+  {% for o in duplicate_objects %}
+  <section class="dup-section" id="{{ o.schema }}-{{ o.key }}" data-schema="{{ o.schema }}" data-obj="{{ o.key }}">
+    <div class="dup-section-head">
+      <h2 class="dup-section-title"><a href="/{{ o.schema }}/{{ o.key }}">{{ o.name }}</a></h2>
+      <span class="schema">{{ o.schema | upper }}</span>
+      <span class="mdm-badge mdm-badge--draft dup-section-count" style="font-size:.72rem" hidden></span>
+      <span class="dup-section-meta"></span>
+      {% if is_admin %}
+      <button type="button" class="mdm-btn dup-rescan-btn">Rescan</button>
+      {% endif %}
+    </div>
+    <div class="dup-scan-banner"></div>
+    <div class="dup-groups"><div class="dup-empty"><span class="spinner"></span></div></div>
+    <div class="dup-more" style="text-align:center" hidden>
+      <button type="button" class="mdm-btn dup-more-btn">Show more</button>
+    </div>
+  </section>
+  {% endfor %}
+{% else %}
+<div class="dup-empty" style="padding:3rem">
+  <div style="font-size:.95rem;font-weight:600;color:var(--mdm-ink)">No duplicate rules are configured</div>
+  <div style="font-size:.85rem;margin-top:.25rem">Add a <code>duplicates:</code> block with rules to an object in the config file to start flagging possible duplicates.</div>
+</div>
+{% endif %}
+
+<script type="application/json" id="dup-config">{{ dup_config | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>document.addEventListener("DOMContentLoaded", initDuplicatesPage);</script>
+{% endblock %}

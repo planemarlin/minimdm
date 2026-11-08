@@ -7,7 +7,16 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy import Boolean, DateTime, Integer, Numeric, func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -15,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.core import audit as audit_svc
+from app.core import duplicates as duplicates_svc
 from app.core import validation as validation_svc
 from app.core.limiter import limiter
 from app.core.permissions import check_permission, require_publish_access, require_schema_access
@@ -330,6 +340,7 @@ async def import_records(
     schema: str,
     obj: str,
     request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     format: str = Query("csv", pattern="^(csv|tsv|json)$"),
     upsert_key: Optional[str] = Query(None),
@@ -420,6 +431,14 @@ async def import_records(
     errors = []
     rows_detail = []
 
+    # Duplicate detection: small imports are checked row by row inside the import's
+    # transaction. A big import would be slowed down by that, so it only commits and
+    # a single set-based rescan runs in the background afterwards.
+    has_duplicate_rules = bool(duplicates_svc.rules_of(import_obj_config))
+    rescan_afterwards = (
+        has_duplicate_rules and len(rows) > duplicates_svc.BULK_IMPORT_RESCAN_THRESHOLD
+    )
+
     for i, row in enumerate(rows):
         # In non-strict mode use a savepoint per row so a DB-level error on one row
         # does not abort the whole transaction and prevents committing previous rows.
@@ -442,6 +461,10 @@ async def import_records(
                     initial_state, source_system
                 )
                 inserted += 1
+            if has_duplicate_rules and not rescan_afterwards:
+                duplicates_svc.refresh_entity(
+                    db, schema, obj, import_obj_config, duplicates_svc.entity_id_of(row_values)
+                )
             rows_detail.append(_serialize_row(row_values))
             if sp:
                 sp.commit()
@@ -463,9 +486,20 @@ async def import_records(
             },
         )
 
+    if rescan_afterwards:
+        # Stored with the imported rows: if the server stops before the rescan below
+        # has run, the next start still knows the flags are incomplete.
+        duplicates_svc.request_rescan(db, schema, obj)
     db.commit()
 
-    return {
+    if rescan_afterwards:
+        from app.api.objects import _get_username
+        background_tasks.add_task(
+            duplicates_svc.rescan_in_background, tm.engine, schema, obj, import_obj_config,
+            "import", _get_username(request),
+        )
+
+    result = {
         "inserted": inserted,
         "updated": updated,
         "errors": errors,
@@ -473,6 +507,9 @@ async def import_records(
         "imported": inserted + updated,
         "rows": rows_detail,
     }
+    if has_duplicate_rules:
+        result["duplicate_check"] = "rescan_scheduled" if rescan_afterwards else "inline"
+    return result
 
 
 def _claim_record(

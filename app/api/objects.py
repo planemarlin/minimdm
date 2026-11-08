@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import audit as audit_svc
+from app.core import duplicates as duplicates_svc
 from app.core import validation as validation_svc
 from app.core.permissions import require_publish_access, require_schema_access
 from app.core.webhooks import fire_webhooks
@@ -340,6 +341,7 @@ def create_record(
             reason=override_reason, ip_address=_client_ip(request),
             user_name=_get_username(request)
         )
+    possible_duplicates = duplicates_svc.refresh_entity(db, schema, obj, obj_config, record_id)
     db.commit()
 
     if initial_state == "active":
@@ -348,7 +350,10 @@ def create_record(
             schema, obj, str(record_id), _get_username(request)
         )
 
-    return {"id": str(record_id), **_serialize_row(values)}
+    return {
+        "id": str(record_id), **_serialize_row(values),
+        **duplicates_svc.response_fields(possible_duplicates),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -510,11 +515,13 @@ def update_record(
                     user_name=_get_username(request)
                 )
 
+        possible_duplicates = duplicates_svc.refresh_entity(db, schema, obj, obj_config, rid)
         db.commit()
         return {
             "id": str(draft_id),
             "draft": True,
             **_serialize_row(new_draft_values if existing_draft else draft_values),
+            **duplicates_svc.response_fields(possible_duplicates),
         }
 
     # Draft or retired — update in place
@@ -577,9 +584,15 @@ def update_record(
             reason=override_reason, ip_address=_client_ip(request),
             user_name=_get_username(request)
         )
+    possible_duplicates = duplicates_svc.refresh_entity(
+        db, schema, obj, obj_config, duplicates_svc.entity_id_of(old_values)
+    )
     db.commit()
 
-    return {"id": record_id, **_serialize_row(new_values)}
+    return {
+        "id": record_id, **_serialize_row(new_values),
+        **duplicates_svc.response_fields(possible_duplicates),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -648,6 +661,10 @@ def delete_record(
         old_values=audit_svc._serialize(old_values), new_values=None,
         reason=reason, ip_address=_client_ip(request),
         user_name=_get_username(request)
+    )
+    # A deleted record no longer takes part in matching.
+    duplicates_svc.refresh_entity(
+        db, schema, obj, tm.get_object_config(schema, obj), duplicates_svc.entity_id_of(old_values)
     )
     db.commit()
 
@@ -804,6 +821,9 @@ def revert_record(
         ip_address=_client_ip(request),
         user_name=_get_username(request)
     )
+    duplicates_svc.refresh_entity(
+        db, schema, obj, obj_config, duplicates_svc.entity_id_of(old_values)
+    )
     db.commit()
 
     return {"id": record_id, "reverted_to_version": version}
@@ -912,6 +932,7 @@ def publish_record(
             reason=reason or "Published from draft", ip_address=_client_ip(request),
             user_name=_get_username(request)
         )
+        duplicates_svc.refresh_entity(db, schema, obj, obj_config, draft_id)
         db.commit()
         background_tasks.add_task(
             fire_webhooks, tm.get_config(), "record.created",
@@ -997,6 +1018,7 @@ def publish_record(
         .values(_deleted_at=now, _updated_at=now)
     )
 
+    duplicates_svc.refresh_entity(db, schema, obj, obj_config, master_id)
     db.commit()
     background_tasks.add_task(
         fire_webhooks, tm.get_config(), "record.published",
@@ -1094,6 +1116,8 @@ def retire_record(
         reason=reason or "Retired", ip_address=_client_ip(request),
         user_name=_get_username(request)
     )
+    # A retired record no longer takes part in matching.
+    duplicates_svc.refresh_entity(db, schema, obj, retire_obj_config, rid)
     db.commit()
     background_tasks.add_task(
         fire_webhooks, tm.get_config(), "record.retired",

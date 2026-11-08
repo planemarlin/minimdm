@@ -60,3 +60,23 @@ schemas:
             type: string
             required: false
             unique: false
+      contact:
+        name: Contact
+        description: Duplicate rules on email and phone (see test_duplicates.py)
+        attributes:
+          name:
+            name: Name
+            type: string
+          email:
+            name: Email
+            type: email
+          phone:
+            name: Phone
+            type: string
+        duplicates:
+          rules:
+            - name: Same email
+              fields: [email]
+            - name: Same phone
+              fields: [phone]
+              normalize: digits

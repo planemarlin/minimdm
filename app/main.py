@@ -1,6 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -13,6 +14,7 @@ from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
+from app.core import duplicates
 from app.core.auth import (
     cleanup_expired_tokens,
     count_users,
@@ -28,6 +30,7 @@ from app.core.permissions import (
     check_permission,
     get_accessible_schemas,
     get_publishable_schemas,
+    get_user_permissions,
 )
 from app.core.schema_loader import load_config, validate_config
 from app.core.table_manager import TableManager
@@ -106,6 +109,7 @@ async def lifespan(app: FastAPI):
                 tm.sync_schema(config)
                 app.state.app_config = config
                 logger.info("Loaded config from %s", config_path)
+                duplicates.start_auto_rescan(engine, config)
         except Exception as exc:
             logger.warning("Failed to load config: %s", exc)
     else:
@@ -146,6 +150,64 @@ def _can_review_pending(request: Request) -> bool:
 
 
 templates.env.globals["can_review_pending"] = _can_review_pending
+
+
+def _writable_schemas(request: Request) -> Optional[set]:
+    """Schemas the user may write to; None means all of them (admin), empty means none."""
+    user = getattr(request.state, "current_user", None)
+    if not user:
+        return set()
+    if user.get("is_admin"):
+        return None
+    engine = request.app.state.table_manager.engine
+    return {p["schema_name"] for p in get_user_permissions(engine, user["user_id"])
+            if p["can_write"]}
+
+
+def _duplicate_review_objects(request: Request) -> list[dict]:
+    """Objects with duplicate rules in schemas the user may review (write access).
+
+    Each entry carries what the Duplicates page needs to draw its section: the columns to
+    show (the first few attributes plus every attribute a rule uses) and the rules.
+    """
+    writable = _writable_schemas(request)
+    if writable is not None and not writable:
+        return []
+    tm = request.app.state.table_manager
+    objects = []
+    for schema_name in tm.list_schemas():
+        if writable is not None and schema_name not in writable:
+            continue
+        for meta in tm.list_objects(schema_name):
+            obj_config = tm.get_object_config(schema_name, meta["key"]) or {}
+            rules = duplicates.rules_of(obj_config)
+            if not rules:
+                continue
+            attrs = obj_config.get("attributes") or {}
+            shown = [k for k, a in attrs.items() if not a.get("reference")]
+            used = {f for r in rules for f in r["fields"]}
+            objects.append({
+                "schema": schema_name,
+                "key": meta["key"],
+                "name": obj_config.get("name", meta["key"]),
+                "label_key": shown[0] if shown else None,
+                "require_reason": bool(obj_config.get("require_change_reason")),
+                "rules": [{"name": r["name"], "fields": r["fields"]} for r in rules],
+                "columns": [
+                    {"key": k, "label": attrs[k].get("name", k), "rule": k in used}
+                    for i, k in enumerate(shown) if i < 4 or k in used
+                ],
+            })
+    return objects
+
+
+def _can_review_duplicates(request: Request) -> bool:
+    """Whether the top bar shows the Duplicates link: someone who can write to a schema
+    that has duplicate rules (admins see it as soon as any object has rules)."""
+    return bool(_duplicate_review_objects(request))
+
+
+templates.env.globals["can_review_duplicates"] = _can_review_duplicates
 
 # -----------------------------------------------------------------
 # Auth middleware
@@ -280,6 +342,7 @@ from app.api import (  # noqa: E402
     admin_api,
     audit_api,
     auth_api,
+    duplicates_api,
     import_export,
     inbound,
     objects,
@@ -293,6 +356,7 @@ app.include_router(admin_api.router, prefix="/api", tags=["Admin"])
 app.include_router(inbound.router, prefix="/api", tags=["Inbound"])
 app.include_router(import_export.router, prefix="/api", tags=["Import / Export"])
 app.include_router(objects.router, prefix="/api", tags=["MDM Records"])
+app.include_router(duplicates_api.router, prefix="/api", tags=["Duplicates"])
 app.include_router(schemas_api.router, prefix="/api", tags=["Schemas"])
 app.include_router(audit_api.router, prefix="/api", tags=["Audit"])
 
@@ -452,6 +516,31 @@ async def pending_drafts(request: Request):
             "schemas": _sidebar_schemas(request),
             "app_name": settings.app_name,
             "groups": groups,
+        },
+    )
+
+
+@app.get("/duplicates", response_class=HTMLResponse, include_in_schema=False)
+async def duplicates_page(request: Request):
+    writable = _writable_schemas(request)
+    if writable is not None and not writable:
+        return templates.TemplateResponse(
+            request, "error.html",
+            {
+                "message": "Access denied: reviewing duplicates needs write access to a schema",
+                "app_name": settings.app_name,
+            },
+            status_code=403,
+        )
+    objects = _duplicate_review_objects(request)
+    return templates.TemplateResponse(
+        request,
+        "duplicates.html",
+        {
+            "schemas": _sidebar_schemas(request),
+            "app_name": settings.app_name,
+            "duplicate_objects": objects,
+            "dup_config": objects,
         },
     )
 
