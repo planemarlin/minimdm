@@ -129,3 +129,74 @@ def test_audit_log_auth_events_tab(logged_in_page):
     logged_in_page.click("button:has-text('Auth Events')")
     expect(logged_in_page.locator("#audit-total")).not_to_have_text("…")
     logged_in_page.wait_for_selector(f"#auth-tbody td:has-text('{_ADMIN_USER}')")
+
+
+def test_audit_log_search_box_is_not_a_nested_input(logged_in_page):
+    """The user filter is a bare input inside the .mdm-search wrapper.
+
+    The global ``input[type="text"]`` rule used to leak into it, which drew a
+    second border, padding and focus ring inside the wrapper's own.
+    """
+    logged_in_page.goto("/admin/audit")
+    box = logged_in_page.locator("#filter-user")
+    box.focus()
+    style = box.evaluate(
+        """el => {
+            const s = getComputedStyle(el);
+            return {
+                border: s.borderTopWidth,
+                padding: s.paddingLeft,
+                shadow: s.boxShadow,
+                radius: s.borderTopLeftRadius,
+            };
+        }"""
+    )
+    assert style == {"border": "0px", "padding": "0px", "shadow": "none", "radius": "0px"}
+
+
+def test_audit_log_auth_filters_share_one_row(logged_in_page):
+    """The Auth Events action select keeps its natural width.
+
+    The global ``select { width: 100% }`` rule used to stretch it across the
+    whole toolbar and push the other filters onto their own rows.
+    """
+    logged_in_page.goto("/admin/audit")
+    logged_in_page.click("button:has-text('Auth Events')")
+    select = logged_in_page.locator("#auth-filter-action")
+    search = logged_in_page.locator("#auth-filter-user")
+    expect(select).to_be_visible()
+    toolbar_width = select.evaluate("el => el.parentElement.getBoundingClientRect().width")
+    select_box = select.bounding_box()
+    search_box = search.bounding_box()
+    assert select_box["width"] < toolbar_width * 0.8
+    # Same row: the search box starts to the right of the select, not below it.
+    assert search_box["x"] > select_box["x"] + select_box["width"]
+
+
+@pytest.mark.parametrize("width", [700, 1000, 1400])
+@pytest.mark.parametrize(
+    "tab, prefix", [("Data Changes", "filter"), ("Auth Events", "auth-filter")]
+)
+def test_audit_log_date_range_has_its_own_row(logged_in_page, width, tab, prefix):
+    """From and To share one row below the filters, at every window width.
+
+    They used to be ordinary flex items of the toolbar, so resizing the window
+    moved them between the filter row and a row of their own.
+    """
+    page = logged_in_page
+    page.set_viewport_size({"width": width, "height": 900})
+    page.goto("/admin/audit")
+    page.click(f"button:has-text('{tab}')")
+    boxes = {
+        name: page.locator(f"#{prefix}-{name}").bounding_box()
+        for name in ("user", "from", "to")
+    }
+    action = page.locator("#filter-action" if prefix == "filter" else "#auth-filter-action")
+    boxes["action"] = action.bounding_box()
+    # From and To are on the same row ...
+    assert abs(boxes["from"]["y"] - boxes["to"]["y"]) < 2
+    # ... and that row is below every filter control, never beside one.
+    filters_bottom = max(
+        boxes[name]["y"] + boxes[name]["height"] for name in ("user", "action")
+    )
+    assert boxes["from"]["y"] >= filters_bottom
