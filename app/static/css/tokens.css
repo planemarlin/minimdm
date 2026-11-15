@@ -323,6 +323,15 @@
   margin-bottom: 14px;
   flex-wrap: wrap;
 }
+/* A full-width row inside a toolbar: filters on one row, date range on the
+   next, so a resize never moves a control from one group to the other. */
+.mdm-toolbar-row {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 
 /* ---------- Controls ---------- */
 .mdm-btn {
@@ -374,6 +383,9 @@
   border-color: var(--mdm-blue);
   box-shadow: 0 0 0 3px var(--mdm-blue-tint);
 }
+/* The global `select { width: 100% }` would stretch a lone select across the
+   whole toolbar row. */
+.mdm-toolbar .mdm-select { width: auto; }
 .mdm-select {
   appearance: none;
   -webkit-appearance: none;
@@ -397,8 +409,11 @@
   border-color: var(--mdm-blue);
   box-shadow: 0 0 0 3px var(--mdm-blue-tint);
 }
-.mdm-search input {
-  border: 0; background: transparent; outline: none;
+/* `input[type]` raises specificity above the global `input[type="text"]` rule
+   in styles.css (loaded later), so a text input here is never boxed twice. */
+.mdm-search input[type] {
+  width: auto; padding: 0; border: 0; border-radius: 0; box-shadow: none;
+  background: transparent; outline: none;
   font-size: 13.5px; flex: 1; min-width: 0;
   color: var(--mdm-ink);
 }
